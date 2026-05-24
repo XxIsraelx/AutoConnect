@@ -222,6 +222,8 @@ model DealershipBranch {
   postalCode     String?                           @map("postal_code")
   country        String                            @default("BR")
   location       Unsupported("geography(Point, 4326)")?
+  latitude       Float?
+  longitude      Float?
   businessHours  Json                              @default("{}") @map("business_hours")
   isActive       Boolean                           @default(true) @map("is_active")
   createdAt      DateTime                          @default(now()) @map("created_at") @db.Timestamptz()

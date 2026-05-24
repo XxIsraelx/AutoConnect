@@ -6,6 +6,12 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAuthStore, type AuthUser } from '@/store/auth';
 
+const BR_STATES = [
+  'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA',
+  'MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN',
+  'RO','RR','RS','SC','SE','SP','TO',
+];
+
 export default function SignupPage() {
   const router = useRouter();
   const setSession = useAuthStore((s) => s.setSession);
@@ -18,6 +24,11 @@ export default function SignupPage() {
     adminName: '',
     adminEmail: '',
     adminPassword: '',
+    // Localização da filial principal (necessário para aparecer no mapa)
+    city: '',
+    state: '',
+    branchPhone: '',
+    addressLine: '',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -56,6 +67,17 @@ export default function SignupPage() {
               email: form.adminEmail,
               password: form.adminPassword,
             },
+            // Só envia branch se cidade e estado estiverem preenchidos
+            ...(form.city && form.state
+              ? {
+                  branch: {
+                    city: form.city,
+                    state: form.state,
+                    phone: form.branchPhone || undefined,
+                    addressLine: form.addressLine || undefined,
+                  },
+                }
+              : {}),
           }),
         },
       );
@@ -68,12 +90,17 @@ export default function SignupPage() {
     }
   }
 
+  const inputCls =
+    'w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-accent';
+
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 shadow-sm">
       <h2 className="text-xl font-semibold mb-1">Cadastrar concessionária</h2>
       <p className="text-sm text-slate-500 mb-6">14 dias grátis, sem cartão de crédito.</p>
 
       <form onSubmit={handleSubmit} className="space-y-5">
+
+        {/* ── Dados da concessionária ──────────────────────── */}
         <fieldset>
           <legend className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
             Dados da concessionária
@@ -89,7 +116,7 @@ export default function SignupPage() {
                   if (!form.tradeName) set('tradeName', e.target.value);
                   if (!form.slug) set('slug', toSlug(e.target.value));
                 }}
-                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-accent"
+                className={inputCls}
                 placeholder="Minha Auto Ltda"
               />
             </div>
@@ -99,7 +126,7 @@ export default function SignupPage() {
                 required
                 value={form.tradeName}
                 onChange={(e) => set('tradeName', e.target.value)}
-                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-accent"
+                className={inputCls}
                 placeholder="Minha Auto"
               />
             </div>
@@ -128,13 +155,74 @@ export default function SignupPage() {
                 required
                 value={form.primaryEmail}
                 onChange={(e) => set('primaryEmail', e.target.value)}
-                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-accent"
+                className={inputCls}
                 placeholder="contato@minhauto.com"
               />
             </div>
           </div>
         </fieldset>
 
+        {/* ── Localização (para aparecer no mapa) ─────────── */}
+        <fieldset>
+          <legend className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+            Localização da filial principal
+          </legend>
+          <p className="text-xs text-slate-400 mb-3 flex items-center gap-1">
+            <span>📍</span> Necessário para aparecer no mapa público do AutoConnect
+          </p>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Cidade <span className="text-red-500">*</span></label>
+                <input
+                  required
+                  value={form.city}
+                  onChange={(e) => set('city', e.target.value)}
+                  className={inputCls}
+                  placeholder="São Paulo"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Estado <span className="text-red-500">*</span></label>
+                <select
+                  required
+                  value={form.state}
+                  onChange={(e) => set('state', e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="">UF</option>
+                  {BR_STATES.map((uf) => (
+                    <option key={uf} value={uf}>{uf}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1.5">
+                Endereço <span className="text-slate-400 font-normal">(opcional)</span>
+              </label>
+              <input
+                value={form.addressLine}
+                onChange={(e) => set('addressLine', e.target.value)}
+                className={inputCls}
+                placeholder="Av. Paulista, 1000"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1.5">
+                Telefone da filial <span className="text-slate-400 font-normal">(opcional)</span>
+              </label>
+              <input
+                value={form.branchPhone}
+                onChange={(e) => set('branchPhone', e.target.value)}
+                className={inputCls}
+                placeholder="(11) 3000-0000"
+              />
+            </div>
+          </div>
+        </fieldset>
+
+        {/* ── Acesso de administrador ──────────────────────── */}
         <fieldset>
           <legend className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
             Seu acesso de administrador
@@ -146,7 +234,7 @@ export default function SignupPage() {
                 required
                 value={form.adminName}
                 onChange={(e) => set('adminName', e.target.value)}
-                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-accent"
+                className={inputCls}
                 placeholder="Israel Aureliano"
               />
             </div>
@@ -157,7 +245,7 @@ export default function SignupPage() {
                 required
                 value={form.adminEmail}
                 onChange={(e) => set('adminEmail', e.target.value)}
-                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-accent"
+                className={inputCls}
                 placeholder="voce@minhauto.com"
               />
             </div>
@@ -169,7 +257,7 @@ export default function SignupPage() {
                 minLength={8}
                 value={form.adminPassword}
                 onChange={(e) => set('adminPassword', e.target.value)}
-                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-accent"
+                className={inputCls}
                 placeholder="••••••••"
               />
             </div>

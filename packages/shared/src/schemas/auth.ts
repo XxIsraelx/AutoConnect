@@ -24,6 +24,13 @@ export const signupTenantSchema = z.object({
     email: z.string().email(),
     password: z.string().min(8).max(128),
   }),
+  branch: z.object({
+    city: z.string().min(2).max(100),
+    state: z.string().length(2),
+    phone: z.string().optional(),
+    addressLine: z.string().optional(),
+    postalCode: z.string().optional(),
+  }).optional(),
 });
 export type SignupTenantInput = z.infer<typeof signupTenantSchema>;
 

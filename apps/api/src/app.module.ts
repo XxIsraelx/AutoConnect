@@ -10,6 +10,7 @@ import { HealthModule } from './modules/health/health.module';
 import { ChatGatewayModule } from './gateway/chat-gateway.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { VehiclesModule } from './modules/vehicles/vehicles.module';
+import { MapModule } from './modules/map/map.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { VehiclesModule } from './modules/vehicles/vehicles.module';
     ChatGatewayModule,
     CatalogModule,
     VehiclesModule,
+    MapModule,
   ],
   providers: [
     {

@@ -12,13 +12,17 @@
     "studio": "prisma studio",
     "format": "prisma format",
     "typecheck": "tsc --noEmit",
+    "db:seed": "tsx prisma/seed.ts",
     "clean": "rm -rf node_modules .turbo"
   },
   "dependencies": {
     "@prisma/client": "^5.13.0"
   },
   "devDependencies": {
+    "bcrypt": "^5.1.1",
+    "@types/bcrypt": "^5.0.2",
     "prisma": "^5.13.0",
+    "tsx": "^4.7.0",
     "typescript": "^5.4.0"
   }
 }
