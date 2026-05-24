@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Response } from 'express';
 import { AuthService } from './auth.service';
@@ -20,6 +20,11 @@ export class AuthController {
   async signupCustomer(@Body() body: unknown) {
     const parsed = signupCustomerSchema.parse(body);
     return this.auth.signupCustomer(parsed);
+  }
+
+  @Get('verify-email')
+  verifyEmail(@Query('token') token: string) {
+    return this.auth.verifyEmail(token);
   }
 
   @Post('login')

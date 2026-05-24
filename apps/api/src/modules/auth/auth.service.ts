@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   UnauthorizedException,
@@ -6,6 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { EmailService } from '../../common/email/email.service';
 import type { LoginInput, SignupTenantInput, SignupCustomerInput } from '@autoconnect/shared';
 
 @Injectable()
@@ -13,6 +15,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly email: EmailService,
   ) {}
 
   async signupTenant(input: SignupTenantInput) {
@@ -63,16 +66,83 @@ export class AuthService {
     if (exists) throw new ConflictException('email já cadastrado');
 
     const passwordHash = await bcrypt.hash(input.password, 10);
-    const user = await this.prisma.user.create({
-      data: {
-        email: input.email,
-        fullName: input.fullName,
-        passwordHash,
-        role: 'customer',
-        status: 'active',
-      },
+
+    // Normaliza CPF removendo formatação para armazenar
+    const cpfNormalized = input.cpf?.replace(/\D/g, '') ?? null;
+
+    const user = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          email: input.email,
+          fullName: input.fullName,
+          phone: input.phone ?? null,
+          passwordHash,
+          role: 'customer',
+          status: 'active',
+          // emailVerifiedAt permanece null até verificação
+          metadata: {
+            addressLine: input.addressLine ?? null,
+            addressNumber: input.addressNumber ?? null,
+            complement: input.complement ?? null,
+            neighborhood: input.neighborhood ?? null,
+          },
+        },
+      });
+
+      // Cria CustomerProfile se tiver dados extras
+      if (cpfNormalized || input.birthDate || input.city || input.state || input.postalCode) {
+        await tx.customerProfile.create({
+          data: {
+            userId: created.id,
+            documentNumber: cpfNormalized,
+            birthDate: input.birthDate ? new Date(input.birthDate) : null,
+            city: input.city ?? null,
+            state: input.state ?? null,
+            postalCode: input.postalCode ?? null,
+          },
+        });
+      }
+
+      return created;
     });
-    return this.buildSession(user);
+
+    // Gera token de verificação (JWT 24h, sem acesso à app)
+    const verificationToken = this.jwt.sign(
+      { sub: user.id, purpose: 'email-verification' },
+      { expiresIn: '24h' },
+    );
+
+    // Envia e-mail de verificação (async, não bloqueia resposta)
+    this.email.sendEmailVerification(user.email, user.fullName, verificationToken).catch(() => {});
+
+    return { message: 'Cadastro realizado! Verifique seu e-mail para ativar a conta.' };
+  }
+
+  async verifyEmail(token: string) {
+    let payload: { sub: string; purpose: string };
+    try {
+      payload = this.jwt.verify<{ sub: string; purpose: string }>(token);
+    } catch {
+      throw new BadRequestException('Link inválido ou expirado');
+    }
+
+    if (payload.purpose !== 'email-verification') {
+      throw new BadRequestException('Token inválido');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    if (!user) throw new BadRequestException('Usuário não encontrado');
+    if (user.emailVerifiedAt) {
+      // Já verificado — retorna sessão normalmente
+      return this.buildSession(user);
+    }
+
+    const verified = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerifiedAt: new Date() },
+    });
+
+    return this.buildSession(verified);
   }
 
   async login(input: LoginInput) {
@@ -84,6 +154,10 @@ export class AuthService {
     }
     const ok = await bcrypt.compare(input.password, user.passwordHash);
     if (!ok) throw new UnauthorizedException('credenciais inválidas');
+
+    if (!user.emailVerifiedAt) {
+      throw new UnauthorizedException('Confirme seu e-mail antes de entrar');
+    }
 
     await this.prisma.user.update({
       where: { id: user.id },
