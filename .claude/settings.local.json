@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm run *)",
+      "Bash(npx eslint *)",
+      "Bash(psql \"postgresql://israelaureliano:123456@localhost:5432/AutoConnect\" -c \"SELECT 1\")",
+      "Bash(redis-cli ping *)",
+      "Bash(pnpm --filter @autoconnect/api typecheck)",
+      "WebSearch",
+      "Bash(xargs cat)",
+      "Bash(pnpm --filter @autoconnect/web build)",
+      "Bash(git --version)",
+      "Read(//opt/homebrew/bin/**)",
+      "Read(//usr/local/bin/**)",
+      "Bash(pnpm --filter @autoconnect/api add passport-google-oauth20)",
+      "Bash(pnpm --filter @autoconnect/api add -D @types/passport-google-oauth20)",
+      "Bash(brew install *)",
+      "Bash(git init *)",
+      "Bash(git config *)",
+      "Bash(lsof -ti:4000)",
+      "Bash(xargs kill -9)",
+      "Bash(git add *)"
+    ]
+  }
+}

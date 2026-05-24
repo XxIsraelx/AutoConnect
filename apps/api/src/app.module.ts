@@ -11,7 +11,11 @@ import { ChatGatewayModule } from './gateway/chat-gateway.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      // CWD é apps/api/ no monorepo — procura .env local primeiro, depois na raiz
+      envFilePath: ['.env', '../../.env'],
+    }),
     PrismaModule,
     AuthModule,
     TenantsModule,
