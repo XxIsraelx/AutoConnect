@@ -1,0 +1,738 @@
+// AutoConnect — Prisma schema
+// Espelha schema.sql (mesma fonte de verdade)
+// Multi-tenant: shared schema + tenant_id + RLS (configurado via SQL)
+//
+// Observação: campos GEOGRAPHY (PostGIS) e TSVECTOR são gerenciados pelo SQL
+// (não pelo Prisma). Estão marcados como Unsupported para preservar a coluna.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions", "fullTextSearch"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [pgcrypto, citext, pg_trgm, postgis]
+}
+
+// ============ ENUMS ============
+
+enum UserRole {
+  super_admin
+  tenant_admin
+  manager
+  salesperson
+  customer
+}
+
+enum UserStatus {
+  active
+  invited
+  suspended
+  deleted
+}
+
+enum PresenceStatus {
+  online
+  busy
+  away
+  offline
+}
+
+enum VehicleCondition {
+  new
+  used
+  semi_new
+  demo
+}
+
+enum VehicleStatus {
+  available
+  reserved
+  sold
+  in_maintenance
+  archived
+}
+
+enum FuelType {
+  gasoline
+  ethanol
+  flex
+  diesel
+  hybrid
+  electric
+  gnv
+}
+
+enum TransmissionType {
+  manual
+  automatic
+  cvt
+  automated_manual
+}
+
+enum LeadStatus {
+  new
+  contacted
+  qualified
+  negotiating
+  won
+  lost
+  archived
+}
+
+enum LeadSource {
+  website
+  app
+  whatsapp
+  phone
+  walk_in
+  referral
+  social
+  ad
+  other
+}
+
+enum AppointmentType {
+  test_drive
+  evaluation
+  in_person
+  online
+  delivery
+  service
+}
+
+enum AppointmentStatus {
+  scheduled
+  confirmed
+  in_progress
+  completed
+  canceled
+  no_show
+}
+
+enum MessageKind {
+  text
+  image
+  file
+  vehicle_card
+  system
+}
+
+enum ConversationStatus {
+  open
+  pending
+  closed
+}
+
+enum NotificationChannel {
+  in_app
+  email
+  push
+  whatsapp
+  sms
+}
+
+enum NotificationStatus {
+  pending
+  sent
+  failed
+  read
+}
+
+enum SubscriptionPlan {
+  trial
+  starter
+  pro
+  enterprise
+}
+
+enum SubscriptionStatus {
+  active
+  past_due
+  canceled
+  paused
+}
+
+// ============ TENANT / SAAS ============
+
+model Tenant {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug          String    @unique @db.Citext
+  legalName     String    @map("legal_name")
+  tradeName     String    @map("trade_name")
+  taxId         String?   @unique @map("tax_id")
+  primaryEmail  String    @map("primary_email") @db.Citext
+  primaryPhone  String?   @map("primary_phone")
+  logoUrl       String?   @map("logo_url")
+  brandColor    String?   @map("brand_color")
+  websiteUrl    String?   @map("website_url")
+  timezone      String    @default("America/Sao_Paulo")
+  isActive      Boolean   @default(true) @map("is_active")
+  settings      Json      @default("{}")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  subscription  TenantSubscription?
+  branches      DealershipBranch[]
+  users         User[]
+  invitations   UserInvitation[]
+  vehicles      Vehicle[]
+  leads         Lead[]
+  appointments  Appointment[]
+  conversations Conversation[]
+
+  @@map("tenants")
+}
+
+model TenantSubscription {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String              @unique @map("tenant_id") @db.Uuid
+  plan                SubscriptionPlan    @default(trial)
+  status              SubscriptionStatus  @default(active)
+  trialEndsAt         DateTime?           @map("trial_ends_at") @db.Timestamptz()
+  currentPeriodStart  DateTime?           @map("current_period_start") @db.Timestamptz()
+  currentPeriodEnd    DateTime?           @map("current_period_end") @db.Timestamptz()
+  externalProvider    String?             @map("external_provider")
+  externalId          String?             @map("external_id")
+  seatsLimit          Int?                @map("seats_limit")
+  createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime            @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_subscriptions")
+}
+
+model DealershipBranch {
+  id             String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String                            @map("tenant_id") @db.Uuid
+  name           String
+  isHeadquarters Boolean                           @default(false) @map("is_headquarters")
+  phone          String?
+  email          String?                           @db.Citext
+  addressLine    String?                           @map("address_line")
+  addressNumber  String?                           @map("address_number")
+  complement     String?
+  neighborhood   String?
+  city           String?
+  state          String?
+  postalCode     String?                           @map("postal_code")
+  country        String                            @default("BR")
+  location       Unsupported("geography(Point, 4326)")?
+  businessHours  Json                              @default("{}") @map("business_hours")
+  isActive       Boolean                           @default(true) @map("is_active")
+  createdAt      DateTime                          @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime                          @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicles       Vehicle[]
+  salespeople    SalespersonProfile[]
+  leads          Lead[]
+  appointments   Appointment[]
+
+  @@index([tenantId])
+  @@map("dealership_branches")
+}
+
+// ============ USERS ============
+
+model User {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String?     @map("tenant_id") @db.Uuid
+  email           String      @unique @db.Citext
+  passwordHash    String?     @map("password_hash")
+  fullName        String      @map("full_name")
+  phone           String?
+  avatarUrl       String?     @map("avatar_url")
+  role            UserRole
+  status          UserStatus  @default(active)
+  emailVerifiedAt DateTime?   @map("email_verified_at") @db.Timestamptz()
+  lastLoginAt     DateTime?   @map("last_login_at") @db.Timestamptz()
+  metadata        Json        @default("{}")
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant              Tenant?              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sessions            UserSession[]
+  salespersonProfile  SalespersonProfile?
+  customerProfile     CustomerProfile?
+  favorites           CustomerFavorite[]
+  leadsAsCustomer     Lead[]               @relation("LeadsAsCustomer")
+  leadsAssigned       Lead[]               @relation("LeadsAssigned")
+  appointmentsAsCustomer Appointment[]     @relation("AppointmentsAsCustomer")
+  appointmentsAsSalesperson Appointment[]  @relation("AppointmentsAsSalesperson")
+  conversationsAsCustomer Conversation[]   @relation("ConversationsAsCustomer")
+  conversationsAsSalesperson Conversation[] @relation("ConversationsAsSalesperson")
+  messages            Message[]
+  availability        SalespersonAvailability[]
+  notifications       Notification[]
+  invitationsCreated  UserInvitation[]
+  vehicleHistory      VehicleHistory[]
+  leadInteractions    LeadInteraction[]
+  analyticsEvents     AnalyticsEvent[]
+  auditEntries        AuditLog[]
+  vehicleViews        VehicleView[]
+
+  @@index([tenantId])
+  @@index([role])
+  @@map("users")
+}
+
+model UserSession {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  refreshTokenHash String   @map("refresh_token_hash")
+  userAgent        String?  @map("user_agent")
+  ipAddress        String?  @map("ip_address") @db.Inet
+  expiresAt        DateTime @map("expires_at") @db.Timestamptz()
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz()
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([refreshTokenHash])
+  @@map("user_sessions")
+}
+
+model UserInvitation {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  email      String    @db.Citext
+  role       UserRole
+  tokenHash  String    @unique @map("token_hash")
+  invitedBy  String?   @map("invited_by") @db.Uuid
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz()
+  acceptedAt DateTime? @map("accepted_at") @db.Timestamptz()
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inviter    User?  @relation(fields: [invitedBy], references: [id])
+
+  @@index([tenantId])
+  @@map("user_invitations")
+}
+
+model SalespersonProfile {
+  userId           String                                  @id @map("user_id") @db.Uuid
+  tenantId         String                                  @map("tenant_id") @db.Uuid
+  branchId         String?                                 @map("branch_id") @db.Uuid
+  bio              String?
+  hireDate         DateTime?                               @map("hire_date") @db.Date
+  commissionPct    Decimal?                                @map("commission_pct") @db.Decimal(5, 2)
+  presence         PresenceStatus                          @default(offline)
+  lastSeenAt       DateTime?                               @map("last_seen_at") @db.Timestamptz()
+  currentLocation  Unsupported("geography(Point, 4326)")?  @map("current_location")
+  isAcceptingLeads Boolean                                 @default(true) @map("is_accepting_leads")
+  updatedAt        DateTime                                @updatedAt @map("updated_at") @db.Timestamptz()
+
+  user   User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch DealershipBranch? @relation(fields: [branchId], references: [id])
+
+  @@index([tenantId])
+  @@index([presence])
+  @@map("salesperson_profiles")
+}
+
+model CustomerProfile {
+  userId           String                                  @id @map("user_id") @db.Uuid
+  documentNumber   String?                                 @map("document_number")
+  birthDate        DateTime?                               @map("birth_date") @db.Date
+  city             String?
+  state            String?
+  postalCode       String?                                 @map("postal_code")
+  preferredContact NotificationChannel                     @default(whatsapp) @map("preferred_contact")
+  shareLocation    Boolean                                 @default(false) @map("share_location")
+  lastLocation     Unsupported("geography(Point, 4326)")?  @map("last_location")
+  lastLocationAt   DateTime?                               @map("last_location_at") @db.Timestamptz()
+  updatedAt        DateTime                                @updatedAt @map("updated_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("customer_profiles")
+}
+
+// ============ CATALOGO ============
+
+model VehicleBrand {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @unique
+  logoUrl   String?  @map("logo_url")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  models   VehicleModel[]
+  vehicles Vehicle[]
+
+  @@map("vehicle_brands")
+}
+
+model VehicleModel {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  brandId   String   @map("brand_id") @db.Uuid
+  name      String
+  category  String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  brand    VehicleBrand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  vehicles Vehicle[]
+
+  @@unique([brandId, name])
+  @@index([brandId])
+  @@map("vehicle_models")
+}
+
+model Vehicle {
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String             @map("tenant_id") @db.Uuid
+  branchId       String?            @map("branch_id") @db.Uuid
+  brandId        String             @map("brand_id") @db.Uuid
+  modelId        String             @map("model_id") @db.Uuid
+  versionName    String?            @map("version_name")
+  yearModel      Int                @map("year_model")
+  yearMake       Int                @map("year_make")
+  color          String?
+  mileageKm      Int                @default(0) @map("mileage_km")
+  fuel           FuelType?
+  transmission   TransmissionType?
+  engine         String?
+  doors          Int?               @db.SmallInt
+  vin            String?            @unique
+  licensePlate   String?            @map("license_plate")
+  condition      VehicleCondition   @default(used)
+  status         VehicleStatus      @default(available)
+  price          Decimal            @db.Decimal(12, 2)
+  promoPrice     Decimal?           @map("promo_price") @db.Decimal(12, 2)
+  description    String?
+  viewsCount     Int                @default(0) @map("views_count")
+  favoritesCount Int                @default(0) @map("favorites_count")
+  publishedAt    DateTime?          @map("published_at") @db.Timestamptz()
+  soldAt         DateTime?          @map("sold_at") @db.Timestamptz()
+  metadata       Json               @default("{}")
+  searchVector   Unsupported("tsvector")? @map("search_vector")
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch       DealershipBranch?  @relation(fields: [branchId], references: [id])
+  brand        VehicleBrand       @relation(fields: [brandId], references: [id])
+  model        VehicleModel       @relation(fields: [modelId], references: [id])
+  images       VehicleImage[]
+  featureLinks VehicleFeatureLink[]
+  history      VehicleHistory[]
+  views        VehicleView[]
+  favorites    CustomerFavorite[]
+  leads        Lead[]
+  appointments Appointment[]
+  conversations Conversation[]
+  messageRefs  Message[]
+
+  @@index([tenantId])
+  @@index([branchId])
+  @@index([status])
+  @@index([modelId])
+  @@index([price])
+  @@map("vehicles")
+}
+
+model VehicleImage {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vehicleId String   @map("vehicle_id") @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  url       String
+  altText   String?  @map("alt_text")
+  position  Int      @default(0)
+  isCover   Boolean  @default(false) @map("is_cover")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
+  @@map("vehicle_images")
+}
+
+model VehicleFeature {
+  id    String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name  String  @unique
+  icon  String?
+
+  links VehicleFeatureLink[]
+
+  @@map("vehicle_features")
+}
+
+model VehicleFeatureLink {
+  vehicleId String @map("vehicle_id") @db.Uuid
+  featureId String @map("feature_id") @db.Uuid
+
+  vehicle Vehicle        @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  feature VehicleFeature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@id([vehicleId, featureId])
+  @@map("vehicle_feature_links")
+}
+
+model VehicleHistory {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vehicleId   String   @map("vehicle_id") @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  eventType   String   @map("event_type")
+  payload     Json     @default("{}")
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  actor   User?   @relation(fields: [actorUserId], references: [id])
+
+  @@index([vehicleId])
+  @@map("vehicle_history")
+}
+
+model CustomerFavorite {
+  userId    String   @map("user_id") @db.Uuid
+  vehicleId String   @map("vehicle_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, vehicleId])
+  @@map("customer_favorites")
+}
+
+model VehicleView {
+  id        BigInt   @id @default(autoincrement())
+  vehicleId String   @map("vehicle_id") @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  sessionId String?  @map("session_id")
+  source    String?
+  viewedAt  DateTime @default(now()) @map("viewed_at") @db.Timestamptz()
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id])
+
+  @@index([vehicleId])
+  @@index([tenantId, viewedAt(sort: Desc)])
+  @@map("vehicle_views")
+}
+
+// ============ LEADS ============
+
+model Lead {
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String     @map("tenant_id") @db.Uuid
+  customerUserId  String?    @map("customer_user_id") @db.Uuid
+  branchId        String?    @map("branch_id") @db.Uuid
+  assignedTo      String?    @map("assigned_to") @db.Uuid
+  vehicleId       String?    @map("vehicle_id") @db.Uuid
+  contactName     String?    @map("contact_name")
+  contactEmail    String?    @map("contact_email") @db.Citext
+  contactPhone    String?    @map("contact_phone")
+  source          LeadSource @default(website)
+  status          LeadStatus @default(new)
+  message         String?
+  score           Int?       @db.SmallInt
+  lastActivityAt  DateTime   @default(now()) @map("last_activity_at") @db.Timestamptz()
+  wonAt           DateTime?  @map("won_at") @db.Timestamptz()
+  lostReason      String?    @map("lost_reason")
+  metadata        Json       @default("{}")
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer     User?             @relation("LeadsAsCustomer", fields: [customerUserId], references: [id])
+  assignee     User?             @relation("LeadsAssigned", fields: [assignedTo], references: [id])
+  branch       DealershipBranch? @relation(fields: [branchId], references: [id])
+  vehicle      Vehicle?          @relation(fields: [vehicleId], references: [id])
+  interactions LeadInteraction[]
+  appointments Appointment[]
+  conversations Conversation[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([assignedTo])
+  @@index([vehicleId])
+  @@map("leads")
+}
+
+model LeadInteraction {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  leadId      String   @map("lead_id") @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  kind        String
+  content     String?
+  payload     Json     @default("{}")
+  occurredAt  DateTime @default(now()) @map("occurred_at") @db.Timestamptz()
+
+  lead  Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  actor User? @relation(fields: [actorUserId], references: [id])
+
+  @@index([leadId, occurredAt(sort: Desc)])
+  @@map("lead_interactions")
+}
+
+// ============ AGENDAMENTOS ============
+
+model Appointment {
+  id               String                                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String                                  @map("tenant_id") @db.Uuid
+  branchId         String?                                 @map("branch_id") @db.Uuid
+  customerUserId   String                                  @map("customer_user_id") @db.Uuid
+  salespersonId    String?                                 @map("salesperson_id") @db.Uuid
+  vehicleId        String?                                 @map("vehicle_id") @db.Uuid
+  leadId           String?                                 @map("lead_id") @db.Uuid
+  type             AppointmentType
+  status           AppointmentStatus                       @default(scheduled)
+  scheduledStart   DateTime                                @map("scheduled_start") @db.Timestamptz()
+  scheduledEnd     DateTime                                @map("scheduled_end") @db.Timestamptz()
+  meetingUrl       String?                                 @map("meeting_url")
+  location         Unsupported("geography(Point, 4326)")?
+  address          String?
+  notes            String?
+  cancellationReason String?                               @map("cancellation_reason")
+  reminderSentAt   DateTime?                               @map("reminder_sent_at") @db.Timestamptz()
+  createdAt        DateTime                                @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime                                @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch      DealershipBranch? @relation(fields: [branchId], references: [id])
+  customer    User              @relation("AppointmentsAsCustomer", fields: [customerUserId], references: [id], onDelete: Cascade)
+  salesperson User?             @relation("AppointmentsAsSalesperson", fields: [salespersonId], references: [id])
+  vehicle     Vehicle?          @relation(fields: [vehicleId], references: [id])
+  lead        Lead?             @relation(fields: [leadId], references: [id])
+
+  @@index([tenantId, scheduledStart])
+  @@index([salespersonId, scheduledStart])
+  @@index([customerUserId])
+  @@index([tenantId, status])
+  @@map("appointments")
+}
+
+model SalespersonAvailability {
+  id            String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  salespersonId String @map("salesperson_id") @db.Uuid
+  tenantId      String @map("tenant_id") @db.Uuid
+  weekday       Int    @db.SmallInt
+  startTime     DateTime @map("start_time") @db.Time(6)
+  endTime       DateTime @map("end_time") @db.Time(6)
+
+  salesperson User @relation(fields: [salespersonId], references: [id], onDelete: Cascade)
+
+  @@index([salespersonId])
+  @@map("salesperson_availability")
+}
+
+// ============ CHAT ============
+
+model Conversation {
+  id                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                 String              @map("tenant_id") @db.Uuid
+  customerUserId           String              @map("customer_user_id") @db.Uuid
+  salespersonId            String?             @map("salesperson_id") @db.Uuid
+  vehicleId                String?             @map("vehicle_id") @db.Uuid
+  leadId                   String?             @map("lead_id") @db.Uuid
+  status                   ConversationStatus  @default(open)
+  lastMessageAt            DateTime?           @map("last_message_at") @db.Timestamptz()
+  unreadCountCustomer      Int                 @default(0) @map("unread_count_customer")
+  unreadCountSalesperson   Int                 @default(0) @map("unread_count_salesperson")
+  createdAt                DateTime            @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt                DateTime            @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer    User     @relation("ConversationsAsCustomer", fields: [customerUserId], references: [id], onDelete: Cascade)
+  salesperson User?    @relation("ConversationsAsSalesperson", fields: [salespersonId], references: [id])
+  vehicle     Vehicle? @relation(fields: [vehicleId], references: [id])
+  lead        Lead?    @relation(fields: [leadId], references: [id])
+  messages    Message[]
+
+  @@index([tenantId])
+  @@index([customerUserId])
+  @@index([salespersonId])
+  @@index([tenantId, lastMessageAt(sort: Desc)])
+  @@map("conversations")
+}
+
+model Message {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId  String      @map("conversation_id") @db.Uuid
+  tenantId        String      @map("tenant_id") @db.Uuid
+  senderUserId    String?     @map("sender_user_id") @db.Uuid
+  kind            MessageKind @default(text)
+  body            String?
+  attachmentUrl   String?     @map("attachment_url")
+  vehicleRefId    String?     @map("vehicle_ref_id") @db.Uuid
+  metadata        Json        @default("{}")
+  readAt          DateTime?   @map("read_at") @db.Timestamptz()
+  deliveredAt     DateTime?   @map("delivered_at") @db.Timestamptz()
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz()
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User?        @relation(fields: [senderUserId], references: [id])
+  vehicleRef   Vehicle?     @relation(fields: [vehicleRefId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@index([tenantId])
+  @@map("messages")
+}
+
+// ============ NOTIFICACOES ============
+
+model Notification {
+  id         String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String?             @map("tenant_id") @db.Uuid
+  userId     String              @map("user_id") @db.Uuid
+  channel    NotificationChannel
+  status     NotificationStatus  @default(pending)
+  title      String
+  body       String?
+  data       Json                @default("{}")
+  sentAt     DateTime?           @map("sent_at") @db.Timestamptz()
+  readAt     DateTime?           @map("read_at") @db.Timestamptz()
+  createdAt  DateTime            @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+// ============ ANALYTICS / AUDIT ============
+
+model AnalyticsEvent {
+  id         BigInt   @id @default(autoincrement())
+  tenantId   String?  @map("tenant_id") @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  sessionId  String?  @map("session_id")
+  eventName  String   @map("event_name")
+  properties Json     @default("{}")
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz()
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, occurredAt(sort: Desc)])
+  @@index([eventName])
+  @@map("analytics_events")
+}
+
+model AuditLog {
+  id          BigInt   @id @default(autoincrement())
+  tenantId    String?  @map("tenant_id") @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id") @db.Uuid
+  diff        Json     @default("{}")
+  ipAddress   String?  @map("ip_address") @db.Inet
+  userAgent   String?  @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  actor User? @relation(fields: [actorUserId], references: [id])
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([entityType, entityId])
+  @@map("audit_log")
+}

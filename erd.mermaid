@@ -1,0 +1,288 @@
+erDiagram
+    %% ============ TENANT / SAAS ============
+    tenants ||--o| tenant_subscriptions : "tem"
+    tenants ||--o{ dealership_branches : "possui"
+    tenants ||--o{ users : "emprega"
+    tenants ||--o{ vehicles : "anuncia"
+    tenants ||--o{ leads : "recebe"
+    tenants ||--o{ appointments : "agenda"
+    tenants ||--o{ conversations : "hospeda"
+
+    %% ============ USERS ============
+    users ||--o| salesperson_profiles : "se for vendedor"
+    users ||--o| customer_profiles : "se for cliente"
+    users ||--o{ user_sessions : "abre"
+    tenants ||--o{ user_invitations : "envia"
+    dealership_branches ||--o{ salesperson_profiles : "lotação"
+
+    %% ============ CATALOGO ============
+    vehicle_brands ||--o{ vehicle_models : "tem"
+    vehicle_brands ||--o{ vehicles : "fabrica"
+    vehicle_models ||--o{ vehicles : "modelo"
+    dealership_branches ||--o{ vehicles : "armazena"
+    vehicles ||--o{ vehicle_images : "tem"
+    vehicles }o--o{ vehicle_features : "via_links"
+    vehicles ||--o{ vehicle_history : "registra"
+    vehicles ||--o{ vehicle_views : "recebe"
+    users ||--o{ customer_favorites : "favorita"
+    vehicles ||--o{ customer_favorites : "favoritado_por"
+
+    %% ============ LEADS ============
+    users ||--o{ leads : "cliente"
+    users ||--o{ leads : "vendedor_assigned"
+    vehicles ||--o{ leads : "interesse"
+    leads ||--o{ lead_interactions : "timeline"
+
+    %% ============ AGENDAMENTOS ============
+    users ||--o{ appointments : "cliente"
+    users ||--o{ appointments : "vendedor"
+    vehicles ||--o{ appointments : "veiculo"
+    leads ||--o{ appointments : "origem"
+    users ||--o{ salesperson_availability : "horarios"
+
+    %% ============ CHAT ============
+    users ||--o{ conversations : "cliente"
+    users ||--o{ conversations : "vendedor"
+    vehicles ||--o{ conversations : "contexto"
+    conversations ||--o{ messages : "tem"
+    users ||--o{ messages : "envia"
+
+    %% ============ NOTIFICACOES / AUDIT ============
+    users ||--o{ notifications : "recebe"
+    users ||--o{ analytics_events : "gera"
+    users ||--o{ audit_log : "executa"
+
+    %% ============ ENTIDADES (campos principais) ============
+    tenants {
+        uuid id PK
+        citext slug UK
+        text legal_name
+        text trade_name
+        text tax_id
+        citext primary_email
+        text logo_url
+        text timezone
+        boolean is_active
+        jsonb settings
+        timestamptz created_at
+    }
+
+    tenant_subscriptions {
+        uuid id PK
+        uuid tenant_id FK
+        enum plan
+        enum status
+        timestamptz trial_ends_at
+        timestamptz current_period_end
+        int seats_limit
+    }
+
+    dealership_branches {
+        uuid id PK
+        uuid tenant_id FK
+        text name
+        boolean is_headquarters
+        text city
+        text state
+        geography location
+        jsonb business_hours
+    }
+
+    users {
+        uuid id PK
+        uuid tenant_id FK "nullable"
+        citext email UK
+        text password_hash
+        text full_name
+        text phone
+        enum role
+        enum status
+        timestamptz last_login_at
+    }
+
+    salesperson_profiles {
+        uuid user_id PK_FK
+        uuid tenant_id FK
+        uuid branch_id FK
+        text bio
+        date hire_date
+        numeric commission_pct
+        enum presence
+        geography current_location
+        boolean is_accepting_leads
+    }
+
+    customer_profiles {
+        uuid user_id PK_FK
+        text document_number
+        date birth_date
+        text city
+        text state
+        enum preferred_contact
+        boolean share_location
+        geography last_location
+    }
+
+    vehicle_brands {
+        uuid id PK
+        text name UK
+        text logo_url
+    }
+
+    vehicle_models {
+        uuid id PK
+        uuid brand_id FK
+        text name
+        text category
+    }
+
+    vehicles {
+        uuid id PK
+        uuid tenant_id FK
+        uuid branch_id FK
+        uuid brand_id FK
+        uuid model_id FK
+        text version_name
+        int year_model
+        int mileage_km
+        enum fuel
+        enum transmission
+        enum condition
+        enum status
+        numeric price
+        numeric promo_price
+        text vin UK
+        tsvector search_vector
+    }
+
+    vehicle_images {
+        uuid id PK
+        uuid vehicle_id FK
+        text url
+        int position
+        boolean is_cover
+    }
+
+    vehicle_features {
+        uuid id PK
+        text name UK
+        text icon
+    }
+
+    vehicle_history {
+        uuid id PK
+        uuid vehicle_id FK
+        text event_type
+        jsonb payload
+        uuid actor_user_id FK
+    }
+
+    vehicle_views {
+        bigserial id PK
+        uuid vehicle_id FK
+        uuid user_id FK
+        text source
+        timestamptz viewed_at
+    }
+
+    customer_favorites {
+        uuid user_id PK_FK
+        uuid vehicle_id PK_FK
+        timestamptz created_at
+    }
+
+    leads {
+        uuid id PK
+        uuid tenant_id FK
+        uuid customer_user_id FK
+        uuid assigned_to FK
+        uuid vehicle_id FK
+        enum source
+        enum status
+        smallint score
+        timestamptz last_activity_at
+    }
+
+    lead_interactions {
+        uuid id PK
+        uuid lead_id FK
+        text kind
+        text content
+        jsonb payload
+        timestamptz occurred_at
+    }
+
+    appointments {
+        uuid id PK
+        uuid tenant_id FK
+        uuid customer_user_id FK
+        uuid salesperson_id FK
+        uuid vehicle_id FK
+        enum type
+        enum status
+        timestamptz scheduled_start
+        timestamptz scheduled_end
+        text meeting_url
+        geography location
+    }
+
+    salesperson_availability {
+        uuid id PK
+        uuid salesperson_id FK
+        smallint weekday
+        time start_time
+        time end_time
+    }
+
+    conversations {
+        uuid id PK
+        uuid tenant_id FK
+        uuid customer_user_id FK
+        uuid salesperson_id FK
+        uuid vehicle_id FK
+        enum status
+        timestamptz last_message_at
+        int unread_count_customer
+        int unread_count_salesperson
+    }
+
+    messages {
+        uuid id PK
+        uuid conversation_id FK
+        uuid sender_user_id FK
+        enum kind
+        text body
+        text attachment_url
+        timestamptz read_at
+        timestamptz created_at
+    }
+
+    notifications {
+        uuid id PK
+        uuid user_id FK
+        enum channel
+        enum status
+        text title
+        text body
+        jsonb data
+        timestamptz read_at
+    }
+
+    analytics_events {
+        bigserial id PK
+        uuid tenant_id FK
+        uuid user_id FK
+        text event_name
+        jsonb properties
+        timestamptz occurred_at
+    }
+
+    audit_log {
+        bigserial id PK
+        uuid tenant_id FK
+        uuid actor_user_id FK
+        text action
+        text entity_type
+        uuid entity_id
+        jsonb diff
+    }
