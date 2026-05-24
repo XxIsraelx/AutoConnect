@@ -118,6 +118,56 @@ export class AuthService {
     return { message: 'Cadastro realizado! Verifique seu e-mail para ativar a conta.' };
   }
 
+  async resendVerification(email: string) {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    // Responde sempre com sucesso para não vazar se e-mail existe
+    if (!user || user.emailVerifiedAt) return { message: 'Se o e-mail existir, um novo link foi enviado.' };
+
+    const token = this.jwt.sign(
+      { sub: user.id, purpose: 'email-verification' },
+      { expiresIn: '24h' },
+    );
+    this.email.sendEmailVerification(user.email, user.fullName, token).catch(() => {});
+    return { message: 'Se o e-mail existir, um novo link foi enviado.' };
+  }
+
+  async forgotPassword(email: string) {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    // Responde sempre com sucesso para não vazar se e-mail existe
+    if (!user || !user.passwordHash) return { message: 'Se o e-mail existir, as instruções foram enviadas.' };
+
+    const token = this.jwt.sign(
+      { sub: user.id, purpose: 'password-reset' },
+      { expiresIn: '1h' },
+    );
+    this.email.sendPasswordReset(user.email, user.fullName, token).catch(() => {});
+    return { message: 'Se o e-mail existir, as instruções foram enviadas.' };
+  }
+
+  async resetPassword(token: string, newPassword: string) {
+    let payload: { sub: string; purpose: string };
+    try {
+      payload = this.jwt.verify<{ sub: string; purpose: string }>(token);
+    } catch {
+      throw new BadRequestException('Link inválido ou expirado');
+    }
+
+    if (payload.purpose !== 'password-reset') {
+      throw new BadRequestException('Token inválido');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    if (!user) throw new BadRequestException('Usuário não encontrado');
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+    });
+
+    return { message: 'Senha redefinida com sucesso.' };
+  }
+
   async verifyEmail(token: string) {
     let payload: { sub: string; purpose: string };
     try {

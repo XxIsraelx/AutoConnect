@@ -1,11 +1,15 @@
-/**
- * Cliente HTTP mínimo. Em sprints seguintes, evoluir para:
- *  - integração com TanStack Query
- *  - refresh token automático
- *  - interceptor de erro
- */
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
 
 export async function api<T>(
   path: string,
@@ -20,9 +24,19 @@ export async function api<T>(
       ...headers,
     },
   });
+
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API ${res.status}: ${body}`);
+    let message = `Erro ${res.status}`;
+    try {
+      const body = await res.json();
+      // NestJS retorna { message: string } ou { message: string[] }
+      if (typeof body.message === 'string') message = body.message;
+      else if (Array.isArray(body.message)) message = body.message[0];
+    } catch {
+      // body não é JSON — usa mensagem genérica
+    }
+    throw new ApiError(res.status, message);
   }
+
   return res.json() as Promise<T>;
 }

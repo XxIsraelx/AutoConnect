@@ -27,6 +27,21 @@ export class AuthController {
     return this.auth.verifyEmail(token);
   }
 
+  @Post('resend-verification')
+  resendVerification(@Body() body: { email: string }) {
+    return this.auth.resendVerification(body.email);
+  }
+
+  @Post('forgot-password')
+  forgotPassword(@Body() body: { email: string }) {
+    return this.auth.forgotPassword(body.email);
+  }
+
+  @Post('reset-password')
+  resetPassword(@Body() body: { token: string; password: string }) {
+    return this.auth.resetPassword(body.token, body.password);
+  }
+
   @Post('login')
   async login(@Body() body: unknown) {
     const parsed = loginSchema.parse(body);

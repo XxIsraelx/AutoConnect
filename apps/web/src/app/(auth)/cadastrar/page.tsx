@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ChevronRight, ChevronLeft, Check } from 'lucide-react';
-import { api } from '@/lib/api';
+import { ChevronRight, ChevronLeft, Check, UserX } from 'lucide-react';
+import { api, ApiError } from '@/lib/api';
 
 const steps = ['Acesso', 'Dados pessoais', 'Endereço'];
 
@@ -52,6 +52,7 @@ export default function CustomerSignupPage() {
   const [loading, setLoading] = useState(false);
   const [loadingCep, setLoadingCep] = useState(false);
   const [error, setError] = useState('');
+  const [emailTaken, setEmailTaken] = useState(false);
 
   const [form, setForm] = useState<Form>({
     fullName: '', email: '', password: '', confirmPassword: '',
@@ -115,6 +116,7 @@ export default function CustomerSignupPage() {
     setError('');
     setLoading(true);
     try {
+      setEmailTaken(false);
       await api('/auth/signup-customer', {
         method: 'POST',
         body: JSON.stringify({
@@ -135,7 +137,12 @@ export default function CustomerSignupPage() {
       });
       router.replace('/verifique-seu-email');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao criar conta');
+      if (err instanceof ApiError && err.message.includes('já cadastrado')) {
+        setEmailTaken(true);
+        setStep(0); // volta para etapa de acesso onde está o e-mail
+      } else {
+        setError(err instanceof Error ? err.message : 'Erro ao criar conta');
+      }
     } finally {
       setLoading(false);
     }
@@ -254,6 +261,36 @@ export default function CustomerSignupPage() {
                 <input type="text" maxLength={2} value={form.state}
                   onChange={(e) => set('state', e.target.value.toUpperCase())}
                   className={inputCls} placeholder="SP" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {emailTaken && (
+          <div className="mt-4 rounded-xl border border-orange-200 dark:border-orange-900 bg-orange-50 dark:bg-orange-950/30 p-4">
+            <div className="flex items-start gap-3">
+              <UserX size={18} className="text-orange-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-orange-700 dark:text-orange-400">
+                  Este e-mail já possui cadastro
+                </p>
+                <p className="text-xs text-orange-600 dark:text-orange-500 mt-1 mb-3">
+                  Uma conta com esse e-mail já existe. Você quer entrar ou recuperar sua senha?
+                </p>
+                <div className="flex gap-3">
+                  <Link
+                    href={`/entrar?email=${encodeURIComponent(form.email)}`}
+                    className="text-xs font-semibold bg-brand-accent text-white px-3 py-1.5 rounded-lg hover:bg-blue-600 transition"
+                  >
+                    Entrar na conta
+                  </Link>
+                  <Link
+                    href={`/esqueci-minha-senha?email=${encodeURIComponent(form.email)}`}
+                    className="text-xs font-semibold text-orange-700 dark:text-orange-400 underline"
+                  >
+                    Recuperar senha
+                  </Link>
+                </div>
               </div>
             </div>
           </div>
