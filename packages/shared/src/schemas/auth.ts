@@ -27,6 +27,13 @@ export const signupTenantSchema = z.object({
 });
 export type SignupTenantInput = z.infer<typeof signupTenantSchema>;
 
+export const signupCustomerSchema = z.object({
+  fullName: z.string().min(2).max(200),
+  email: z.string().email(),
+  password: z.string().min(8).max(128),
+});
+export type SignupCustomerInput = z.infer<typeof signupCustomerSchema>;
+
 export const inviteUserSchema = z.object({
   email: z.string().email(),
   role: z.enum(['tenant_admin', 'manager', 'salesperson']),

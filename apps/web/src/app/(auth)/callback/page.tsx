@@ -17,13 +17,15 @@ export default function AuthCallbackPage() {
       return;
     }
 
+    const redirect = params.get('redirect') ?? '/dashboard';
+
     api<{ id: string; email: string; fullName: string; role: string; tenantId: string | null }>(
       '/users/me',
       { token },
     )
       .then((user) => {
         setSession(token, user);
-        router.replace('/dashboard');
+        router.replace(redirect);
       })
       .catch(() => router.replace('/login'));
   }, [params, router, setSession]);

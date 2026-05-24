@@ -8,6 +8,8 @@ import { AuthModule } from './modules/auth/auth.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { HealthModule } from './modules/health/health.module';
 import { ChatGatewayModule } from './gateway/chat-gateway.module';
+import { CatalogModule } from './modules/catalog/catalog.module';
+import { VehiclesModule } from './modules/vehicles/vehicles.module';
 
 @Module({
   imports: [
@@ -21,6 +23,8 @@ import { ChatGatewayModule } from './gateway/chat-gateway.module';
     TenantsModule,
     HealthModule,
     ChatGatewayModule,
+    CatalogModule,
+    VehiclesModule,
   ],
   providers: [
     {

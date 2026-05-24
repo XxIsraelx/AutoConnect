@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 
 const nav = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/veiculos', label: 'Veículos', icon: Car, soon: true },
+  { href: '/veiculos', label: 'Veículos', icon: Car },
   { href: '/leads', label: 'Leads', icon: Users, soon: true },
   { href: '/chat', label: 'Chat', icon: MessageSquare, soon: true },
   { href: '/agendamentos', label: 'Agendamentos', icon: CalendarDays, soon: true },

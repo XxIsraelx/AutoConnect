@@ -2,7 +2,7 @@ import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common
 import { AuthGuard } from '@nestjs/passport';
 import { Response } from 'express';
 import { AuthService } from './auth.service';
-import { loginSchema, signupTenantSchema } from '@autoconnect/shared';
+import { loginSchema, signupTenantSchema, signupCustomerSchema } from '@autoconnect/shared';
 import { Public } from '../../common/decorators/public.decorator';
 
 @Public()
@@ -14,6 +14,12 @@ export class AuthController {
   async signupTenant(@Body() body: unknown) {
     const parsed = signupTenantSchema.parse(body);
     return this.auth.signupTenant(parsed);
+  }
+
+  @Post('signup-customer')
+  async signupCustomer(@Body() body: unknown) {
+    const parsed = signupCustomerSchema.parse(body);
+    return this.auth.signupCustomer(parsed);
   }
 
   @Post('login')
@@ -31,8 +37,9 @@ export class AuthController {
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
   googleCallback(@Req() req: { user: Parameters<AuthService['buildSession']>[0] }, @Res() res: Response) {
-    const { accessToken } = this.auth.buildSession(req.user);
+    const session = this.auth.buildSession(req.user);
     const webUrl = process.env.WEB_URL ?? 'http://localhost:3000';
-    res.redirect(`${webUrl}/auth/callback?token=${accessToken}`);
+    const redirect = session.user.role === 'customer' ? '/buscar' : '/dashboard';
+    res.redirect(`${webUrl}/auth/callback?token=${session.accessToken}&redirect=${redirect}`);
   }
 }

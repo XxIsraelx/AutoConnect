@@ -6,7 +6,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import type { LoginInput, SignupTenantInput } from '@autoconnect/shared';
+import type { LoginInput, SignupTenantInput, SignupCustomerInput } from '@autoconnect/shared';
 
 @Injectable()
 export class AuthService {
@@ -56,6 +56,23 @@ export class AuthService {
     });
 
     return this.buildSession(result.user);
+  }
+
+  async signupCustomer(input: SignupCustomerInput) {
+    const exists = await this.prisma.user.findUnique({ where: { email: input.email } });
+    if (exists) throw new ConflictException('email já cadastrado');
+
+    const passwordHash = await bcrypt.hash(input.password, 10);
+    const user = await this.prisma.user.create({
+      data: {
+        email: input.email,
+        fullName: input.fullName,
+        passwordHash,
+        role: 'customer',
+        status: 'active',
+      },
+    });
+    return this.buildSession(user);
   }
 
   async login(input: LoginInput) {
