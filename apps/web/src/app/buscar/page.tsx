@@ -7,24 +7,18 @@ import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
 import type { DealershipPin } from './types';
 import {
-  X,
-  Phone,
-  Mail,
-  Car,
-  MapPin,
-  ChevronRight,
-  Loader2,
-  LayoutDashboard,
-  LogOut,
+  MapPin, List, Map as MapIcon, LogOut,
+  LayoutDashboard, Loader2, ChevronDown, User,
 } from 'lucide-react';
+import Sidebar from './Sidebar';
 
-// Leaflet precisa do DOM — dynamic import com ssr:false
+/* Leaflet só roda no browser */
 const MapClient = dynamic(() => import('./MapClient'), {
   ssr: false,
   loading: () => (
     <div className="h-full flex items-center justify-center bg-slate-100">
-      <div className="flex flex-col items-center gap-3 text-slate-400">
-        <Loader2 className="animate-spin" size={36} />
+      <div className="flex flex-col items-center gap-2 text-slate-400">
+        <Loader2 className="animate-spin" size={32} />
         <span className="text-sm">Carregando mapa…</span>
       </div>
     </div>
@@ -40,74 +34,137 @@ export default function BuscarPage() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<DealershipPin | null>(null);
 
+  /* Mobile: alterna entre "map" e "list" */
+  const [mobileView, setMobileView] = useState<'map' | 'list'>('map');
+
+  /* Dropdown do usuário */
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+
   useEffect(() => {
     api<DealershipPin[]>('/map/dealerships')
-      .then((data) => setPins(data))
+      .then(setPins)
       .catch((err: unknown) =>
         setFetchError(err instanceof Error ? err.message : 'Erro ao carregar mapa'),
       )
       .finally(() => setLoading(false));
   }, []);
 
+  function handleSelectPin(pin: DealershipPin | null) {
+    setSelected(pin);
+    // No mobile, ao selecionar pin pelo mapa → mostra o painel
+    if (pin) setMobileView('list');
+  }
+
   const withCoords = pins.filter((p) => p.latitude !== null && p.longitude !== null);
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-screen flex flex-col overflow-hidden bg-slate-50">
 
-      {/* ── Header ─────────────────────────────────────────── */}
-      <header className="h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-3 z-50 shrink-0 shadow-sm">
-        <Link href="/" className="font-extrabold text-lg tracking-tight text-blue-600 shrink-0 mr-1">
-          AutoConnect
+      {/* ────────────────── HEADER ────────────────── */}
+      <header className="h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-4 shrink-0 shadow-sm z-50">
+
+        {/* Logo */}
+        <Link href="/" className="flex items-center gap-2 shrink-0">
+          <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center">
+            <MapPin size={14} className="text-white" />
+          </div>
+          <span className="font-extrabold text-slate-800 text-base tracking-tight hidden sm:block">
+            AutoConnect
+          </span>
         </Link>
 
-        {/* badge de contagem */}
-        <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500 bg-slate-100 rounded-full px-3 py-1 select-none">
+        {/* Título da página */}
+        <div className="hidden md:flex items-center gap-1.5 text-sm text-slate-500">
+          <span className="text-slate-300">/</span>
+          <span className="font-medium text-slate-700">Buscar concessionárias</span>
+        </div>
+
+        {/* Badge de resultado */}
+        <div className="hidden sm:flex items-center gap-1.5 text-xs bg-slate-100 text-slate-500 rounded-full px-3 py-1 select-none">
           {loading ? (
-            <><Loader2 size={12} className="animate-spin" /> Carregando…</>
+            <><Loader2 size={11} className="animate-spin" /> Carregando…</>
           ) : (
-            <><MapPin size={12} className="text-blue-500" />
-              {withCoords.length} concessionária{withCoords.length !== 1 ? 's' : ''}
-            </>
+            <><MapPin size={11} className="text-blue-500" />
+              {withCoords.length} no mapa · {pins.length} total</>
           )}
         </div>
 
         <div className="flex-1" />
 
-        {/* área do usuário */}
+        {/* Toggle mobile mapa/lista */}
+        <div className="flex md:hidden items-center bg-slate-100 rounded-lg p-0.5 gap-0.5">
+          <button
+            onClick={() => setMobileView('map')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all
+              ${mobileView === 'map' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`}
+          >
+            <MapIcon size={13} /> Mapa
+          </button>
+          <button
+            onClick={() => setMobileView('list')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all
+              ${mobileView === 'list' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`}
+          >
+            <List size={13} /> Lista
+          </button>
+        </div>
+
+        {/* Área do usuário */}
         {user ? (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-600 hidden md:block max-w-[160px] truncate">
-              Olá, <strong>{user.fullName.split(' ')[0]}</strong>
-            </span>
-            {user.role !== 'customer' && (
-              <Link
-                href="/dashboard"
-                className="flex items-center gap-1.5 text-xs bg-slate-800 text-white px-3 py-1.5 rounded-lg hover:bg-slate-700 transition"
-              >
-                <LayoutDashboard size={13} />
-                <span className="hidden sm:inline">Dashboard</span>
-              </Link>
-            )}
+          <div className="relative shrink-0">
             <button
-              onClick={() => clear()}
-              title="Sair"
-              className="flex items-center gap-1.5 text-xs text-slate-500 border border-slate-200 px-2.5 py-1.5 rounded-lg hover:border-slate-400 hover:text-slate-700 transition"
+              onClick={() => setUserMenuOpen(!userMenuOpen)}
+              className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors text-sm"
             >
-              <LogOut size={13} />
-              <span className="hidden sm:inline">Sair</span>
+              <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                <User size={13} className="text-blue-600" />
+              </div>
+              <span className="font-medium text-slate-700 hidden sm:block max-w-[120px] truncate">
+                {user.fullName.split(' ')[0]}
+              </span>
+              <ChevronDown size={13} className="text-slate-400" />
             </button>
+
+            {userMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
+                <div className="absolute right-0 top-full mt-1.5 w-52 bg-white rounded-xl border border-slate-200 shadow-xl z-50 overflow-hidden py-1">
+                  <div className="px-4 py-2.5 border-b border-slate-100">
+                    <p className="text-xs font-semibold text-slate-800 truncate">{user.fullName}</p>
+                    <p className="text-xs text-slate-400 truncate">{user.email}</p>
+                  </div>
+                  {user.role !== 'customer' && (
+                    <Link
+                      href="/dashboard"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                      <LayoutDashboard size={14} className="text-slate-400" />
+                      Dashboard
+                    </Link>
+                  )}
+                  <button
+                    onClick={() => { clear(); setUserMenuOpen(false); }}
+                    className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors w-full text-left"
+                  >
+                    <LogOut size={14} />
+                    Sair da conta
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         ) : (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <Link
               href="/entrar"
-              className="text-sm text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition"
+              className="text-sm text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors font-medium"
             >
               Entrar
             </Link>
             <Link
               href="/cadastrar"
-              className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition font-medium"
+              className="text-sm bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 transition-colors font-semibold"
             >
               Criar conta
             </Link>
@@ -115,148 +172,98 @@ export default function BuscarPage() {
         )}
       </header>
 
-      {/* ── Mapa ───────────────────────────────────────────── */}
-      <main className="flex-1 relative overflow-hidden">
+      {/* ────────────────── CORPO ────────────────── */}
+      <div className="flex-1 flex overflow-hidden">
 
-        {fetchError ? (
-          /* Erro de rede */
-          <div className="h-full flex items-center justify-center bg-slate-50">
-            <div className="text-center p-6">
-              <p className="text-red-500 font-medium mb-2">{fetchError}</p>
-              <button
-                onClick={() => window.location.reload()}
-                className="text-sm text-blue-600 hover:underline"
-              >
-                Tentar novamente
-              </button>
-            </div>
-          </div>
-        ) : (
-          /* Mapa Leaflet (SSR desativado) */
-          <MapClient
-            pins={pins}
-            selectedId={selected?.id ?? null}
-            onSelect={(pin) => setSelected((prev) => (prev?.id === pin.id ? null : pin))}
-          />
-        )}
-
-        {/* ── Painel de detalhe da concessionária ─────────── */}
-        {selected && (
-          <div
-            className="
-              absolute bottom-5 left-1/2 -translate-x-1/2
-              sm:left-5 sm:translate-x-0 sm:bottom-10
-              z-[1000]
-              w-[calc(100%-2.5rem)] max-w-sm
-              bg-white rounded-2xl shadow-2xl border border-slate-100
-              overflow-hidden
-              animate-in fade-in slide-in-from-bottom-4 duration-200
-            "
-          >
-            {/* Barra de cor da marca no topo */}
-            <div className="h-1 bg-gradient-to-r from-blue-500 to-blue-400" />
-
-            <div className="p-4 pt-3.5">
-              {/* Fechar */}
-              <button
-                onClick={() => setSelected(null)}
-                className="absolute top-3.5 right-3.5 p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
-              >
-                <X size={16} />
-              </button>
-
-              {/* Nome */}
-              <p className="text-[11px] font-bold text-blue-600 uppercase tracking-widest mb-0.5">
-                {selected.tenant.tradeName}
-              </p>
-              <h3 className="font-bold text-slate-800 text-[15px] leading-snug pr-6">
-                {selected.name}
-              </h3>
-
-              {/* Infos */}
-              <div className="mt-3 space-y-1.5 text-sm text-slate-600">
-                {(selected.city || selected.state) && (
-                  <div className="flex items-start gap-2">
-                    <MapPin size={14} className="mt-0.5 shrink-0 text-slate-400" />
-                    <span>
-                      {[
-                        selected.addressLine,
-                        [selected.city, selected.state].filter(Boolean).join(', '),
-                      ]
-                        .filter(Boolean)
-                        .join(' — ')}
-                    </span>
-                  </div>
-                )}
-                {selected.phone && (
-                  <div className="flex items-center gap-2">
-                    <Phone size={14} className="shrink-0 text-slate-400" />
-                    <a
-                      href={`tel:${selected.phone}`}
-                      className="hover:text-blue-600 transition"
-                    >
-                      {selected.phone}
-                    </a>
-                  </div>
-                )}
-                {selected.email && (
-                  <div className="flex items-center gap-2">
-                    <Mail size={14} className="shrink-0 text-slate-400" />
-                    <a
-                      href={`mailto:${selected.email}`}
-                      className="hover:text-blue-600 transition truncate"
-                    >
-                      {selected.email}
-                    </a>
-                  </div>
-                )}
+        {/* ── SIDEBAR (desktop sempre visível; mobile toggle) ── */}
+        <aside
+          className={`
+            w-full md:w-[380px] md:shrink-0
+            bg-white border-r border-slate-200
+            flex flex-col overflow-hidden
+            ${mobileView === 'list' ? 'flex' : 'hidden md:flex'}
+          `}
+        >
+          {fetchError ? (
+            <div className="flex-1 flex items-center justify-center p-8 text-center">
+              <div>
+                <p className="text-red-500 font-medium text-sm mb-2">{fetchError}</p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="text-xs text-blue-600 hover:underline"
+                >
+                  Tentar novamente
+                </button>
               </div>
+            </div>
+          ) : (
+            <Sidebar
+              pins={pins}
+              loading={loading}
+              selected={selected}
+              onSelect={handleSelectPin}
+            />
+          )}
+        </aside>
 
-              {/* Badge de veículos */}
-              <div className="mt-3">
-                <span className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 rounded-full px-3 py-1 text-xs font-semibold">
-                  <Car size={12} />
-                  {selected.vehiclesCount}{' '}
-                  {selected.vehiclesCount === 1 ? 'veículo disponível' : 'veículos disponíveis'}
-                </span>
+        {/* ── MAPA ── */}
+        <main
+          className={`
+            flex-1 relative overflow-hidden
+            ${mobileView === 'map' ? 'flex' : 'hidden md:flex'}
+            flex-col
+          `}
+        >
+          {fetchError ? (
+            <div className="h-full flex items-center justify-center bg-slate-100">
+              <p className="text-slate-500 text-sm">Erro ao carregar mapa</p>
+            </div>
+          ) : (
+            <MapClient
+              pins={pins}
+              selectedId={selected?.id ?? null}
+              onSelect={handleSelectPin}
+            />
+          )}
+
+          {/* Floating: sem concessionárias no mapa */}
+          {!loading && !fetchError && withCoords.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center z-[900] bg-slate-100/80 backdrop-blur-sm">
+              <div className="bg-white rounded-2xl p-8 shadow-xl text-center max-w-xs border border-slate-100 mx-4">
+                <MapPin size={40} className="text-slate-200 mx-auto mb-3" />
+                <h3 className="font-bold text-slate-700 mb-1">Ainda sem pins no mapa</h3>
+                <p className="text-sm text-slate-500 leading-relaxed mb-5">
+                  Concessionárias precisam informar cidade e estado para aparecer aqui.
+                </p>
+                <Link
+                  href="/signup"
+                  className="inline-block bg-blue-600 text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-blue-700 transition"
+                >
+                  Cadastrar minha concessionária
+                </Link>
               </div>
-
-              {/* CTA */}
-              <Link
-                href={`/catalogo/${selected.tenant.id}`}
-                className="
-                  mt-3 flex items-center justify-center gap-1.5
-                  w-full bg-blue-600 text-white text-sm font-semibold
-                  py-2.5 rounded-xl hover:bg-blue-700 transition
-                "
-              >
-                Ver veículos <ChevronRight size={16} />
-              </Link>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* ── Empty state (sem pins geocodificados) ──────── */}
-        {!loading && !fetchError && withCoords.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center z-[999] bg-slate-100/70 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl p-8 shadow-xl text-center max-w-xs mx-4 border border-slate-100">
-              <Car size={44} className="text-slate-200 mx-auto mb-4" />
-              <h3 className="font-bold text-slate-700 text-lg mb-1">
-                Ainda sem concessionárias
-              </h3>
-              <p className="text-sm text-slate-500 leading-relaxed mb-5">
-                Seja a primeira concessionária a aparecer no mapa e alcance milhares de compradores.
-              </p>
-              <Link
-                href="/signup"
-                className="inline-block bg-blue-600 text-white text-sm font-semibold px-6 py-2.5 rounded-xl hover:bg-blue-700 transition"
-              >
-                Cadastrar minha concessionária
-              </Link>
-            </div>
-          </div>
-        )}
-      </main>
+          {/* Botão flutuante: abrir sidebar no mobile quando vê mapa */}
+          {mobileView === 'map' && !loading && pins.length > 0 && (
+            <button
+              onClick={() => setMobileView('list')}
+              className="
+                absolute bottom-6 left-1/2 -translate-x-1/2
+                md:hidden z-[1000]
+                flex items-center gap-2
+                bg-slate-900 text-white text-sm font-semibold
+                px-5 py-3 rounded-2xl shadow-lg
+                hover:bg-slate-800 transition-colors
+              "
+            >
+              <List size={15} />
+              Ver {pins.length} concessionária{pins.length !== 1 ? 's' : ''}
+            </button>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
