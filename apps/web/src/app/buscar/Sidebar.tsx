@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import {
   Search, MapPin, Phone, Mail, Car, ChevronRight,
-  ArrowLeft, Loader2, Star, Building2, Filter, X,
+  ArrowLeft, Loader2, Building2, SlidersHorizontal, X,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { DealershipPin, PublicVehicle } from './types';
@@ -13,127 +13,135 @@ import type { DealershipPin, PublicVehicle } from './types';
 
 function formatPrice(value: string | null | undefined): string {
   if (!value) return '–';
-  const num = parseFloat(value);
   return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(num);
+    style: 'currency', currency: 'BRL',
+    minimumFractionDigits: 0, maximumFractionDigits: 0,
+  }).format(parseFloat(value));
 }
 
 function formatKm(km: number): string {
-  if (km === 0) return '0 km';
-  return new Intl.NumberFormat('pt-BR').format(km) + ' km';
+  return km === 0 ? '0 km' : new Intl.NumberFormat('pt-BR').format(km) + ' km';
 }
 
-const conditionLabel: Record<string, string> = {
-  new: '0 km',
-  semi_new: 'Seminovo',
-  used: 'Usado',
-  demo: 'Demonstração',
+const conditionMap: Record<string, { label: string; cls: string }> = {
+  new:      { label: '0 km',        cls: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' },
+  semi_new: { label: 'Seminovo',    cls: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200' },
+  used:     { label: 'Usado',       cls: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200' },
+  demo:     { label: 'Demo',        cls: 'bg-violet-50 text-violet-700 ring-1 ring-violet-200' },
 };
 
-const conditionColor: Record<string, string> = {
-  new: 'bg-green-100 text-green-700',
-  semi_new: 'bg-blue-100 text-blue-700',
-  used: 'bg-slate-100 text-slate-600',
-  demo: 'bg-purple-100 text-purple-700',
-};
+/* ── Skeleton ────────────────────────────────────────────── */
 
-/* ── Sub-components ──────────────────────────────────────── */
-
-function VehicleCardSkeleton() {
+function SkeletonCard() {
   return (
-    <div className="flex gap-3 p-3 rounded-xl border border-slate-100 animate-pulse">
-      <div className="w-20 h-16 rounded-lg bg-slate-200 shrink-0" />
-      <div className="flex-1 space-y-2 pt-1">
-        <div className="h-3.5 bg-slate-200 rounded w-3/4" />
-        <div className="h-3 bg-slate-200 rounded w-1/2" />
-        <div className="h-4 bg-slate-200 rounded w-1/3" />
+    <div className="p-4 rounded-2xl border border-slate-100 animate-pulse flex gap-3">
+      <div className="w-11 h-11 rounded-xl bg-slate-100 shrink-0" />
+      <div className="flex-1 space-y-2.5 pt-0.5">
+        <div className="h-3.5 bg-slate-100 rounded-lg w-2/3" />
+        <div className="h-3 bg-slate-100 rounded-lg w-1/2" />
+        <div className="h-3 bg-slate-100 rounded-lg w-1/3" />
       </div>
     </div>
   );
 }
 
-function VehicleCard({ vehicle }: { vehicle: PublicVehicle }) {
-  const cover = vehicle.images[0]?.url;
-  const price = vehicle.promoPrice ?? vehicle.price;
-  const hasPromo = !!vehicle.promoPrice;
+function VehicleSkeleton() {
+  return (
+    <div className="flex gap-3 p-3 rounded-xl border border-slate-100 animate-pulse">
+      <div className="w-20 h-16 rounded-lg bg-slate-100 shrink-0" />
+      <div className="flex-1 space-y-2 pt-1">
+        <div className="h-3 bg-slate-100 rounded w-3/4" />
+        <div className="h-3.5 bg-slate-100 rounded w-1/2" />
+        <div className="h-4 bg-slate-100 rounded w-2/5" />
+      </div>
+    </div>
+  );
+}
+
+/* ── Vehicle card ────────────────────────────────────────── */
+
+function VehicleCard({ v }: { v: PublicVehicle }) {
+  const cond = conditionMap[v.condition] ?? conditionMap.used;
+  const cover = v.images[0]?.url;
+  const price = v.promoPrice ?? v.price;
+  const isPromo = !!v.promoPrice;
 
   return (
-    <div className="flex gap-3 p-3 rounded-xl border border-slate-100 hover:border-blue-200 hover:bg-blue-50/30 transition-all cursor-pointer group">
-      {/* Imagem */}
+    <div className="group flex gap-3 p-3 rounded-xl border border-slate-100 hover:border-blue-200 hover:bg-blue-50/40 transition-all cursor-pointer">
+      {/* Thumbnail */}
       <div className="w-20 h-16 rounded-lg bg-slate-100 shrink-0 overflow-hidden flex items-center justify-center">
         {cover ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={cover} alt={vehicle.versionName ?? ''} className="w-full h-full object-cover" />
+          <img src={cover} alt="" className="w-full h-full object-cover" />
         ) : (
-          <Car size={20} className="text-slate-300" />
+          <Car size={18} className="text-slate-300" />
         )}
       </div>
 
       {/* Info */}
       <div className="flex-1 min-w-0">
-        <p className="text-xs text-slate-500 font-medium truncate">
-          {vehicle.brand.name} {vehicle.model.name}
+        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide truncate">
+          {v.brand.name} · {v.model.name}
         </p>
-        <p className="text-sm font-semibold text-slate-800 truncate leading-snug">
-          {vehicle.versionName ?? `${vehicle.yearModel}`}
+        <p className="text-sm font-bold text-slate-800 truncate leading-snug mt-0.5">
+          {v.versionName ?? String(v.yearModel)}
         </p>
         <div className="flex items-center gap-1.5 mt-1">
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${conditionColor[vehicle.condition] ?? conditionColor.used}`}>
-            {conditionLabel[vehicle.condition] ?? vehicle.condition}
+          <span className={`text-[10px] font-bold px-1.5 py-px rounded-full ${cond.cls}`}>
+            {cond.label}
           </span>
-          {vehicle.mileageKm > 0 && (
-            <span className="text-[11px] text-slate-400">{formatKm(vehicle.mileageKm)}</span>
+          {v.mileageKm > 0 && (
+            <span className="text-[11px] text-slate-400">{formatKm(v.mileageKm)}</span>
           )}
         </div>
-        <p className={`text-sm font-bold mt-0.5 ${hasPromo ? 'text-red-600' : 'text-blue-600'}`}>
+        <p className={`text-sm font-extrabold mt-0.5 ${isPromo ? 'text-rose-600' : 'text-blue-600'}`}>
           {formatPrice(price)}
+          {isPromo && (
+            <span className="ml-1.5 text-[11px] font-medium text-slate-400 line-through">
+              {formatPrice(v.price)}
+            </span>
+          )}
         </p>
       </div>
     </div>
   );
 }
 
-/* ── Dealer card (list view) ─────────────────────────────── */
+/* ── Dealer card (list) ──────────────────────────────────── */
 
 function DealerCard({
   pin,
-  selected,
   onClick,
 }: {
   pin: DealershipPin;
-  selected: boolean;
   onClick: () => void;
 }) {
-  const hasCoords = pin.latitude !== null && pin.longitude !== null;
+  const hasCoords = pin.latitude !== null;
+  const initials = pin.tenant.tradeName.slice(0, 2).toUpperCase();
 
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left p-4 rounded-xl border transition-all group
-        ${selected
-          ? 'border-blue-400 bg-blue-50 shadow-sm'
-          : 'border-slate-100 bg-white hover:border-slate-300 hover:shadow-sm'
-        }`}
+      className="w-full text-left p-4 rounded-2xl border border-slate-100 bg-white
+                 hover:border-blue-200 hover:shadow-[0_2px_16px_rgba(59,130,246,.1)]
+                 transition-all duration-200 group"
     >
       <div className="flex items-start gap-3">
-        {/* Avatar */}
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0
-          ${selected ? 'bg-blue-600' : 'bg-slate-100 group-hover:bg-slate-200'} transition-colors`}>
-          <Building2 size={18} className={selected ? 'text-white' : 'text-slate-500'} />
+        {/* Avatar com iniciais */}
+        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700
+                        flex items-center justify-center shrink-0 shadow-sm
+                        group-hover:shadow-[0_0_0_3px_rgba(59,130,246,.15)] transition-shadow">
+          <span className="text-white text-sm font-extrabold tracking-tight">{initials}</span>
         </div>
 
         {/* Texto */}
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-slate-800 text-sm leading-snug truncate">
+          <p className="font-bold text-slate-800 text-sm leading-snug truncate group-hover:text-blue-700 transition-colors">
             {pin.tenant.tradeName}
           </p>
-          <p className="text-xs text-slate-500 truncate">{pin.name}</p>
+          <p className="text-xs text-slate-500 truncate mt-0.5">{pin.name}</p>
           {(pin.city || pin.state) && (
-            <div className="flex items-center gap-1 mt-1">
+            <div className="flex items-center gap-1 mt-1.5">
               <MapPin size={11} className="text-slate-400 shrink-0" />
               <span className="text-xs text-slate-500">
                 {[pin.city, pin.state].filter(Boolean).join(', ')}
@@ -142,15 +150,18 @@ function DealerCard({
           )}
         </div>
 
-        {/* Badge + arrow */}
-        <div className="flex flex-col items-end gap-1 shrink-0">
-          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full
-            ${pin.vehiclesCount > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
+        {/* Badge + seta */}
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
+          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full
+            ${pin.vehiclesCount > 0
+              ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'
+              : 'bg-slate-50 text-slate-400 ring-1 ring-slate-200'}`}>
             {pin.vehiclesCount} veíc.
           </span>
           {!hasCoords && (
-            <span className="text-[10px] text-amber-500">sem mapa</span>
+            <span className="text-[10px] text-amber-500 font-medium">• sem mapa</span>
           )}
+          <ChevronRight size={14} className="text-slate-300 group-hover:text-blue-500 transition-colors mt-0.5" />
         </div>
       </div>
     </button>
@@ -167,128 +178,130 @@ function DealerDetail({
   onBack: () => void;
 }) {
   const [vehicles, setVehicles] = useState<PublicVehicle[]>([]);
-  const [loadingVehicles, setLoadingVehicles] = useState(true);
+  const [loadingV, setLoadingV] = useState(true);
 
   useEffect(() => {
-    setLoadingVehicles(true);
+    setLoadingV(true);
     api<PublicVehicle[]>(`/catalog/vehicles?tenantId=${pin.tenant.id}&limit=8`)
       .then(setVehicles)
       .catch(() => setVehicles([]))
-      .finally(() => setLoadingVehicles(false));
+      .finally(() => setLoadingV(false));
   }, [pin.tenant.id]);
+
+  const initials = pin.tenant.tradeName.slice(0, 2).toUpperCase();
 
   return (
     <div className="flex flex-col h-full">
-      {/* Cabeçalho do detalhe */}
-      <div className="p-4 border-b border-slate-100 bg-white sticky top-0 z-10">
+
+      {/* Header do detalhe */}
+      <div className="px-4 pt-4 pb-3 border-b border-slate-100 bg-white sticky top-0 z-10">
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 font-medium mb-3 transition-colors"
+          className="flex items-center gap-1.5 text-xs font-semibold text-blue-600
+                     hover:text-blue-800 transition-colors mb-4 group"
         >
-          <ArrowLeft size={15} />
+          <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" />
           Todas as concessionárias
         </button>
 
-        <div className="flex items-start gap-3">
-          <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center shrink-0">
-            <Building2 size={22} className="text-white" />
+        {/* Identidade */}
+        <div className="flex items-center gap-3">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700
+                          flex items-center justify-center shrink-0 shadow-lg shadow-blue-200">
+            <span className="text-white text-lg font-extrabold tracking-tight">{initials}</span>
           </div>
           <div>
-            <h2 className="font-bold text-slate-800 text-base leading-tight">
+            <h2 className="font-extrabold text-slate-800 text-[15px] leading-tight">
               {pin.tenant.tradeName}
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">{pin.name}</p>
+            <p className="text-xs text-slate-500 mt-0.5 leading-snug">{pin.name}</p>
           </div>
         </div>
       </div>
 
-      {/* Info de contato */}
-      <div className="p-4 space-y-2 border-b border-slate-100">
-        {(pin.city || pin.state) && (
-          <div className="flex items-start gap-2.5 text-sm text-slate-700">
-            <MapPin size={15} className="shrink-0 text-slate-400 mt-0.5" />
-            <span>
+      {/* Contato */}
+      <div className="px-4 py-3 space-y-2 border-b border-slate-100 bg-slate-50/60">
+        {(pin.city || pin.state || pin.addressLine) && (
+          <div className="flex items-start gap-2.5">
+            <div className="w-6 h-6 rounded-lg bg-blue-50 flex items-center justify-center shrink-0 mt-0.5">
+              <MapPin size={12} className="text-blue-500" />
+            </div>
+            <span className="text-sm text-slate-700 leading-snug">
               {[pin.addressLine, [pin.city, pin.state].filter(Boolean).join(', ')]
-                .filter(Boolean)
-                .join(' — ')}
+                .filter(Boolean).join(' — ')}
             </span>
           </div>
         )}
         {pin.phone && (
-          <a
-            href={`tel:${pin.phone}`}
-            className="flex items-center gap-2.5 text-sm text-slate-700 hover:text-blue-600 transition-colors"
-          >
-            <Phone size={15} className="shrink-0 text-slate-400" />
-            {pin.phone}
+          <a href={`tel:${pin.phone}`}
+             className="flex items-center gap-2.5 group">
+            <div className="w-6 h-6 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+              <Phone size={12} className="text-blue-500" />
+            </div>
+            <span className="text-sm text-slate-700 group-hover:text-blue-600 transition-colors">
+              {pin.phone}
+            </span>
           </a>
         )}
         {pin.email && (
-          <a
-            href={`mailto:${pin.email}`}
-            className="flex items-center gap-2.5 text-sm text-slate-700 hover:text-blue-600 transition-colors truncate"
-          >
-            <Mail size={15} className="shrink-0 text-slate-400" />
-            {pin.email}
+          <a href={`mailto:${pin.email}`}
+             className="flex items-center gap-2.5 group min-w-0">
+            <div className="w-6 h-6 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+              <Mail size={12} className="text-blue-500" />
+            </div>
+            <span className="text-sm text-slate-700 group-hover:text-blue-600 transition-colors truncate">
+              {pin.email}
+            </span>
           </a>
         )}
       </div>
 
       {/* Veículos */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-            <Car size={14} className="text-blue-500" />
-            Veículos disponíveis
-            {!loadingVehicles && (
-              <span className="ml-1 text-xs font-normal text-slate-400">
-                ({pin.vehiclesCount})
-              </span>
-            )}
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+            <Car size={12} className="text-blue-500" />
+            Estoque disponível
           </h3>
-          {vehicles.length > 0 && (
-            <Link
-              href={`/catalogo/${pin.tenant.id}`}
-              className="text-xs text-blue-600 hover:underline font-medium flex items-center gap-0.5"
-            >
+          {!loadingV && vehicles.length > 0 && (
+            <Link href={`/catalogo/${pin.tenant.id}`}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-0.5 transition-colors">
               Ver todos <ChevronRight size={12} />
             </Link>
           )}
         </div>
 
-        {loadingVehicles ? (
+        {loadingV ? (
           <div className="space-y-2.5">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <VehicleCardSkeleton key={i} />
-            ))}
+            {[1, 2, 3].map((i) => <VehicleSkeleton key={i} />)}
           </div>
         ) : vehicles.length === 0 ? (
-          <div className="flex flex-col items-center py-10 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mb-3">
-              <Car size={24} className="text-slate-300" />
+          <div className="flex flex-col items-center py-12 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-3">
+              <Car size={28} className="text-slate-300" />
             </div>
-            <p className="text-sm font-medium text-slate-600 mb-1">
-              Sem veículos no momento
-            </p>
-            <p className="text-xs text-slate-400 leading-relaxed max-w-[220px]">
-              Esta concessionária ainda não publicou veículos. Volte em breve!
+            <p className="text-sm font-bold text-slate-500 mb-1">Sem veículos publicados</p>
+            <p className="text-xs text-slate-400 leading-relaxed max-w-[200px]">
+              Esta concessionária ainda não tem veículos no estoque. Volte em breve!
             </p>
           </div>
         ) : (
           <div className="space-y-2.5">
-            {vehicles.map((v) => (
-              <VehicleCard key={v.id} vehicle={v} />
-            ))}
+            {vehicles.map((v) => <VehicleCard key={v.id} v={v} />)}
           </div>
         )}
       </div>
 
-      {/* CTA fixo no rodapé */}
+      {/* CTA rodapé */}
       <div className="p-4 border-t border-slate-100 bg-white">
         <Link
           href={`/catalogo/${pin.tenant.id}`}
-          className="flex items-center justify-center gap-2 w-full bg-blue-600 text-white
-                     text-sm font-semibold py-3 rounded-xl hover:bg-blue-700 transition-colors"
+          className="flex items-center justify-center gap-2 w-full
+                     bg-gradient-to-r from-blue-600 to-blue-500
+                     text-white text-sm font-bold py-3 rounded-2xl
+                     hover:from-blue-700 hover:to-blue-600
+                     shadow-lg shadow-blue-200
+                     transition-all duration-200 hover:shadow-xl hover:shadow-blue-300"
         >
           Ver catálogo completo
           <ChevronRight size={16} />
@@ -298,7 +311,7 @@ function DealerDetail({
   );
 }
 
-/* ── Main Sidebar component ──────────────────────────────── */
+/* ── Sidebar principal ───────────────────────────────────── */
 
 const BR_STATES = [
   'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA',
@@ -306,161 +319,197 @@ const BR_STATES = [
   'RO','RR','RS','SC','SE','SP','TO',
 ];
 
-interface SidebarProps {
+interface Props {
   pins: DealershipPin[];
   loading: boolean;
   selected: DealershipPin | null;
   onSelect: (pin: DealershipPin | null) => void;
 }
 
-export default function Sidebar({ pins, loading, selected, onSelect }: SidebarProps) {
+export default function Sidebar({ pins, loading, selected, onSelect }: Props) {
   const [search, setSearch] = useState('');
   const [stateFilter, setStateFilter] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [onlyWithVehicles, setOnlyWithVehicles] = useState(false);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return pins.filter((p) => {
-      const matchSearch =
-        !q ||
-        p.name.toLowerCase().includes(q) ||
-        p.tenant.tradeName.toLowerCase().includes(q) ||
-        (p.city ?? '').toLowerCase().includes(q);
+      const matchSearch = !q
+        || p.name.toLowerCase().includes(q)
+        || p.tenant.tradeName.toLowerCase().includes(q)
+        || (p.city ?? '').toLowerCase().includes(q);
       const matchState = !stateFilter || p.state === stateFilter;
-      return matchSearch && matchState;
+      const matchVehicles = !onlyWithVehicles || p.vehiclesCount > 0;
+      return matchSearch && matchState && matchVehicles;
     });
-  }, [pins, search, stateFilter]);
+  }, [pins, search, stateFilter, onlyWithVehicles]);
 
-  // Modo detalhe
+  const activeFilters = (stateFilter ? 1 : 0) + (onlyWithVehicles ? 1 : 0);
+
+  /* Vista de detalhe */
   if (selected) {
     return <DealerDetail pin={selected} onBack={() => onSelect(null)} />;
   }
 
   return (
     <div className="flex flex-col h-full">
-      {/* Barra de busca */}
-      <div className="p-4 space-y-2.5 border-b border-slate-100 bg-white">
+
+      {/* ── Cabeçalho fixo ─────────────────────────── */}
+      <div className="px-4 pt-4 pb-3 space-y-3 border-b border-slate-100 bg-white">
+
+        {/* Título */}
+        <div>
+          <h1 className="text-base font-extrabold text-slate-800">Encontre uma concessionária</h1>
+          {!loading && (
+            <p className="text-xs text-slate-400 mt-0.5">
+              {pins.length} cadastrada{pins.length !== 1 ? 's' : ''} no AutoConnect
+            </p>
+          )}
+        </div>
+
+        {/* Campo de busca */}
         <div className="relative">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar concessionária, cidade…"
-            className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 bg-slate-50
-                       text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+            placeholder="Buscar por nome, cidade…"
+            className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200
+                       bg-slate-50 text-sm text-slate-800 placeholder-slate-400
+                       outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400
                        focus:bg-white transition-all"
           />
           {search && (
-            <button
-              onClick={() => setSearch('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-            >
+            <button onClick={() => setSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
               <X size={14} />
             </button>
           )}
         </div>
 
-        {/* Linha de filtros */}
-        <div className="flex items-center gap-2">
+        {/* Linha filtros */}
+        <div className="flex gap-2">
           <select
             value={stateFilter}
             onChange={(e) => setStateFilter(e.target.value)}
-            className="flex-1 py-2 px-3 rounded-lg border border-slate-200 bg-slate-50 text-sm
-                       outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                       text-slate-700 cursor-pointer"
+            className="flex-1 py-2 px-3 rounded-xl border border-slate-200 bg-slate-50
+                       text-sm text-slate-700 cursor-pointer
+                       outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
           >
             <option value="">Todos os estados</option>
             {BR_STATES.map((uf) => <option key={uf} value={uf}>{uf}</option>)}
           </select>
 
           <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors
-              ${showFilters
-                ? 'border-blue-400 bg-blue-50 text-blue-700'
-                : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
-              }`}
+            onClick={() => setFiltersOpen(!filtersOpen)}
+            className={`relative flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-semibold transition-all
+              ${filtersOpen || activeFilters > 0
+                ? 'border-blue-400 bg-blue-50 text-blue-700 shadow-sm shadow-blue-100'
+                : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-white'}`}
           >
-            <Filter size={14} />
+            <SlidersHorizontal size={14} />
             Filtros
+            {activeFilters > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                {activeFilters}
+              </span>
+            )}
           </button>
         </div>
 
-        {/* Filtros extras (expansível) */}
-        {showFilters && (
-          <div className="pt-1 space-y-2 border-t border-slate-100">
-            <p className="text-xs text-slate-500 font-medium">Mostrar apenas:</p>
-            <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-              <input
-                type="checkbox"
-                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                onChange={(e) => {
-                  // futuro: filtrar só com veículos
-                  void e;
-                }}
-              />
-              Com veículos disponíveis
+        {/* Painel de filtros extras */}
+        {filtersOpen && (
+          <div className="pt-1 pb-0.5 px-1 space-y-2 border-t border-slate-100">
+            <label className="flex items-center gap-2.5 text-sm text-slate-700 cursor-pointer group">
+              <div className={`w-4 h-4 rounded flex items-center justify-center border-2 transition-all
+                ${onlyWithVehicles ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-white group-hover:border-blue-400'}`}
+                onClick={() => setOnlyWithVehicles(!onlyWithVehicles)}
+              >
+                {onlyWithVehicles && (
+                  <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12">
+                    <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                )}
+              </div>
+              <span className={onlyWithVehicles ? 'font-semibold text-blue-700' : ''}>
+                Apenas com veículos disponíveis
+              </span>
             </label>
           </div>
         )}
       </div>
 
-      {/* Lista */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      {/* ── Lista de resultados ─────────────────────── */}
+      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
         {loading ? (
-          // Skeleton
-          Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="p-4 rounded-xl border border-slate-100 animate-pulse">
-              <div className="flex gap-3">
-                <div className="w-10 h-10 rounded-xl bg-slate-200 shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3.5 bg-slate-200 rounded w-2/3" />
-                  <div className="h-3 bg-slate-200 rounded w-1/2" />
-                  <div className="h-3 bg-slate-200 rounded w-1/3" />
-                </div>
-              </div>
-            </div>
-          ))
+          Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center py-16 text-center px-4">
-            <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mb-3">
-              <Search size={22} className="text-slate-300" />
-            </div>
-            <p className="text-sm font-semibold text-slate-600 mb-1">
-              {pins.length === 0 ? 'Nenhuma concessionária ainda' : 'Nenhum resultado'}
-            </p>
-            <p className="text-xs text-slate-400 leading-relaxed">
+            <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
               {pins.length === 0
-                ? 'Seja o primeiro a cadastrar!'
-                : 'Tente outro nome ou estado.'}
+                ? <Building2 size={28} className="text-slate-300" />
+                : <Search size={28} className="text-slate-300" />}
+            </div>
+            <p className="text-sm font-bold text-slate-600 mb-1">
+              {pins.length === 0 ? 'Nenhuma concessionária ainda' : 'Sem resultados'}
             </p>
-            {pins.length === 0 && (
-              <Link
-                href="/signup"
-                className="mt-4 text-sm bg-blue-600 text-white px-5 py-2 rounded-xl hover:bg-blue-700 transition font-medium"
+            <p className="text-xs text-slate-400 leading-relaxed mb-4">
+              {pins.length === 0
+                ? 'Seja o primeiro a aparecer no mapa!'
+                : 'Tente outros termos ou remova os filtros.'}
+            </p>
+            {(stateFilter || onlyWithVehicles) && (
+              <button
+                onClick={() => { setStateFilter(''); setOnlyWithVehicles(false); }}
+                className="text-xs text-blue-600 font-semibold hover:underline"
               >
+                Limpar filtros
+              </button>
+            )}
+            {pins.length === 0 && (
+              <Link href="/signup"
+                    className="mt-1 text-sm bg-blue-600 text-white font-semibold px-5 py-2.5 rounded-xl hover:bg-blue-700 transition">
                 Cadastrar concessionária
               </Link>
             )}
           </div>
         ) : (
           <>
-            <p className="text-xs text-slate-400 font-medium px-1 pb-1">
-              {filtered.length} concessionária{filtered.length !== 1 ? 's' : ''}
-              {stateFilter && ` em ${stateFilter}`}
-              {search && ` para "${search}"`}
-            </p>
+            {/* Resumo de filtros */}
+            <div className="px-1 pb-1 flex items-center justify-between">
+              <p className="text-xs text-slate-400 font-medium">
+                {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
+                {stateFilter && <span className="text-blue-600"> · {stateFilter}</span>}
+              </p>
+              {(search || stateFilter || onlyWithVehicles) && (
+                <button
+                  onClick={() => { setSearch(''); setStateFilter(''); setOnlyWithVehicles(false); }}
+                  className="text-[11px] text-slate-400 hover:text-slate-600 flex items-center gap-1"
+                >
+                  <X size={11} /> Limpar
+                </button>
+              )}
+            </div>
+
             {filtered.map((pin) => (
-              <DealerCard
-                key={pin.id}
-                pin={pin}
-                selected={false}
-                onClick={() => onSelect(pin)}
-              />
+              <DealerCard key={pin.id} pin={pin} onClick={() => onSelect(pin)} />
             ))}
           </>
         )}
+      </div>
+
+      {/* ── Rodapé fixo ────────────────────────────── */}
+      <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/80">
+        <Link
+          href="/signup"
+          className="flex items-center justify-center gap-1.5 w-full
+                     text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors py-1"
+        >
+          <Building2 size={13} />
+          Cadastrar minha concessionária
+        </Link>
       </div>
     </div>
   );
