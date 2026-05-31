@@ -12,6 +12,7 @@ import {
   LocateFixed, X,
 } from 'lucide-react';
 import Sidebar from './Sidebar';
+import HeaderActions from './HeaderActions';
 
 /* Leaflet só roda no browser */
 const MapClient = dynamic(() => import('./MapClient'), {
@@ -162,6 +163,9 @@ export default function BuscarPage() {
             </button>
           ))}
         </div>
+
+        {/* Ações do cliente (favoritos, notificações, chat) */}
+        <HeaderActions />
 
         {/* Área do usuário */}
         {user ? (

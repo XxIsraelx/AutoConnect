@@ -10,6 +10,7 @@ import {
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
+import ChatDrawer from '@/components/ChatDrawer';
 
 /* ── Tipos ─────────────────────────────────────────────── */
 interface Dealer {
@@ -43,11 +44,27 @@ const CONDITION_LABELS: Record<string, string> = {
 };
 
 export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
-  const { token } = useAuthStore();
+  const { token, user } = useAuthStore();
   const [vehicles, setVehicles]   = useState<PublicVehicle[]>([]);
   const [total,    setTotal]      = useState(0);
   const [page,     setPage]       = useState(0); // skip-based
   const [q,        setQ]          = useState('');
+  const [chatId, setChatId]       = useState<string | null>(null);
+  const [startingChat, setStartingChat] = useState(false);
+
+  const canChat = !user || user.role === 'customer';
+
+  async function startChat() {
+    if (!token) { window.location.href = '/entrar'; return; }
+    setStartingChat(true);
+    try {
+      const conv = await api<{ id: string }>('/conversations', {
+        method: 'POST', token, body: { tenantId: dealer.id },
+      });
+      setChatId(conv.id);
+    } catch { /* ignora */ }
+    finally { setStartingChat(false); }
+  }
   const [condition, setCondition] = useState('');
   const [loading,  setLoading]    = useState(true);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
@@ -145,6 +162,16 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
                   <MessageCircle size={14} />
                   WhatsApp
                 </a>
+              )}
+              {canChat && (
+                <button
+                  onClick={startChat}
+                  disabled={startingChat}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50"
+                >
+                  {startingChat ? <Loader2 size={14} className="animate-spin" /> : <MessageCircle size={14} />}
+                  Conversar
+                </button>
               )}
             </div>
           </div>
@@ -286,6 +313,17 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
           </div>
         )}
       </div>
+
+      {chatId && (
+        <ChatDrawer
+          conversationId={chatId}
+          token={token!}
+          myId={user?.id ?? ''}
+          title={dealer.tradeName}
+          logoUrl={dealer.logoUrl}
+          onClose={() => setChatId(null)}
+        />
+      )}
     </div>
   );
 }

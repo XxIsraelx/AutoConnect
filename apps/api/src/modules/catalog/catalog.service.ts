@@ -335,6 +335,50 @@ export class CatalogService {
     });
   }
 
+  /* ── Vistos recentemente ─────────────────────────────────── */
+
+  /** Registra uma visualização de veículo por um usuário */
+  async recordView(userId: string, vehicleId: string): Promise<{ ok: boolean }> {
+    const v = await this.prisma.vehicle.findUnique({
+      where: { id: vehicleId }, select: { tenantId: true },
+    });
+    if (!v) return { ok: false };
+    await this.prisma.vehicleView.create({
+      data: { vehicleId, tenantId: v.tenantId, userId, source: 'web' },
+    });
+    return { ok: true };
+  }
+
+  /** Lista os veículos vistos recentemente (distintos, mais recentes primeiro) */
+  async recentlyViewed(userId: string): Promise<unknown> {
+    const views = await this.prisma.vehicleView.findMany({
+      where: { userId },
+      orderBy: { viewedAt: 'desc' },
+      take: 60,
+      select: { vehicleId: true },
+    });
+    const seen = new Set<string>();
+    const ids: string[] = [];
+    for (const v of views) {
+      if (!seen.has(v.vehicleId)) { seen.add(v.vehicleId); ids.push(v.vehicleId); }
+      if (ids.length >= 12) break;
+    }
+    if (ids.length === 0) return [];
+
+    const vehicles = await this.prisma.vehicle.findMany({
+      where: { id: { in: ids }, status: 'available' },
+      select: {
+        id: true, versionName: true, yearModel: true, price: true, promoPrice: true,
+        condition: true, mileageKm: true, tenantId: true,
+        brand: { select: { name: true } },
+        model: { select: { name: true } },
+        images: { where: { isCover: true }, take: 1, select: { url: true } },
+      },
+    });
+    // preserva a ordem de visualização
+    return ids.map((id) => vehicles.find((v) => v.id === id)).filter(Boolean);
+  }
+
   /** Perfil público por slug */
   findPublicDealerBySlug(slug: string): Promise<unknown> {
     return this.prisma.tenant.findUnique({

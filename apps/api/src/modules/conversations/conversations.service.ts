@@ -46,6 +46,44 @@ export class ConversationsService {
     return { items, total, page, perPage: take };
   }
 
+  /** Lista conversas de um cliente (todas as lojas) */
+  async findAllByCustomer(customerUserId: string, opts: { status?: string; page?: number }): Promise<unknown> {
+    const { status, page = 1 } = opts;
+    const take = 20;
+    const skip = (page - 1) * take;
+
+    const where = {
+      customerUserId,
+      ...(status ? { status: status as never } : {}),
+    };
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.conversation.findMany({
+        where, skip, take,
+        orderBy: { lastMessageAt: 'desc' },
+        include: {
+          tenant:      { select: { id: true, tradeName: true, logoUrl: true } },
+          salesperson: { select: { id: true, fullName: true } },
+          vehicle: {
+            select: {
+              id: true, versionName: true, yearModel: true,
+              brand: { select: { name: true } },
+              model: { select: { name: true } },
+              images: { where: { isCover: true }, take: 1, select: { url: true } },
+            },
+          },
+          messages: {
+            orderBy: { createdAt: 'desc' }, take: 1,
+            select: { body: true, createdAt: true, kind: true },
+          },
+        },
+      }),
+      this.prisma.conversation.count({ where }),
+    ]);
+
+    return { items, total, page, perPage: take };
+  }
+
   /** Mensagens de uma conversa */
   async getMessages(tenantId: string | null, userId: string, conversationId: string): Promise<unknown> {
     const conv = await this.prisma.conversation.findFirst({

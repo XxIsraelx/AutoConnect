@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
+import ChatDrawer from '@/components/ChatDrawer';
 import type {
   PublicDealer, PublicVehicle, PublicVehicleDetail,
   VehiclesPage, PublicBrand,
@@ -583,6 +584,8 @@ function VehicleDrawer({
   vehicleId,
   tenantId,
   dealerPhone,
+  dealerName,
+  dealerLogo,
   onClose,
   isFav,
   onFavToggle,
@@ -590,15 +593,35 @@ function VehicleDrawer({
   vehicleId: string;
   tenantId: string;
   dealerPhone: string | null;
+  dealerName: string;
+  dealerLogo: string | null;
   onClose: () => void;
   isFav: boolean;
   onFavToggle: () => void;
 }) {
+  const token = useAuthStore(s => s.token);
+  const user  = useAuthStore(s => s.user);
   const [vehicle, setVehicle]   = useState<PublicVehicleDetail | null>(null);
   const [loading, setLoading]   = useState(true);
   const [imgIdx, setImgIdx]     = useState(0);
   const [showCalc, setShowCalc] = useState(false);
   const [showLead, setShowLead] = useState(false);
+  const [chatId, setChatId]     = useState<string | null>(null);
+  const [startingChat, setStartingChat] = useState(false);
+
+  const canChat = !user || user.role === 'customer';
+
+  async function startChat() {
+    if (!token) { window.location.href = '/entrar'; return; }
+    setStartingChat(true);
+    try {
+      const conv = await api<{ id: string }>('/conversations', {
+        method: 'POST', token, body: { tenantId, vehicleId },
+      });
+      setChatId(conv.id);
+    } catch { /* ignora */ }
+    finally { setStartingChat(false); }
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -608,7 +631,9 @@ function VehicleDrawer({
       .then(setVehicle)
       .catch(() => setVehicle(null))
       .finally(() => setLoading(false));
-  }, [vehicleId]);
+    // registra "visto recentemente" para clientes logados
+    if (token) api(`/catalog/views/${vehicleId}`, { method: 'POST', token }).catch(() => {});
+  }, [vehicleId, token]);
 
   const imgs = vehicle?.images ?? [];
 
@@ -806,6 +831,22 @@ function VehicleDrawer({
                 )}
               </div>
 
+              {/* Conversar pelo chat interno */}
+              {canChat && (
+                <button
+                  onClick={startChat}
+                  disabled={startingChat}
+                  className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl
+                             bg-white/[.05] border border-white/[.1] text-white font-bold text-sm
+                             hover:bg-white/[.1] transition-colors disabled:opacity-50"
+                >
+                  {startingChat
+                    ? <Loader2 size={15} className="animate-spin" />
+                    : <MessageCircle size={15} className="text-blue-400" />}
+                  Conversar com a loja
+                </button>
+              )}
+
               {/* Toggle calculadora */}
               <button
                 onClick={() => setShowCalc(v => !v)}
@@ -869,6 +910,18 @@ function VehicleDrawer({
           vehicle={vehicle}
           tenantId={tenantId}
           onClose={() => setShowLead(false)}
+        />
+      )}
+
+      {chatId && (
+        <ChatDrawer
+          conversationId={chatId}
+          token={token!}
+          myId={user?.id ?? ''}
+          title={dealerName}
+          subtitle={vehicle ? `${vehicle.brand.name} ${vehicle.model.name} ${vehicle.yearModel}` : undefined}
+          logoUrl={dealerLogo}
+          onClose={() => setChatId(null)}
         />
       )}
     </>
@@ -1393,6 +1446,8 @@ export default function CatalogoContent() {
           vehicleId={selectedVehicleId}
           tenantId={tenantId}
           dealerPhone={dealerPhone}
+          dealerName={dealer?.tradeName ?? 'Concessionária'}
+          dealerLogo={dealer?.logoUrl ?? null}
           onClose={() => setSelectedVehicleId(null)}
           isFav={favIds.has(selectedVehicleId)}
           onFavToggle={() => handleFavToggle(selectedVehicleId)}

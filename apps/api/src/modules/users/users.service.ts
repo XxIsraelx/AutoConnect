@@ -1,4 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable, BadRequestException, UnauthorizedException,
+} from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 @Injectable()
@@ -33,14 +36,7 @@ export class UsersService {
     );
   }
 
-  me(userId: string): Promise<{
-    id: string;
-    email: string;
-    fullName: string | null;
-    role: string;
-    tenantId: string | null;
-    avatarUrl: string | null;
-  }> {
+  me(userId: string): Promise<unknown> {
     return this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
       select: {
@@ -50,7 +46,89 @@ export class UsersService {
         role: true,
         tenantId: true,
         avatarUrl: true,
+        phone: true,
+        createdAt: true,
+        customerProfile: {
+          select: {
+            documentNumber: true,
+            city: true,
+            state: true,
+            postalCode: true,
+            birthDate: true,
+          },
+        },
       },
     });
+  }
+
+  /** Atualiza dados do próprio perfil */
+  async updateProfile(
+    userId: string,
+    data: {
+      fullName?: string;
+      phone?: string;
+      avatarUrl?: string;
+      documentNumber?: string;
+      city?: string;
+      state?: string;
+      postalCode?: string;
+    },
+  ): Promise<unknown> {
+    const userData: Record<string, unknown> = {};
+    if (data.fullName !== undefined)  userData.fullName  = data.fullName.trim();
+    if (data.phone !== undefined)     userData.phone     = data.phone || null;
+    if (data.avatarUrl !== undefined) userData.avatarUrl = data.avatarUrl || null;
+
+    if (Object.keys(userData).length) {
+      await this.prisma.user.update({ where: { id: userId }, data: userData });
+    }
+
+    // upsert no CustomerProfile (cidade/estado/CPF/CEP)
+    const hasProfileFields =
+      data.documentNumber !== undefined || data.city !== undefined ||
+      data.state !== undefined || data.postalCode !== undefined;
+
+    if (hasProfileFields) {
+      const profile = {
+        ...(data.documentNumber !== undefined ? { documentNumber: data.documentNumber || null } : {}),
+        ...(data.city !== undefined           ? { city: data.city || null } : {}),
+        ...(data.state !== undefined          ? { state: data.state || null } : {}),
+        ...(data.postalCode !== undefined     ? { postalCode: data.postalCode || null } : {}),
+      };
+      await this.prisma.customerProfile.upsert({
+        where: { userId },
+        update: profile,
+        create: { userId, ...profile },
+      });
+    }
+
+    return this.me(userId);
+  }
+
+  /** Troca a senha do usuário */
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<{ ok: true }> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { passwordHash: true },
+    });
+
+    if (!user.passwordHash) {
+      throw new BadRequestException(
+        'Esta conta usa login social e não possui senha definida.',
+      );
+    }
+    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!ok) throw new UnauthorizedException('Senha atual incorreta.');
+    if (!newPassword || newPassword.length < 6) {
+      throw new BadRequestException('A nova senha deve ter pelo menos 6 caracteres.');
+    }
+
+    const hash = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash: hash } });
+    return { ok: true };
   }
 }

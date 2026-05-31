@@ -21,7 +21,7 @@ export class ConversationsController {
   ): Promise<unknown> {
     const { role, tenantId, id } = req.user;
     if (role === 'customer') {
-      return this.svc.findAllByTenant('', { status, page: page ? parseInt(page, 10) : 1 });
+      return this.svc.findAllByCustomer(id, { status, page: page ? parseInt(page, 10) : 1 });
     }
     return this.svc.findAllByTenant(tenantId!, { status, page: page ? parseInt(page, 10) : 1 });
   }

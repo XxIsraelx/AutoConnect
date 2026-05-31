@@ -143,6 +143,23 @@ export class CatalogController {
     return this.catalog.findPublicDealerBySlug(slug);
   }
 
+  /* ── Vistos recentemente ────────────────────────────── */
+
+  /** POST /catalog/views/:vehicleId — registra visualização */
+  @Post('views/:vehicleId')
+  recordView(
+    @Req() req: AuthRequest,
+    @Param('vehicleId', ParseUUIDPipe) vehicleId: string,
+  ): Promise<unknown> {
+    return this.catalog.recordView(req.user.id, vehicleId);
+  }
+
+  /** GET /catalog/recently-viewed — veículos vistos recentemente */
+  @Get('recently-viewed')
+  recentlyViewed(@Req() req: AuthRequest): Promise<unknown> {
+    return this.catalog.recentlyViewed(req.user.id);
+  }
+
   /* ── Buscas salvas ──────────────────────────────────── */
 
   /** GET /catalog/saved-searches — lista buscas salvas + contador de novos */
