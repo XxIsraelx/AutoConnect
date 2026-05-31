@@ -25,7 +25,8 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
       setSession(data.accessToken, data.user);
-      router.replace('/dashboard');
+      // super_admin vai direto pro painel administrativo
+      router.replace(data.user.role === 'super_admin' ? '/admin' : '/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao fazer login');
     } finally {

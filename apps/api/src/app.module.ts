@@ -11,6 +11,12 @@ import { ChatGatewayModule } from './gateway/chat-gateway.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { VehiclesModule } from './modules/vehicles/vehicles.module';
 import { MapModule } from './modules/map/map.module';
+import { LeadsModule } from './modules/leads/leads.module';
+import { AdminModule } from './modules/admin/admin.module';
+import { AppointmentsModule } from './modules/appointments/appointments.module';
+import { UsersModule } from './modules/users/users.module';
+import { InvitationsModule } from './modules/invitations/invitations.module';
+import { ConversationsModule } from './modules/conversations/conversations.module';
 
 @Module({
   imports: [
@@ -27,6 +33,12 @@ import { MapModule } from './modules/map/map.module';
     CatalogModule,
     VehiclesModule,
     MapModule,
+    LeadsModule,
+    AdminModule,
+    AppointmentsModule,
+    UsersModule,
+    InvitationsModule,
+    ConversationsModule,
   ],
   providers: [
     {

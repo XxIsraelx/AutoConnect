@@ -29,7 +29,7 @@ export default function HomePage() {
               Entrar
             </Link>
             <Link
-              href="/signup"
+              href="/comecar"
               className="text-sm bg-brand-accent text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-600 transition"
             >
               Começar grátis
@@ -54,7 +54,7 @@ export default function HomePage() {
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
-            href="/signup"
+            href="/comecar"
             className="flex items-center gap-2 bg-brand-accent text-white font-semibold px-7 py-3.5 rounded-xl hover:bg-blue-600 transition text-sm shadow-lg shadow-blue-200 dark:shadow-none"
           >
             Criar conta grátis
@@ -318,7 +318,7 @@ export default function HomePage() {
                     <Star key={i} size={14} className="fill-yellow-400 text-yellow-400" />
                   ))}
                 </div>
-                <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mb-4">"{text}"</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mb-4">&ldquo;{text}&rdquo;</p>
                 <div>
                   <p className="text-sm font-semibold">{name}</p>
                   <p className="text-xs text-slate-400">{role}</p>
@@ -340,7 +340,7 @@ export default function HomePage() {
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
-              href="/signup"
+              href="/comecar"
               className="flex items-center gap-2 bg-white text-brand-accent font-semibold px-7 py-3.5 rounded-xl hover:bg-blue-50 transition text-sm"
             >
               Criar conta grátis

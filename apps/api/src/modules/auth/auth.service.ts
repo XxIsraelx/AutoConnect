@@ -2,61 +2,134 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { EmailService } from '../../common/email/email.service';
+import { AdminService } from '../admin/admin.service';
 import type { LoginInput, SignupTenantInput, SignupCustomerInput } from '@autoconnect/shared';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly email: EmailService,
+    private readonly adminSvc: AdminService,
   ) {}
 
   async signupTenant(input: SignupTenantInput) {
-    const existsSlug = await this.prisma.tenant.findUnique({
-      where: { slug: input.tenant.slug },
+    // 1. Valida o convite antes de qualquer outra coisa
+    const invite = await this.prisma.tenantInvite.findUnique({
+      where: { token: input.inviteToken },
     });
+    if (!invite)                 throw new BadRequestException('Convite inválido');
+    if (invite.usedAt)           throw new BadRequestException('Este convite já foi utilizado');
+    if (invite.expiresAt < new Date()) throw new BadRequestException('Convite expirado');
+    // Se o convite foi restrito a um e-mail específico, valida
+    if (invite.email && invite.email.toLowerCase() !== input.admin.email.toLowerCase()) {
+      throw new BadRequestException('Este convite é exclusivo para outro e-mail');
+    }
+
+    // 2. Verifica duplicidade
+    const existsSlug = await this.prisma.tenant.findUnique({ where: { slug: input.tenant.slug } });
     if (existsSlug) throw new ConflictException('slug já em uso');
 
-    const existsEmail = await this.prisma.user.findUnique({
-      where: { email: input.admin.email },
-    });
+    const existsCNPJ = await this.prisma.tenant.findUnique({ where: { taxId: input.tenant.cnpj } });
+    if (existsCNPJ) throw new ConflictException('CNPJ já cadastrado');
+
+    const existsEmail = await this.prisma.user.findUnique({ where: { email: input.admin.email } });
     if (existsEmail) throw new ConflictException('email já cadastrado');
+
+    // 3. Verifica situação do CNPJ na Receita Federal via BrasilAPI (não bloqueia se API estiver fora)
+    try {
+      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${input.tenant.cnpj}`);
+      if (res.ok) {
+        const data = await res.json() as { situacao_cadastral?: string };
+        if (data.situacao_cadastral && data.situacao_cadastral !== 'ATIVA') {
+          // Registra tentativa de cadastro com CNPJ inativo no audit log
+          this.prisma.auditLog.create({
+            data: {
+              action: 'signup_cnpj_rejected',
+              entityType: 'tenant',
+              diff: {
+                cnpj: input.tenant.cnpj,
+                situacao: data.situacao_cadastral,
+                email: input.admin.email,
+              },
+            },
+          }).catch(() => null);
+
+          throw new BadRequestException(
+            `CNPJ com situação "${data.situacao_cadastral}" na Receita Federal. Apenas CNPJs com situação ATIVA podem se cadastrar.`,
+          );
+        }
+      }
+    } catch (err) {
+      // Lança BadRequestException se vier do check de situação cadastral
+      if (err instanceof BadRequestException) throw err;
+      this.logger.warn('BrasilAPI indisponível — situação CNPJ não verificada');
+    }
 
     const passwordHash = await bcrypt.hash(input.admin.password, 10);
 
+    // 4. Cria tenant + usuário + filial em transação
     const result = await this.prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
         data: {
-          slug: input.tenant.slug,
-          legalName: input.tenant.legalName,
-          tradeName: input.tenant.tradeName,
-          taxId: input.tenant.taxId,
-          primaryEmail: input.tenant.primaryEmail,
-          primaryPhone: input.tenant.primaryPhone,
+          slug:              input.tenant.slug,
+          legalName:         input.tenant.legalName,
+          tradeName:         input.tenant.tradeName,
+          taxId:             input.tenant.cnpj,           // CNPJ (14 dígitos)
+          stateRegistration: input.tenant.stateRegistration ?? null,
+          primaryEmail:      input.tenant.primaryEmail,
+          primaryPhone:      input.branch.phone,
           subscription: { create: { plan: 'trial', status: 'active' } },
         },
       });
 
       const user = await tx.user.create({
         data: {
-          tenantId: tenant.id,
-          email: input.admin.email,
-          fullName: input.admin.fullName,
+          tenantId:       tenant.id,
+          email:          input.admin.email,
+          fullName:       input.admin.fullName,
+          phone:          input.admin.phone,
+          cpf:            input.admin.cpf,
+          jobTitle:       input.admin.jobTitle,
           passwordHash,
-          role: 'tenant_admin',
-          status: 'active',
+          role:           'tenant_admin',
+          status:         'active',
+          emailVerifiedAt: new Date(), // verificado via convite — skip email verification
+        },
+      });
+
+      await tx.dealershipBranch.create({
+        data: {
+          tenantId:      tenant.id,
+          name:          input.tenant.tradeName,
+          isHeadquarters: true,
+          phone:         input.branch.phone,
+          email:         input.tenant.primaryEmail,
+          postalCode:    input.branch.postalCode.replace(/\D/g, ''),
+          addressLine:   input.branch.addressLine,
+          addressNumber: input.branch.addressNumber,
+          complement:    input.branch.complement ?? null,
+          neighborhood:  input.branch.neighborhood,
+          city:          input.branch.city,
+          state:         input.branch.state.toUpperCase(),
         },
       });
 
       return { tenant, user };
     });
+
+    // 5. Marca convite como usado
+    await this.adminSvc.validateAndConsumeInvite(input.inviteToken, result.tenant.id);
 
     return this.buildSession(result.user);
   }
@@ -113,7 +186,7 @@ export class AuthService {
     );
 
     // Envia e-mail de verificação (async, não bloqueia resposta)
-    this.email.sendEmailVerification(user.email, user.fullName, verificationToken).catch(() => {});
+    this.email.sendEmailVerification(user.email, user.fullName, verificationToken).catch((err: unknown) => this.logger.error('Falha ao enviar e-mail:', err));
 
     return { message: 'Cadastro realizado! Verifique seu e-mail para ativar a conta.' };
   }
@@ -127,7 +200,7 @@ export class AuthService {
       { sub: user.id, purpose: 'email-verification' },
       { expiresIn: '24h' },
     );
-    this.email.sendEmailVerification(user.email, user.fullName, token).catch(() => {});
+    this.email.sendEmailVerification(user.email, user.fullName, token).catch((err: unknown) => this.logger.error('Falha ao enviar e-mail:', err));
     return { message: 'Se o e-mail existir, um novo link foi enviado.' };
   }
 
@@ -140,7 +213,7 @@ export class AuthService {
       { sub: user.id, purpose: 'password-reset' },
       { expiresIn: '1h' },
     );
-    this.email.sendPasswordReset(user.email, user.fullName, token).catch(() => {});
+    this.email.sendPasswordReset(user.email, user.fullName, token).catch((err: unknown) => this.logger.error('Falha ao enviar e-mail:', err));
     return { message: 'Se o e-mail existir, as instruções foram enviadas.' };
   }
 

@@ -13,11 +13,14 @@ export class ApiError extends Error {
 
 export async function api<T>(
   path: string,
-  init: RequestInit & { token?: string } = {},
+  init: (Omit<RequestInit, 'body'> & { token?: string; body?: unknown }) = {},
 ): Promise<T> {
-  const { token, headers, ...rest } = init;
+  const { token, headers, body, ...rest } = init;
   const res = await fetch(`${API_URL}/api/v1${path}`, {
     ...rest,
+    body: body !== undefined
+      ? (typeof body === 'string' ? body : JSON.stringify(body))
+      : undefined,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

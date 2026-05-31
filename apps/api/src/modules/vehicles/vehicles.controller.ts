@@ -54,4 +54,36 @@ export class VehiclesController {
   remove(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string): Promise<{ deleted: boolean }> {
     return this.vehicles.remove(req.user.tenantId!, id);
   }
+
+  /* ── Imagens ─────────────────────────────────────────────── */
+
+  /** POST /vehicles/:id/images  — body: { url, altText?, isCover?, position? } */
+  @Post(':id/images')
+  addImage(
+    @Req() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { url: string; altText?: string; isCover?: boolean; position?: number },
+  ): Promise<unknown> {
+    return this.vehicles.addImage(req.user.tenantId!, id, body);
+  }
+
+  /** DELETE /vehicles/:id/images/:imageId */
+  @Delete(':id/images/:imageId')
+  removeImage(
+    @Req() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('imageId', ParseUUIDPipe) imageId: string,
+  ): Promise<{ deleted: boolean }> {
+    return this.vehicles.removeImage(req.user.tenantId!, id, imageId);
+  }
+
+  /** PATCH /vehicles/:id/images/:imageId/cover — define capa */
+  @Patch(':id/images/:imageId/cover')
+  setCoverImage(
+    @Req() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('imageId', ParseUUIDPipe) imageId: string,
+  ): Promise<unknown> {
+    return this.vehicles.setCoverImage(req.user.tenantId!, id, imageId);
+  }
 }

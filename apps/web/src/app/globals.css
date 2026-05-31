@@ -78,10 +78,12 @@ html, body {
   100% { transform: translateY(0)     scale(1);    opacity: 1; }
 }
 
-/* Container externo: APENAS cursor e overflow — sem transforms */
+/* Container externo: APENAS cursor e overflow — sem transforms
+   transition de opacidade para o efeito de dimming suave          */
 .dealer-marker {
   cursor: pointer;
   overflow: visible !important;
+  transition: opacity 0.3s ease;
 }
 
 /* Elemento interno: recebe todos os transforms visuais */
@@ -116,4 +118,74 @@ html, body {
   animation: pulse-ring 2s ease-out infinite;
   transform-origin: center;
   transform-box: fill-box;
+}
+
+/* ─────────────────────────────────────────────────────────
+   Tooltip de hover nos pins
+───────────────────────────────────────────────────────── */
+.leaflet-tooltip.pin-tooltip {
+  background: #1e293b !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 14px !important;
+  padding: 10px 14px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6) !important;
+  color: white !important;
+  font-family: inherit !important;
+  white-space: nowrap !important;
+  pointer-events: none !important;
+}
+/* Seta inferior do tooltip (direção top) */
+.leaflet-tooltip.pin-tooltip.leaflet-tooltip-top::before {
+  border-top-color: rgba(255, 255, 255, 0.08) !important;
+  margin-bottom: -7px !important;
+}
+
+/* ─────────────────────────────────────────────────────────
+   Marcador GPS "você está aqui"
+───────────────────────────────────────────────────────── */
+@keyframes user-pulse {
+  0%   { transform: scale(1);   opacity: 0.65; }
+  100% { transform: scale(3.5); opacity: 0; }
+}
+.user-ring {
+  animation: user-pulse 1.8s ease-out infinite;
+  transform-origin: center;
+}
+.user-location-marker {
+  overflow: visible !important;
+}
+
+/* ─────────────────────────────────────────────────────────
+   Cluster de pins (leaflet.markercluster)
+───────────────────────────────────────────────────────── */
+
+/* Esconde os estilos padrão do MarkerCluster.Default.css
+   em favor dos nossos ícones customizados (dealer-cluster) */
+.dealer-cluster {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Animação de entrada dos clusters */
+@keyframes cluster-in {
+  from { transform: scale(0.5); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+.dealer-cluster > div {
+  animation: cluster-in 0.25s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.dealer-cluster:hover > div {
+  transform: scale(1.15) !important;
+  box-shadow: 0 6px 20px rgba(59,130,246,.7) !important;
+}
+
+/* Cobertura do spiderfy — desativada (sem hover coverage) */
+.leaflet-cluster-anim .leaflet-marker-icon,
+.leaflet-cluster-anim .leaflet-marker-shadow {
+  transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
 }

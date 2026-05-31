@@ -159,21 +159,22 @@ enum SubscriptionStatus {
 // ============ TENANT / SAAS ============
 
 model Tenant {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  slug          String    @unique @db.Citext
-  legalName     String    @map("legal_name")
-  tradeName     String    @map("trade_name")
-  taxId         String?   @unique @map("tax_id")
-  primaryEmail  String    @map("primary_email") @db.Citext
-  primaryPhone  String?   @map("primary_phone")
-  logoUrl       String?   @map("logo_url")
-  brandColor    String?   @map("brand_color")
-  websiteUrl    String?   @map("website_url")
-  timezone      String    @default("America/Sao_Paulo")
-  isActive      Boolean   @default(true) @map("is_active")
-  settings      Json      @default("{}")
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug                String    @unique @db.Citext
+  legalName           String    @map("legal_name")
+  tradeName           String    @map("trade_name")
+  taxId               String?   @unique @map("tax_id")          // CNPJ (14 dígitos, sem pontuação)
+  stateRegistration   String?   @map("state_registration")      // Inscrição Estadual (IE)
+  primaryEmail        String    @map("primary_email") @db.Citext
+  primaryPhone        String?   @map("primary_phone")
+  logoUrl             String?   @map("logo_url")
+  brandColor          String?   @map("brand_color")
+  websiteUrl          String?   @map("website_url")
+  timezone            String    @default("America/Sao_Paulo")
+  isActive            Boolean   @default(true) @map("is_active")
+  settings            Json      @default("{}")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
 
   subscription  TenantSubscription?
   branches      DealershipBranch[]
@@ -247,7 +248,9 @@ model User {
   email           String      @unique @db.Citext
   passwordHash    String?     @map("password_hash")
   fullName        String      @map("full_name")
-  phone           String?
+  phone           String?                             // celular pessoal
+  cpf             String?     @map("cpf")             // CPF sem pontuação (tenant_admin)
+  jobTitle        String?     @map("job_title")       // Cargo / função (tenant_admin)
   avatarUrl       String?     @map("avatar_url")
   role            UserRole
   status          UserStatus  @default(active)
@@ -277,6 +280,8 @@ model User {
   analyticsEvents     AnalyticsEvent[]
   auditEntries        AuditLog[]
   vehicleViews        VehicleView[]
+  priceAlerts         PriceAlert[]
+  savedSearches       SavedSearch[]
 
   @@index([tenantId])
   @@index([role])
@@ -316,6 +321,33 @@ model UserInvitation {
 
   @@index([tenantId])
   @@map("user_invitations")
+}
+
+// Avisos globais exibidos no dashboard de todos os tenants
+model Announcement {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  message   String
+  type      String    @default("info")   // info | warning | critical
+  isActive  Boolean   @default(true) @map("is_active")
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz()
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@map("announcements")
+}
+
+// Convites para cadastro de novas concessionárias (gerados pelo super_admin)
+model TenantInvite {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  token     String    @unique                  // token aleatório enviado no link
+  email     String?   @db.Citext              // opcional: restringe a um e-mail específico
+  note      String?                            // anotação interna do admin
+  usedAt    DateTime? @map("used_at") @db.Timestamptz()
+  usedBy    String?   @map("used_by") @db.Uuid // tenantId de quem usou
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz()
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@map("tenant_invites")
 }
 
 model SalespersonProfile {
@@ -430,6 +462,7 @@ model Vehicle {
   appointments Appointment[]
   conversations Conversation[]
   messageRefs  Message[]
+  priceAlerts  PriceAlert[]
 
   @@index([tenantId])
   @@index([branchId])
@@ -737,4 +770,37 @@ model AuditLog {
   @@index([tenantId, createdAt(sort: Desc)])
   @@index([entityType, entityId])
   @@map("audit_log")
+}
+
+// ============ ALERTAS DE PRECO ============
+
+model PriceAlert {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  vehicleId String   @map("vehicle_id") @db.Uuid
+  targetPrice Decimal @map("target_price") @db.Decimal(14, 2)
+  isActive  Boolean  @default(true) @map("is_active")
+  triggeredAt DateTime? @map("triggered_at") @db.Timestamptz()
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, vehicleId])
+  @@index([vehicleId, isActive])
+  @@map("price_alerts")
+}
+
+model SavedSearch {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  name         String
+  filters      Json     @default("{}")
+  lastViewedAt DateTime @default(now()) @map("last_viewed_at") @db.Timestamptz()
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("saved_searches")
 }

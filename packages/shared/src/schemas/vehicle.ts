@@ -24,6 +24,10 @@ export const createVehicleSchema = z.object({
   promoPrice: z.number().positive().optional(),
   description: z.string().optional(),
   featureIds: z.array(z.string().uuid()).default([]),
+  // Histórico de uso (armazenado em metadata) — relevante p/ usados
+  previousOwners: z.number().int().min(0).max(50).optional(),
+  firstRegistration: z.string().optional(), // "YYYY-MM"
+  singleOwner: z.boolean().optional(),
 });
 export type CreateVehicleInput = z.infer<typeof createVehicleSchema>;
 

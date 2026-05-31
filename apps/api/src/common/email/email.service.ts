@@ -61,14 +61,43 @@ export class EmailService {
     await this.send(to, subject, html, link);
   }
 
+  async sendLeadNotification(opts: {
+    to: string;
+    dealerName: string;
+    customerName: string;
+    vehicleInfo: string;
+    message: string | null;
+    leadUrl: string;
+  }): Promise<void> {
+    const { to, dealerName, customerName, vehicleInfo, message, leadUrl } = opts;
+    const subject = `Novo interesse recebido — ${vehicleInfo}`;
+    const bodyText = [
+      `<strong>${customerName}</strong> demonstrou interesse em <strong>${vehicleInfo}</strong>.`,
+      message
+        ? `<br/><br/><em>Mensagem do cliente:</em><br/>"${message}"`
+        : '',
+    ].join('');
+
+    const html = this.buildHtml(
+      `Novo lead para ${dealerName}!`,
+      bodyText,
+      leadUrl,
+      'Ver lead no dashboard',
+      'Acesse o painel para entrar em contato com o cliente e atualizar o status do lead.',
+    );
+    await this.send(to, subject, html, leadUrl);
+  }
+
   private async send(to: string, subject: string, html: string, devLink: string): Promise<void> {
     if (this.resend) {
-      await this.resend.emails.send({ from: this.from, to, subject, html });
+      const result = await this.resend.emails.send({ from: this.from, to, subject, html });
+      this.logger.log(`E-mail enviado via Resend para ${to} | id: ${(result as { id?: string }).id ?? 'n/a'}`);
       return;
     }
 
     if (this.smtp) {
-      await this.smtp.sendMail({ from: this.from, to, subject, html });
+      const info = await this.smtp.sendMail({ from: this.from, to, subject, html });
+      this.logger.log(`E-mail enviado via Gmail para ${to} | messageId: ${info.messageId}`);
       return;
     }
 
