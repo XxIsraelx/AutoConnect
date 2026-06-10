@@ -3,10 +3,13 @@
 import { useEffect, useState } from 'react';
 import {
   Building2, Phone, Globe, Palette, MapPin,
-  Mail, Hash, Check, Loader2, AlertCircle, Save,
+  Mail, Hash, Check, Loader2, AlertCircle, Save, Clock,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
+import {
+  type BusinessHours, defaultBusinessHours, hasBusinessHours, WEEKDAYS_LONG,
+} from '@/lib/businessHours';
 
 /* ── Tipos ───────────────────────────────────────────────── */
 
@@ -22,6 +25,7 @@ interface Branch {
   city: string | null;
   state: string | null;
   postalCode: string | null;
+  businessHours?: unknown;
 }
 
 interface TenantFull {
@@ -98,6 +102,86 @@ function Toast({ type, msg }: { type: 'ok' | 'err'; msg: string }) {
   );
 }
 
+/* ── Editor de horário de funcionamento ──────────────────── */
+
+function BusinessHoursEditor({
+  value, onChange,
+}: { value: BusinessHours; onChange: (bh: BusinessHours) => void }) {
+  const setDay = (d: number, patch: Partial<BusinessHours[string]>) => {
+    onChange({ ...value, [d]: { ...value[d], ...patch } });
+  };
+
+  const copyToWeekdays = (d: number) => {
+    const src = value[d];
+    const next = { ...value };
+    for (let i = 1; i <= 5; i++) next[i] = { ...src };
+    onChange(next);
+  };
+
+  return (
+    <div className="space-y-1.5">
+      {WEEKDAYS_LONG.map((label, d) => {
+        const day = value[d] ?? { closed: true, open: '09:00', close: '18:00' };
+        return (
+          <div key={d}
+               className="flex items-center gap-3 py-1.5 px-3 rounded-xl
+                          hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+            <span className="w-20 text-sm font-medium text-slate-700 dark:text-slate-300 shrink-0">
+              {label}
+            </span>
+
+            {/* Toggle aberto/fechado */}
+            <button
+              type="button"
+              onClick={() => setDay(d, { closed: !day.closed })}
+              className={`relative w-10 h-5.5 rounded-full transition-colors shrink-0
+                ${day.closed ? 'bg-slate-300 dark:bg-slate-700' : 'bg-emerald-500'}`}
+              style={{ height: 22 }}
+            >
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all
+                ${day.closed ? 'left-0.5' : 'left-[22px]'}`} />
+            </button>
+
+            {day.closed ? (
+              <span className="text-sm text-slate-400 italic">Fechado</span>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input
+                  type="time" value={day.open}
+                  onChange={e => setDay(d, { open: e.target.value })}
+                  className="rounded-lg border border-slate-200 dark:border-slate-700
+                             bg-white dark:bg-slate-800 px-2 py-1 text-sm outline-none
+                             focus:border-blue-500"
+                />
+                <span className="text-slate-400 text-xs">às</span>
+                <input
+                  type="time" value={day.close}
+                  onChange={e => setDay(d, { close: e.target.value })}
+                  className="rounded-lg border border-slate-200 dark:border-slate-700
+                             bg-white dark:bg-slate-800 px-2 py-1 text-sm outline-none
+                             focus:border-blue-500"
+                />
+              </div>
+            )}
+
+            {/* Replicar seg–sex (só na segunda) */}
+            {d === 1 && !day.closed && (
+              <button
+                type="button"
+                onClick={() => copyToWeekdays(d)}
+                className="ml-auto text-xs font-medium text-blue-600 dark:text-blue-400
+                           hover:underline shrink-0"
+              >
+                Aplicar a seg–sex
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ── Página ───────────────────────────────────────────────── */
 
 export default function ConfiguracoesPage() {
@@ -115,6 +199,7 @@ export default function ConfiguracoesPage() {
     addressLine: '', addressNumber: '', complement: '',
     neighborhood: '', city: '', state: '', postalCode: '',
   });
+  const [hours, setHours] = useState<BusinessHours>(defaultBusinessHours());
 
   const [savingTenant, setSavingTenant] = useState(false);
   const [savingBranch, setSavingBranch] = useState(false);
@@ -152,6 +237,7 @@ export default function ConfiguracoesPage() {
             state:        b.state         ?? '',
             postalCode:   b.postalCode    ?? '',
           });
+          setHours(hasBusinessHours(b.businessHours) ? b.businessHours : defaultBusinessHours());
         }
       })
       .catch(() => {})
@@ -202,6 +288,7 @@ export default function ConfiguracoesPage() {
           city:          branchForm.city          || undefined,
           state:         branchForm.state         || undefined,
           postalCode:    branchForm.postalCode    || undefined,
+          businessHours: hours,
         }),
       });
       showToast('ok', 'Endereço salvo!');
@@ -406,6 +493,20 @@ export default function ConfiguracoesPage() {
                 </div>
               </div>
 
+              {/* Horário de funcionamento */}
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2 mb-3 mt-2">
+                  <Clock size={14} className="text-blue-600 dark:text-blue-400" />
+                  <span className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Horário de funcionamento
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    aparece para os clientes na busca
+                  </span>
+                </div>
+                <BusinessHoursEditor value={hours} onChange={setHours} />
+              </div>
+
               <div className="flex justify-end pt-2">
                 <button type="submit" disabled={savingBranch}
                         className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white
@@ -414,7 +515,7 @@ export default function ConfiguracoesPage() {
                                    shadow-sm shadow-blue-600/25">
                   {savingBranch
                     ? <><Loader2 size={14} className="animate-spin" /> Salvando…</>
-                    : <><Save size={14} /> Salvar endereço</>}
+                    : <><Save size={14} /> Salvar filial</>}
                 </button>
               </div>
             </Section>

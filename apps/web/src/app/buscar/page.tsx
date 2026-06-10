@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
 import type { DealershipPin } from './types';
@@ -11,8 +12,10 @@ import {
   LayoutDashboard, Loader2, ChevronDown, User, UserCircle,
   LocateFixed, X,
 } from 'lucide-react';
-import Sidebar from './Sidebar';
+import Sidebar, { directionsUrl } from './Sidebar';
 import HeaderActions from './HeaderActions';
+
+const DEALER_ROLES = ['tenant_admin', 'manager', 'salesperson'];
 
 /* Leaflet só roda no browser */
 const MapClient = dynamic(() => import('./MapClient'), {
@@ -28,8 +31,15 @@ const MapClient = dynamic(() => import('./MapClient'), {
 });
 
 export default function BuscarPage() {
-  const user  = useAuthStore((s) => s.user);
-  const clear = useAuthStore((s) => s.clear);
+  const user   = useAuthStore((s) => s.user);
+  const clear  = useAuthStore((s) => s.clear);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (user && DEALER_ROLES.includes(user.role)) {
+      router.replace('/dashboard');
+    }
+  }, [user, router]);
 
   const [pins, setPins]           = useState<DealershipPin[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -48,6 +58,13 @@ export default function BuscarPage() {
 
   /* ── Raio de busca (km) ─────────────────────────────────── */
   const [radiusKm, setRadiusKm] = useState<number | null>(null);
+
+  /* ── Animação de rota (Como chegar) ─────────────────────── */
+  const [routeTo, setRouteTo] = useState<DealershipPin | null>(null);
+
+  /* ── Prompt "compartilhar localização" (sem GPS) ────────── */
+  const [routePrompt, setRoutePrompt] = useState<DealershipPin | null>(null);
+  const [sharingLoc, setSharingLoc] = useState(false);
 
   useEffect(() => {
     api<DealershipPin[]>('/map/dealerships')
@@ -98,6 +115,57 @@ export default function BuscarPage() {
     setRadiusKm(km);
   }, []);
 
+  /* ── Rota: anima no mapa se houver GPS, senão pergunta ──── */
+  const handleRoute = useCallback((pin: DealershipPin) => {
+    if (userLocation && pin.latitude !== null && pin.longitude !== null) {
+      setRouteTo(pin);
+    } else {
+      // Sem GPS: pergunta se quer compartilhar a localização na rota
+      setRoutePrompt(pin);
+    }
+  }, [userLocation]);
+
+  /** Pede GPS e abre o Google Maps com a rota a partir do usuário */
+  function shareLocationAndRoute() {
+    const pin = routePrompt;
+    if (!pin) return;
+    if (!navigator.geolocation) {
+      window.open(directionsUrl(pin), '_blank', 'noopener,noreferrer');
+      setRoutePrompt(null);
+      return;
+    }
+    setSharingLoc(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setUserLocation(origin);
+        window.open(directionsUrl(pin, origin), '_blank', 'noopener,noreferrer');
+        setSharingLoc(false);
+        setRoutePrompt(null);
+      },
+      () => {
+        // Negou/erro: abre sem origem
+        window.open(directionsUrl(pin), '_blank', 'noopener,noreferrer');
+        setSharingLoc(false);
+        setRoutePrompt(null);
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 },
+    );
+  }
+
+  /** Abre o Google Maps sem compartilhar localização */
+  function routeWithoutLocation() {
+    if (routePrompt) window.open(directionsUrl(routePrompt), '_blank', 'noopener,noreferrer');
+    setRoutePrompt(null);
+  }
+
+  const handleRouteDone = useCallback(() => {
+    setRouteTo((pin) => {
+      if (pin) window.open(directionsUrl(pin), '_blank', 'noopener,noreferrer');
+      return null;
+    });
+  }, []);
+
   /* ── Deep link: /buscar?dealer=ID ──────────────────────── */
   useEffect(() => {
     if (pins.length === 0) return;
@@ -118,15 +186,17 @@ export default function BuscarPage() {
     <div className="h-screen flex flex-col overflow-hidden bg-[#0f172a]">
 
       {/* ── HEADER ─────────────────────────────────────────── */}
-      <header className="h-14 bg-[#0f172a] border-b border-white/[.06] flex items-center px-4 gap-3 shrink-0 relative z-[900]">
+      <header className="h-14 bg-[#0f172a]/85 backdrop-blur-xl border-b border-white/[.07] flex items-center px-4 gap-3 shrink-0 relative z-[900]">
 
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 shrink-0">
-          <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-900/50">
+        <Link href="/" className="flex items-center gap-2 shrink-0 group">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center
+                          shadow-lg shadow-blue-900/60 ring-1 ring-white/20
+                          group-hover:shadow-blue-700/60 group-hover:scale-105 transition-all">
             <MapPin size={14} className="text-white" />
           </div>
           <span className="font-extrabold text-white text-base tracking-tight hidden sm:block">
-            AutoConnect
+            Auto<span className="text-blue-400">Connect</span>
           </span>
         </Link>
 
@@ -136,13 +206,20 @@ export default function BuscarPage() {
           <span className="font-medium text-slate-500">Buscar concessionárias</span>
         </div>
 
-        {/* Badge de contagem */}
-        <div className="hidden sm:flex items-center gap-1.5 text-xs bg-white/[.05] text-slate-500 rounded-full px-3 py-1 select-none">
+        {/* Badge de contagem — com dot "ao vivo" */}
+        <div className="hidden sm:flex items-center gap-2 text-xs bg-white/[.05] border border-white/[.06] text-slate-400 rounded-full px-3 py-1 select-none">
           {loading ? (
             <><Loader2 size={11} className="animate-spin" /> Carregando…</>
           ) : (
-            <><MapPin size={11} className="text-blue-500" />
-              {withCoords.length} no mapa · {pins.length} total</>
+            <>
+              <span className="relative flex w-1.5 h-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+                <span className="relative inline-flex rounded-full w-1.5 h-1.5 bg-emerald-400" />
+              </span>
+              <span className="font-semibold text-slate-300">{withCoords.length}</span> no mapa
+              <span className="text-slate-600">·</span>
+              <span className="font-semibold text-slate-300">{pins.length}</span> total
+            </>
           )}
         </div>
 
@@ -252,16 +329,21 @@ export default function BuscarPage() {
 
       {/* ── Banner de geolocalização (discreto) ────────────── */}
       {!userLocation && !geoBannerDismissed && (
-        <div className="bg-blue-600/10 border-b border-blue-500/20 px-4 py-2 flex items-center gap-3 shrink-0">
-          <MapPin size={14} className="text-blue-400 shrink-0" />
+        <div className="bg-gradient-to-r from-blue-600/15 via-blue-600/[.07] to-transparent
+                        border-b border-blue-500/20 px-4 py-2 flex items-center gap-3 shrink-0">
+          <div className="w-6 h-6 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0">
+            <LocateFixed size={12} className="text-blue-400" />
+          </div>
           <p className="text-xs text-slate-300 flex-1">
             Quer ver as lojas e veículos <span className="font-semibold text-white">mais perto de você</span>?
           </p>
           <button
             onClick={handleLocate}
             disabled={geoLoading}
-            className="flex items-center gap-1.5 text-xs font-semibold bg-blue-600 text-white px-3 py-1.5
-                       rounded-lg hover:bg-blue-500 transition disabled:opacity-50 shrink-0"
+            className="flex items-center gap-1.5 text-xs font-semibold
+                       bg-gradient-to-r from-blue-600 to-blue-500 text-white px-3.5 py-1.5
+                       rounded-lg hover:from-blue-500 hover:to-blue-400
+                       shadow-md shadow-blue-900/40 transition-all disabled:opacity-50 shrink-0"
           >
             {geoLoading ? <Loader2 size={12} className="animate-spin" /> : <LocateFixed size={12} />}
             Usar minha localização
@@ -309,6 +391,7 @@ export default function BuscarPage() {
               onLocate={handleLocate}
               onMatchingTenantsChange={handleMatchingTenantsChange}
               onRadiusChange={handleRadiusChange}
+              onRoute={handleRoute}
             />
           )}
         </aside>
@@ -330,14 +413,19 @@ export default function BuscarPage() {
               userLocation={userLocation}
               matchingTenantIds={matchingTenantIds}
               radiusKm={radiusKm}
+              routeTo={routeTo}
+              onRouteDone={handleRouteDone}
             />
           )}
 
           {/* Empty state (sem coords) */}
           {!loading && !fetchError && withCoords.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center z-[900] bg-[#0f172a]/90 backdrop-blur-sm">
-              <div className="bg-[#1e293b] border border-white/[.08] rounded-2xl p-8 shadow-2xl text-center max-w-xs mx-4">
-                <MapPin size={40} className="text-white/10 mx-auto mb-3" />
+              <div className="bg-[#1e293b]/90 backdrop-blur border border-white/[.08] rounded-2xl p-8 shadow-2xl text-center max-w-xs mx-4">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/20 to-blue-700/10
+                                ring-1 ring-blue-500/20 flex items-center justify-center mx-auto mb-4">
+                  <MapPin size={28} className="text-blue-400/70" />
+                </div>
                 <h3 className="font-bold text-white mb-1">Ainda sem pins no mapa</h3>
                 <p className="text-sm text-slate-500 leading-relaxed">
                   Nenhuma concessionária com localização por aqui ainda. Volte em breve!
@@ -352,9 +440,10 @@ export default function BuscarPage() {
               onClick={() => setMobile('list')}
               className="absolute bottom-6 left-1/2 -translate-x-1/2 md:hidden z-[1000]
                          flex items-center gap-2
-                         bg-[#1e293b] text-white text-sm font-bold
-                         px-5 py-3 rounded-2xl shadow-2xl border border-white/[.1]
-                         hover:bg-[#334155] transition-colors"
+                         bg-gradient-to-r from-blue-600 to-blue-500 text-white text-sm font-bold
+                         px-5 py-3 rounded-full shadow-2xl shadow-blue-900/60
+                         ring-1 ring-white/20 backdrop-blur
+                         hover:from-blue-500 hover:to-blue-400 active:scale-95 transition-all"
             >
               <List size={15} />
               Ver {pins.length} concessionária{pins.length !== 1 ? 's' : ''}
@@ -362,6 +451,54 @@ export default function BuscarPage() {
           )}
         </main>
       </div>
+
+      {/* ── Modal: compartilhar localização na rota ─────────── */}
+      {routePrompt && (
+        <div
+          className="fixed inset-0 z-[2100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => !sharingLoc && setRoutePrompt(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm bg-[#1e293b] border border-white/[.08] rounded-2xl p-5 shadow-2xl"
+          >
+            <div className="w-12 h-12 rounded-2xl bg-blue-500/15 ring-1 ring-blue-500/25
+                            flex items-center justify-center mx-auto mb-3">
+              <LocateFixed size={22} className="text-blue-400" />
+            </div>
+            <h3 className="text-sm font-bold text-white text-center">
+              Traçar rota até {routePrompt.tenant.tradeName}?
+            </h3>
+            <p className="text-xs text-slate-400 text-center mt-1.5 leading-relaxed">
+              Compartilhe sua localização para abrir o trajeto completo no Google Maps,
+              já saindo de onde você está.
+            </p>
+            <div className="flex flex-col gap-2 mt-4">
+              <button
+                onClick={shareLocationAndRoute}
+                disabled={sharingLoc}
+                className="flex items-center justify-center gap-2 py-2.5 rounded-xl
+                           bg-gradient-to-r from-blue-600 to-blue-500 text-white text-sm font-bold
+                           hover:from-blue-500 hover:to-blue-400 shadow-lg shadow-blue-900/50
+                           transition-all disabled:opacity-60"
+              >
+                {sharingLoc
+                  ? <><Loader2 size={15} className="animate-spin" /> Localizando…</>
+                  : <><LocateFixed size={14} /> Compartilhar e traçar rota</>}
+              </button>
+              <button
+                onClick={routeWithoutLocation}
+                disabled={sharingLoc}
+                className="py-2.5 rounded-xl border border-white/[.08] text-sm font-medium
+                           text-slate-400 hover:bg-white/[.04] hover:text-slate-200
+                           transition-all disabled:opacity-50"
+              >
+                Abrir sem compartilhar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { io, Socket } from 'socket.io-client';
 import { Loader2, X, Send } from 'lucide-react';
 import { api } from '@/lib/api';
+import ProposalBubble, { getProposal } from '@/components/chat/ProposalBubble';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
@@ -13,6 +15,7 @@ interface ChatMessage {
   createdAt: string;
   senderUserId: string | null;
   sender: { fullName: string } | null;
+  metadata?: unknown;
 }
 
 /** Drawer de chat reutilizável — usado no /perfil, catálogo e página da loja */
@@ -30,6 +33,9 @@ export default function ChatDrawer({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
   const socketRef = useRef<Socket | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -40,6 +46,8 @@ export default function ChatDrawer({
     const socket = io(`${API_URL.replace('/api/v1', '')}/chat`, { auth: { token }, transports: ['websocket'] });
     socketRef.current = socket;
     socket.on('conversation:message', (m: ChatMessage) => setMessages((p) => [...p, m]));
+    socket.on('conversation:message:update', (m: ChatMessage) =>
+      setMessages((p) => p.map((x) => (x.id === m.id ? m : x))));
     socket.emit('conversation:join', { conversationId });
     return () => { socket.disconnect(); };
   }, [conversationId, token]);
@@ -52,7 +60,10 @@ export default function ChatDrawer({
     setText('');
   }
 
-  return (
+  // Portal no body: escapa de stacking contexts dos pais (ex: header z-[900] no /buscar)
+  if (!mounted) return null;
+
+  return createPortal(
     <>
       <div onClick={onClose} className="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm" />
       <aside className="fixed top-0 right-0 z-[2001] h-full w-full max-w-md bg-[#0f172a] border-l border-white/[.08] shadow-2xl flex flex-col text-white">
@@ -77,6 +88,24 @@ export default function ChatDrawer({
             <p className="text-center text-xs text-slate-600 pt-10">Nenhuma mensagem ainda. Diga olá! 👋</p>
           ) : messages.map((m) => {
             const mine = m.senderUserId === myId;
+            const proposal = getProposal(m.metadata);
+            if (proposal) {
+              return (
+                <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                  <ProposalBubble
+                    proposal={proposal}
+                    mine={mine}
+                    canRespond={!mine}
+                    onRespond={(accept) =>
+                      new Promise<void>((resolve) => {
+                        socketRef.current?.emit('proposal:respond', { messageId: m.id, accept }, () => resolve());
+                        setTimeout(resolve, 3000);
+                      })
+                    }
+                  />
+                </div>
+              );
+            }
             return (
               <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[78%] rounded-2xl px-3.5 py-2 text-sm ${mine ? 'bg-blue-600 text-white rounded-tr-sm' : 'bg-[#1e293b] text-slate-200 rounded-tl-sm'}`}>
@@ -100,6 +129,7 @@ export default function ChatDrawer({
           </button>
         </div>
       </aside>
-    </>
+    </>,
+    document.body,
   );
 }

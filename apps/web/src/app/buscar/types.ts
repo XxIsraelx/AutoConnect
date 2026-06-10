@@ -9,6 +9,7 @@ export interface DealershipPin {
   latitude: number | null;
   longitude: number | null;
   vehiclesCount: number;
+  businessHours?: unknown;
   tenant: {
     id: string;
     tradeName: string;

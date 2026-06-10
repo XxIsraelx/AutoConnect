@@ -9,12 +9,13 @@ import {
   SlidersHorizontal, ChevronLeft, ChevronRight,
   Navigation, Loader2, ExternalLink,
   Fuel, Gauge, Settings2, DoorOpen,
-  Heart, MessageCircle, Calculator, Scale,
+  Heart, MessageCircle, Calculator, Scale, CalendarPlus,
   CheckSquare, Square, ArrowRight, Check, AlertCircle,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import ChatDrawer from '@/components/ChatDrawer';
+import ScheduleModal, { type ScheduleBranch } from '@/components/ScheduleModal';
 import type {
   PublicDealer, PublicVehicle, PublicVehicleDetail,
   VehiclesPage, PublicBrand,
@@ -586,6 +587,7 @@ function VehicleDrawer({
   dealerPhone,
   dealerName,
   dealerLogo,
+  branches,
   onClose,
   isFav,
   onFavToggle,
@@ -595,6 +597,7 @@ function VehicleDrawer({
   dealerPhone: string | null;
   dealerName: string;
   dealerLogo: string | null;
+  branches: ScheduleBranch[];
   onClose: () => void;
   isFav: boolean;
   onFavToggle: () => void;
@@ -606,6 +609,7 @@ function VehicleDrawer({
   const [imgIdx, setImgIdx]     = useState(0);
   const [showCalc, setShowCalc] = useState(false);
   const [showLead, setShowLead] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
   const [chatId, setChatId]     = useState<string | null>(null);
   const [startingChat, setStartingChat] = useState(false);
 
@@ -831,6 +835,19 @@ function VehicleDrawer({
                 )}
               </div>
 
+              {/* Agendar test drive */}
+              {canChat && (
+                <button
+                  onClick={() => setShowSchedule(true)}
+                  className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl
+                             bg-amber-500/10 border border-amber-500/30 text-amber-400 font-bold text-sm
+                             hover:bg-amber-500/20 transition-colors"
+                >
+                  <CalendarPlus size={15} />
+                  Agendar test drive
+                </button>
+              )}
+
               {/* Conversar pelo chat interno */}
               {canChat && (
                 <button
@@ -910,6 +927,22 @@ function VehicleDrawer({
           vehicle={vehicle}
           tenantId={tenantId}
           onClose={() => setShowLead(false)}
+        />
+      )}
+
+      {/* Agendamento de test drive */}
+      {showSchedule && vehicle && (
+        <ScheduleModal
+          tenantId={tenantId}
+          dealerName={dealerName}
+          vehicle={{
+            id: vehicle.id,
+            label: `${vehicle.brand.name} ${vehicle.model.name} ${vehicle.versionName ?? ''} ${vehicle.yearModel}`.replace(/\s+/g, ' ').trim(),
+            price: vehicle.promoPrice ?? vehicle.price,
+            imageUrl: vehicle.images[0]?.url ?? null,
+          }}
+          branches={branches}
+          onClose={() => setShowSchedule(false)}
         />
       )}
 
@@ -1448,6 +1481,7 @@ export default function CatalogoContent() {
           dealerPhone={dealerPhone}
           dealerName={dealer?.tradeName ?? 'Concessionária'}
           dealerLogo={dealer?.logoUrl ?? null}
+          branches={dealer?.branches ?? []}
           onClose={() => setSelectedVehicleId(null)}
           isFav={favIds.has(selectedVehicleId)}
           onFavToggle={() => handleFavToggle(selectedVehicleId)}

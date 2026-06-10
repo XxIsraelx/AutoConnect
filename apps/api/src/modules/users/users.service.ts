@@ -105,6 +105,38 @@ export class UsersService {
     return this.me(userId);
   }
 
+  /** Altera a função de um membro da equipe (admin) */
+  async changeRole(tenantId: string, memberId: string, role: string): Promise<unknown> {
+    const allowed = ['tenant_admin', 'manager', 'salesperson'];
+    if (!allowed.includes(role)) throw new BadRequestException('Função inválida.');
+    const member = await this.prisma.user.findFirst({ where: { id: memberId, tenantId } });
+    if (!member) throw new BadRequestException('Membro não encontrado.');
+    return this.prisma.user.update({
+      where: { id: memberId },
+      data: { role: role as never },
+      select: { id: true, role: true, fullName: true },
+    });
+  }
+
+  /** Ativa/suspende (remove) um membro (admin) */
+  async setStatus(
+    tenantId: string,
+    memberId: string,
+    actorId: string,
+    status: 'active' | 'suspended',
+  ): Promise<unknown> {
+    if (memberId === actorId) {
+      throw new BadRequestException('Você não pode desativar a própria conta.');
+    }
+    const member = await this.prisma.user.findFirst({ where: { id: memberId, tenantId } });
+    if (!member) throw new BadRequestException('Membro não encontrado.');
+    return this.prisma.user.update({
+      where: { id: memberId },
+      data: { status: status as never },
+      select: { id: true, status: true, fullName: true },
+    });
+  }
+
   /** Troca a senha do usuário */
   async changePassword(
     userId: string,

@@ -5,6 +5,12 @@ import { Providers } from '@/components/providers';
 export const metadata: Metadata = {
   title: 'AutoConnect',
   description: 'Plataforma SaaS para concessionárias',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: { capable: true, title: 'AutoConnect', statusBarStyle: 'black-translucent' },
+};
+
+export const viewport = {
+  themeColor: '#0f172a',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

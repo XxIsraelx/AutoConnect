@@ -80,7 +80,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('conversation:send')
   async onSend(
     @ConnectedSocket() client: AuthenticatedSocket,
-    @MessageBody() data: { conversationId: string; body: string; kind?: string },
+    @MessageBody() data: {
+      conversationId: string;
+      body: string;
+      kind?: string;
+      metadata?: Record<string, unknown>;
+    },
   ) {
     if (!client.userId) return { ok: false };
 
@@ -96,6 +101,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
     if (!conv) return { ok: false, error: 'Sem acesso' };
 
+    // Propostas só podem ser enviadas pela equipe da concessionária
+    if (data.metadata?.proposal && client.role === 'customer') {
+      return { ok: false, error: 'Apenas a concessionária envia propostas' };
+    }
+
     const msg = await this.prisma.message.create({
       data: {
         conversationId: data.conversationId,
@@ -103,6 +113,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         senderUserId:   client.userId,
         body:           data.body,
         kind:           (data.kind ?? 'text') as never,
+        ...(data.metadata ? { metadata: data.metadata as never } : {}),
       },
       include: {
         sender: { select: { id: true, fullName: true, avatarUrl: true } },
@@ -116,6 +127,48 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     this.server.to(`conversation:${data.conversationId}`).emit('conversation:message', msg);
     return { ok: true, messageId: msg.id };
+  }
+
+  /** Cliente aceita ou recusa uma proposta enviada pela concessionária */
+  @SubscribeMessage('proposal:respond')
+  async onProposalRespond(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() data: { messageId: string; accept: boolean },
+  ) {
+    if (!client.userId) return { ok: false };
+
+    const msg = await this.prisma.message.findFirst({
+      where: { id: data.messageId },
+      include: { conversation: { select: { id: true, customerUserId: true } } },
+    });
+    if (!msg || msg.conversation.customerUserId !== client.userId) {
+      return { ok: false, error: 'Sem acesso' };
+    }
+
+    const meta = (msg.metadata ?? {}) as Record<string, unknown>;
+    const proposal = meta.proposal as Record<string, unknown> | undefined;
+    if (!proposal) return { ok: false, error: 'Mensagem não é uma proposta' };
+    if (proposal.status !== 'pending') return { ok: false, error: 'Proposta já respondida' };
+
+    const updated = await this.prisma.message.update({
+      where: { id: msg.id },
+      data: {
+        metadata: {
+          ...meta,
+          proposal: {
+            ...proposal,
+            status: data.accept ? 'accepted' : 'declined',
+            respondedAt: new Date().toISOString(),
+          },
+        } as never,
+      },
+      include: { sender: { select: { id: true, fullName: true, avatarUrl: true } } },
+    });
+
+    this.server
+      .to(`conversation:${msg.conversation.id}`)
+      .emit('conversation:message:update', updated);
+    return { ok: true };
   }
 
   @SubscribeMessage('conversation:typing')

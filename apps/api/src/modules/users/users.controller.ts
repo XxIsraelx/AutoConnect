@@ -1,8 +1,10 @@
-import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CurrentUser, TenantId } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+
+interface AuthUser { id: string; role: string; tenantId: string | null }
 
 @Controller('users')
 export class UsersController {
@@ -39,5 +41,29 @@ export class UsersController {
   @Roles('tenant_admin', 'manager')
   list(@TenantId() tenantId: string) {
     return this.users.listByTenant(tenantId);
+  }
+
+  /** PATCH /users/:id/role — altera função de um membro (admin) */
+  @Patch(':id/role')
+  @UseGuards(RolesGuard)
+  @Roles('tenant_admin')
+  changeRole(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { role: string },
+  ) {
+    return this.users.changeRole(user.tenantId!, id, body.role);
+  }
+
+  /** PATCH /users/:id/status — ativa/desativa membro (admin) */
+  @Patch(':id/status')
+  @UseGuards(RolesGuard)
+  @Roles('tenant_admin')
+  setStatus(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { status: 'active' | 'suspended' },
+  ) {
+    return this.users.setStatus(user.tenantId!, id, user.id, body.status);
   }
 }

@@ -184,6 +184,7 @@ model Tenant {
   leads         Lead[]
   appointments  Appointment[]
   conversations Conversation[]
+  salesGoals    SalesGoal[]
 
   @@map("tenants")
 }
@@ -282,6 +283,7 @@ model User {
   vehicleViews        VehicleView[]
   priceAlerts         PriceAlert[]
   savedSearches       SavedSearch[]
+  salesGoals          SalesGoal[]
 
   @@index([tenantId])
   @@index([role])
@@ -803,4 +805,20 @@ model SavedSearch {
 
   @@index([userId])
   @@map("saved_searches")
+}
+
+model SalesGoal {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid // null = meta geral da equipe
+  period    String   // "YYYY-MM"
+  target    Int      // meta de vendas (leads ganhos) no período
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, period])
+  @@map("sales_goals")
 }

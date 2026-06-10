@@ -47,6 +47,13 @@ export class InvitationsController {
     return this.svc.listByTenant(tenantId);
   }
 
+  @Post(':id/resend')
+  @UseGuards(RolesGuard)
+  @Roles('tenant_admin', 'manager')
+  async resend(@Param('id') id: string, @TenantId() tenantId: string) {
+    return this.svc.resend(tenantId, id);
+  }
+
   @Delete(':id')
   @UseGuards(RolesGuard)
   @Roles('tenant_admin', 'manager')

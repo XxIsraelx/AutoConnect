@@ -8,11 +8,13 @@ import {
   LocateFixed, Loader2, Navigation, ExternalLink,
   Share2, Check, Map as MapIcon,
   Heart, Bell, GitCompare, ArrowUpDown, Bookmark,
-  BookmarkPlus, Trash2,
+  BookmarkPlus, Trash2, Clock,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import CompareDrawer from './CompareDrawer';
+import { getOpenStatus, getOpenHoursList } from '@/lib/businessHours';
+import { getVisited, markVisited } from './visited';
 import type { DealershipPin, PublicVehicle, VehiclesPage, PublicBrand, SavedSearch } from './types';
 
 /* ── Helpers ─────────────────────────────────────────────── */
@@ -47,10 +49,15 @@ function formatDistance(km: number) {
   return `${Math.round(km)} km`;
 }
 
-/** Abre Google Maps com rota ou busca de endereço */
-function directionsUrl(pin: DealershipPin) {
+/** Abre Google Maps com rota ou busca de endereço.
+ *  Se `origin` for fornecido, a rota já parte da localização do usuário. */
+export function directionsUrl(
+  pin: DealershipPin,
+  origin?: { lat: number; lng: number } | null,
+) {
   if (pin.latitude && pin.longitude) {
-    return `https://www.google.com/maps/dir/?api=1&destination=${pin.latitude},${pin.longitude}`;
+    const base = `https://www.google.com/maps/dir/?api=1&destination=${pin.latitude},${pin.longitude}`;
+    return origin ? `${base}&origin=${origin.lat},${origin.lng}` : base;
   }
   const addr = [pin.addressLine, pin.city, pin.state].filter(Boolean).join(', ');
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr || pin.name)}`;
@@ -311,33 +318,83 @@ function AlertModal({
   );
 }
 
+/* ── Status de funcionamento (badge) ─────────────────────── */
+
+function OpenBadge({ businessHours, className = '' }: { businessHours: unknown; className?: string }) {
+  const status = getOpenStatus(businessHours);
+  if (status.state === 'unknown') return null;
+  const open = status.state === 'open';
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-bold ${className}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${open ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+      <span className={open ? 'text-emerald-400' : 'text-amber-400/90'}>
+        {open ? 'Aberto' : 'Fechado'}
+      </span>
+      <span className="text-slate-500 font-medium">· {status.label}</span>
+    </span>
+  );
+}
+
+/* ── Avatar da concessionária (logo ou iniciais) ─────────── */
+
+function DealerAvatar({ pin, size = 44 }: { pin: DealershipPin; size?: number }) {
+  const initials = pin.tenant.tradeName.slice(0, 2).toUpperCase();
+  const logo = pin.tenant.logoUrl;
+  const radius = size >= 56 ? 'rounded-2xl' : 'rounded-xl';
+  return (
+    <div
+      className={`${radius} bg-gradient-to-br from-blue-500 to-blue-700 ring-1 ring-white/15
+                  flex items-center justify-center shrink-0 overflow-hidden`}
+      style={{ width: size, height: size }}
+    >
+      {logo
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={logo} alt="" className="w-full h-full object-cover" />
+        : <span className="text-white font-extrabold tracking-tight"
+                style={{ fontSize: size >= 56 ? 18 : 14 }}>{initials}</span>}
+    </div>
+  );
+}
+
 /* ── Dealer card ─────────────────────────────────────────── */
 
 function DealerCard({
-  pin, dist, onClick,
-}: { pin: DealershipPin; dist: number | null; onClick: () => void }) {
-  const initials  = pin.tenant.tradeName.slice(0, 2).toUpperCase();
+  pin, dist, onClick, onRoute, visited,
+}: {
+  pin: DealershipPin; dist: number | null; onClick: () => void;
+  onRoute?: (pin: DealershipPin) => void; visited?: boolean;
+}) {
   const hasCoords = pin.latitude !== null;
 
   return (
-    <div className="relative group">
+    <div className="relative group dealer-card-in">
       <button
         onClick={onClick}
-        className="w-full text-left p-4 rounded-2xl border border-white/[.07] bg-[#1e293b]
-                   hover:border-blue-500/50 hover:shadow-[0_0_0_1px_rgba(59,130,246,0.2),0_4px_20px_rgba(59,130,246,0.08)]
+        className="w-full text-left p-4 rounded-2xl border border-white/[.07]
+                   bg-gradient-to-b from-[#1e293b] to-[#1a2438]
+                   hover:border-blue-500/50 hover:-translate-y-0.5
+                   hover:shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_8px_28px_rgba(59,130,246,0.12)]
                    transition-all duration-200"
       >
         <div className="flex items-start gap-3">
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700
-                          flex items-center justify-center shrink-0
-                          group-hover:shadow-[0_0_0_3px_rgba(59,130,246,.2)] transition-shadow">
-            <span className="text-white text-sm font-extrabold tracking-tight">{initials}</span>
+          <div className="group-hover:shadow-[0_0_0_3px_rgba(59,130,246,.25)] group-hover:scale-105
+                          transition-all rounded-xl shrink-0">
+            <DealerAvatar pin={pin} size={44} />
           </div>
           <div className="flex-1 min-w-0 pr-8">
-            <p className="font-bold text-white text-sm leading-snug truncate
-                          group-hover:text-blue-400 transition-colors">
-              {pin.tenant.tradeName}
-            </p>
+            <div className="flex items-center gap-1.5">
+              <p className="font-bold text-white text-sm leading-snug truncate
+                            group-hover:text-blue-400 transition-colors">
+                {pin.tenant.tradeName}
+              </p>
+              {visited && (
+                <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide
+                                 text-slate-400 bg-white/[.07] border border-white/[.08]
+                                 px-1.5 py-px rounded-full">
+                  Visitado
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-500 truncate mt-0.5">{pin.name}</p>
             {(pin.city || pin.state) && (
               <div className="flex items-center gap-1 mt-1.5">
@@ -347,6 +404,7 @@ function DealerCard({
                 </span>
               </div>
             )}
+            <OpenBadge businessHours={pin.businessHours} className="mt-1.5" />
           </div>
           <div className="flex flex-col items-end gap-1.5 shrink-0 absolute right-4 top-4">
             <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full
@@ -374,7 +432,10 @@ function DealerCard({
           href={directionsUrl(pin)}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={e => e.stopPropagation()}
+          onClick={e => {
+            e.stopPropagation();
+            if (onRoute) { e.preventDefault(); onRoute(pin); }
+          }}
           className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100
                      flex items-center gap-1 text-[11px] font-semibold text-slate-500
                      hover:text-blue-400 transition-all"
@@ -416,7 +477,12 @@ function ShareButton({ pin }: { pin: DealershipPin }) {
 
 /* ── Detail view ─────────────────────────────────────────── */
 
-function DealerDetail({ pin, onBack }: { pin: DealershipPin; onBack: () => void }) {
+function DealerDetail({
+  pin, onBack, onRoute,
+}: {
+  pin: DealershipPin; onBack: () => void;
+  onRoute?: (pin: DealershipPin) => void;
+}) {
   const [vehicles, setVehicles] = useState<PublicVehicle[]>([]);
   const [loadingV, setLoadingV] = useState(true);
   const [total, setTotal]       = useState(0);
@@ -429,7 +495,7 @@ function DealerDetail({ pin, onBack }: { pin: DealershipPin; onBack: () => void 
       .finally(() => setLoadingV(false));
   }, [pin.tenant.id]);
 
-  const initials = pin.tenant.tradeName.slice(0, 2).toUpperCase();
+  const hoursList = getOpenHoursList(pin.businessHours);
 
   return (
     <div className="flex flex-col h-full bg-[#0f172a]">
@@ -445,21 +511,24 @@ function DealerDetail({ pin, onBack }: { pin: DealershipPin; onBack: () => void 
         </button>
 
         <div className="flex items-start gap-3">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700
-                          flex items-center justify-center shrink-0 shadow-lg shadow-blue-900/50">
-            <span className="text-white text-lg font-extrabold tracking-tight">{initials}</span>
+          <div className="shadow-lg shadow-blue-900/50 rounded-2xl shrink-0">
+            <DealerAvatar pin={pin} size={56} />
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="font-extrabold text-white text-[15px] leading-tight">
               {pin.tenant.tradeName}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5 leading-snug">{pin.name}</p>
+            <OpenBadge businessHours={pin.businessHours} className="mt-1.5" />
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <ShareButton pin={pin} />
               <a
                 href={directionsUrl(pin)}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={e => {
+                  if (onRoute && pin.latitude !== null) { e.preventDefault(); onRoute(pin); }
+                }}
                 className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl
                            border border-white/[.08] bg-white/[.04] text-slate-400
                            hover:border-blue-500/50 hover:text-blue-400 transition-all"
@@ -503,6 +572,28 @@ function DealerDetail({ pin, onBack }: { pin: DealershipPin; onBack: () => void 
               {pin.email}
             </span>
           </a>
+        )}
+
+        {/* Horário de funcionamento */}
+        {hoursList && (
+          <div className="flex items-start gap-2.5 pt-0.5">
+            <div className="w-6 h-6 rounded-lg bg-blue-500/15 flex items-center justify-center shrink-0 mt-0.5">
+              <Clock size={12} className="text-blue-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              {hoursList.map((d) => (
+                <div key={d.label}
+                     className={`flex items-center justify-between text-xs py-0.5
+                       ${d.today ? 'text-white font-semibold' : 'text-slate-400'}`}>
+                  <span className="flex items-center gap-1.5">
+                    {d.label}
+                    {d.today && <span className="text-[9px] text-blue-400 font-bold uppercase">hoje</span>}
+                  </span>
+                  <span className={d.closed ? 'text-slate-600' : ''}>{d.hours}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 
@@ -584,12 +675,13 @@ interface Props {
   onLocate:     () => void;
   onMatchingTenantsChange: (ids: Set<string> | null) => void;
   onRadiusChange:          (km: number | null)        => void;
+  onRoute?:                (pin: DealershipPin)       => void;
 }
 
 export default function Sidebar({
   pins, loading, selected, onSelect,
   userLocation, geoLoading, onLocate,
-  onMatchingTenantsChange, onRadiusChange,
+  onMatchingTenantsChange, onRadiusChange, onRoute,
 }: Props) {
 
   /* ── Estados ─────────────────────────────────────────────── */
@@ -631,6 +723,16 @@ export default function Sidebar({
 
   // Marcas disponíveis
   const [brands, setBrands] = useState<PublicBrand[]>([]);
+
+  // Histórico de concessionárias visitadas (localStorage)
+  const [visited, setVisited] = useState<Set<string>>(new Set());
+  useEffect(() => { setVisited(getVisited()); }, []);
+
+  const handleSelectPin = useCallback((pin: DealershipPin) => {
+    markVisited(pin.id);
+    setVisited((prev) => new Set(prev).add(pin.id));
+    onSelect(pin);
+  }, [onSelect]);
 
   /* ── Carrega marcas ──────────────────────────────────────── */
   useEffect(() => {
@@ -847,7 +949,7 @@ export default function Sidebar({
     setRadiusKm(km);
   }, []);
 
-  if (selected) return <DealerDetail pin={selected} onBack={() => onSelect(null)} />;
+  if (selected) return <DealerDetail pin={selected} onBack={() => onSelect(null)} onRoute={onRoute} />;
 
   return (
     <div className="flex flex-col h-full bg-[#0f172a]">
@@ -1283,7 +1385,7 @@ export default function Sidebar({
                     dealerName={tenantNames.get(v.tenantId)}
                     onClick={() => {
                       const pin = pins.find(p => p.tenant.id === v.tenantId);
-                      if (pin) onSelect(pin);
+                      if (pin) handleSelectPin(pin);
                     }}
                     isFav={favIds.has(v.id)}
                     onToggleFav={() => toggleFav(v)}
@@ -1364,7 +1466,9 @@ export default function Sidebar({
                     key={pin.id}
                     pin={pin}
                     dist={pin.dist}
-                    onClick={() => onSelect(pin)}
+                    onClick={() => handleSelectPin(pin)}
+                    onRoute={onRoute}
+                    visited={visited.has(pin.id)}
                   />
                 ))}
               </>

@@ -19,16 +19,51 @@ import { cn } from '@/lib/utils';
 const POLL_INTERVAL = 30_000; // 30 segundos
 const STORAGE_KEY   = 'ac_leads_seen_count';
 
+function notify(title: string, body: string, href: string) {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  const n = new Notification(title, { body, icon: '/icon-192.png', tag: href });
+  n.onclick = () => { window.focus(); window.location.href = href; n.close(); };
+}
+
 function useLeadsBadge(token: string | null) {
   const [badge, setBadge] = useState(0);
+  const [apptBadge, setApptBadge] = useState(0);
+  const [chatBadge, setChatBadge] = useState(0);
+  const prev = useState<{ leads: number | null; appts: number | null; msgs: number | null }>(
+    () => ({ leads: null, appts: null, msgs: null }),
+  )[0];
 
   const fetchNew = useCallback(async () => {
     if (!token) return;
     try {
-      const data = await api<{ leadsNew: number }>('/tenant/stats', { token });
-      setBadge(data.leadsNew ?? 0);
+      const data = await api<{
+        leadsNew: number;
+        appointmentsPending?: number;
+        unreadMessages?: number;
+      }>('/tenant/stats', { token });
+      const leads = data.leadsNew ?? 0;
+      const appts = data.appointmentsPending ?? 0;
+      const msgs  = data.unreadMessages ?? 0;
+
+      // Notifica apenas quando o contador AUMENTA (evita spam no primeiro load)
+      if (prev.leads !== null && leads > prev.leads) {
+        notify('Novo lead recebido 🚗', 'Um cliente demonstrou interesse. Responda rápido!', '/leads');
+      }
+      if (prev.appts !== null && appts > prev.appts) {
+        notify('Novo agendamento 📅', 'Um cliente solicitou um agendamento. Confirme o horário.', '/agendamentos');
+      }
+      if (prev.msgs !== null && msgs > prev.msgs) {
+        notify('Nova mensagem 💬', 'Um cliente enviou uma mensagem no chat.', '/chat');
+      }
+      prev.leads = leads;
+      prev.appts = appts;
+      prev.msgs  = msgs;
+
+      setBadge(leads);
+      setApptBadge(appts);
+      setChatBadge(msgs);
     } catch { /* ignora erros silenciosamente */ }
-  }, [token]);
+  }, [token, prev]);
 
   useEffect(() => {
     fetchNew();
@@ -36,7 +71,44 @@ function useLeadsBadge(token: string | null) {
     return () => clearInterval(id);
   }, [fetchNew]);
 
-  return badge;
+  return { badge, apptBadge, chatBadge };
+}
+
+/* ── Pedido de permissão de notificação ──────────────────── */
+function NotificationPrompt() {
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission === 'default'
+        && localStorage.getItem('autoconnect:notif-dismissed') !== '1') {
+      setShow(true);
+    }
+  }, []);
+
+  if (!show) return null;
+
+  return (
+    <div className="mx-3 mb-2 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50">
+      <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug mb-2">
+        Receba avisos de novos leads e agendamentos mesmo com a aba em segundo plano.
+      </p>
+      <div className="flex gap-1.5">
+        <button
+          onClick={() => Notification.requestPermission().finally(() => setShow(false))}
+          className="flex-1 text-[11px] font-bold py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition-colors"
+        >
+          Ativar
+        </button>
+        <button
+          onClick={() => { localStorage.setItem('autoconnect:notif-dismissed', '1'); setShow(false); }}
+          className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        >
+          Agora não
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /* ── Aviso global ─────────────────────────────────────────── */
@@ -96,15 +168,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { token, user, clear } = useAuthStore();
   const [hydrated, setHydrated] = useState(false);
 
-  const leadsNew = useLeadsBadge(token);
+  const { badge: leadsNew, apptBadge, chatBadge } = useLeadsBadge(token);
   const { ann, dismiss } = useAnnouncement();
 
   useEffect(() => { setHydrated(true); }, []);
   useEffect(() => {
-    if (hydrated && !token) router.replace('/login');
-  }, [hydrated, token, router]);
+    if (!hydrated) return;
+    if (!token) { router.replace('/login'); return; }
+    // Clientes não acessam o painel da concessionária
+    if (user?.role === 'customer') router.replace('/perfil');
+  }, [hydrated, token, user, router]);
 
-  if (!hydrated || !token) return null;
+  if (!hydrated || !token || user?.role === 'customer') return null;
 
   function handleLogout() {
     clear();
@@ -130,7 +205,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           {nav.map(({ href, label, icon: Icon, badge: showBadge }) => {
             const active     = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
-            const badgeCount = showBadge ? leadsNew : 0;
+            const badgeCount = showBadge
+              ? leadsNew
+              : href === '/agendamentos' ? apptBadge
+              : href === '/chat'         ? chatBadge : 0;
 
             return (
               <Link
@@ -167,6 +245,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             );
           })}
         </nav>
+
+        {/* Notificações do navegador */}
+        <NotificationPrompt />
 
         {/* User */}
         <div className="px-3 py-4 border-t border-slate-200 dark:border-slate-800">

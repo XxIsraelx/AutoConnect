@@ -8,14 +8,39 @@ import { JwtService } from '@nestjs/jwt';
 import * as crypto from 'node:crypto';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { EmailService } from '../../common/email/email.service';
 import type { InviteUserInput } from '@autoconnect/shared';
+
+const ROLE_LABELS: Record<string, string> = {
+  tenant_admin: 'Administrador',
+  manager: 'Gerente',
+  salesperson: 'Vendedor',
+  receptionist: 'Recepcionista',
+};
 
 @Injectable()
 export class InvitationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly email: EmailService,
   ) {}
+
+  private acceptUrl(token: string): string {
+    return `${process.env.WEB_URL ?? 'http://localhost:3000'}/invite/${token}`;
+  }
+
+  private async sendInviteEmail(tenantId: string, email: string, role: string, token: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId }, select: { tradeName: true },
+    });
+    this.email.sendTeamInvite({
+      to: email,
+      inviteUrl: this.acceptUrl(token),
+      roleLabel: ROLE_LABELS[role] ?? role,
+      tenantName: tenant?.tradeName ?? 'concessionária',
+    }).catch(() => { /* não bloqueia a criação do convite */ });
+  }
 
   async create(
     tenantId: string,
@@ -44,15 +69,37 @@ export class InvitationsService {
       },
     });
 
-    // TODO Sprint 1.5: enfileirar email via BullMQ + Resend
-    // por enquanto, devolvemos o token pra dev/debug
+    // envia o e-mail de convite (não bloqueia a resposta)
+    await this.sendInviteEmail(tenantId, input.email, input.role, token);
+
     return {
       id: invitation.id,
       email: invitation.email,
       role: invitation.role,
       expiresAt: invitation.expiresAt,
-      acceptUrl: `${process.env.WEB_URL ?? 'http://localhost:3000'}/invite/${token}`,
+      acceptUrl: this.acceptUrl(token),
     };
+  }
+
+  /** Reenvia um convite pendente (gera novo token + renova validade) */
+  async resend(tenantId: string, invitationId: string) {
+    const inv = await this.prisma.userInvitation.findFirst({
+      where: { id: invitationId, tenantId, acceptedAt: null },
+    });
+    if (!inv) throw new NotFoundException('Convite não encontrado.');
+
+    const token = crypto.randomBytes(32).toString('base64url');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    await this.prisma.userInvitation.update({
+      where: { id: invitationId },
+      data: { tokenHash, expiresAt },
+    });
+
+    await this.sendInviteEmail(tenantId, inv.email, inv.role, token);
+
+    return { id: invitationId, email: inv.email, role: inv.role, expiresAt, acceptUrl: this.acceptUrl(token) };
   }
 
   async listByTenant(tenantId: string) {

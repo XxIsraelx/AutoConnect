@@ -88,6 +88,88 @@ export class EmailService {
     await this.send(to, subject, html, leadUrl);
   }
 
+  async sendTeamInvite(opts: {
+    to: string;
+    inviteUrl: string;
+    roleLabel: string;
+    tenantName: string;
+  }): Promise<void> {
+    const subject = `Convite para a equipe da ${opts.tenantName}`;
+    const html = this.buildHtml(
+      `Você foi convidado! 🎉`,
+      `A <b>${opts.tenantName}</b> convidou você para fazer parte da equipe como <b>${opts.roleLabel}</b> no AutoConnect. Clique abaixo para criar sua conta e começar.`,
+      opts.inviteUrl,
+      'Aceitar convite',
+      'Este convite expira em 7 dias. Se você não esperava este e-mail, pode ignorá-lo.',
+    );
+    await this.send(opts.to, subject, html, opts.inviteUrl);
+  }
+
+  /** Cliente solicitou agendamento → avisa a concessionária */
+  async sendAppointmentRequested(opts: {
+    to: string;
+    dealerName: string;
+    customerName: string;
+    typeLabel: string;       // "Test drive" | "Visita"
+    vehicleInfo: string | null;
+    when: Date;
+  }): Promise<void> {
+    const whenStr = this.formatWhen(opts.when);
+    const link = `${this.webUrl}/agendamentos`;
+    const html = this.buildHtml(
+      `Novo agendamento solicitado 📅`,
+      [
+        `<strong>${opts.customerName}</strong> solicitou <strong>${opts.typeLabel.toLowerCase()}</strong>`,
+        opts.vehicleInfo ? ` do veículo <strong>${opts.vehicleInfo}</strong>` : '',
+        ` para <strong>${whenStr}</strong>.`,
+      ].join(''),
+      link,
+      'Ver agendamentos',
+      'Confirme o horário no painel para o cliente receber a confirmação.',
+    );
+    await this.send(opts.to, `Novo agendamento — ${opts.customerName} · ${whenStr}`, html, link);
+  }
+
+  /** Concessionária confirmou/cancelou/reagendou → avisa o cliente */
+  async sendAppointmentStatusUpdate(opts: {
+    to: string;
+    customerName: string;
+    dealerName: string;
+    status: 'confirmed' | 'canceled' | 'rescheduled';
+    typeLabel: string;
+    vehicleInfo: string | null;
+    when: Date;
+  }): Promise<void> {
+    const whenStr = this.formatWhen(opts.when);
+    const link = `${this.webUrl}/perfil`;
+    const titles = {
+      confirmed:   'Agendamento confirmado ✅',
+      canceled:    'Agendamento cancelado',
+      rescheduled: 'Agendamento reagendado 🔄',
+    };
+    const bodies = {
+      confirmed:   `Sua solicitação de <strong>${opts.typeLabel.toLowerCase()}</strong>${opts.vehicleInfo ? ` do <strong>${opts.vehicleInfo}</strong>` : ''} na <strong>${opts.dealerName}</strong> foi confirmada para <strong>${whenStr}</strong>. Te esperamos lá!`,
+      canceled:    `Seu <strong>${opts.typeLabel.toLowerCase()}</strong>${opts.vehicleInfo ? ` do <strong>${opts.vehicleInfo}</strong>` : ''} na <strong>${opts.dealerName}</strong>, marcado para <strong>${whenStr}</strong>, foi cancelado. Entre em contato com a loja para remarcar.`,
+      rescheduled: `Seu <strong>${opts.typeLabel.toLowerCase()}</strong>${opts.vehicleInfo ? ` do <strong>${opts.vehicleInfo}</strong>` : ''} na <strong>${opts.dealerName}</strong> foi reagendado para <strong>${whenStr}</strong>.`,
+    };
+    const html = this.buildHtml(
+      `Olá, ${opts.customerName}!`,
+      `${titles[opts.status]}<br/><br/>${bodies[opts.status]}`,
+      link,
+      'Ver meus agendamentos',
+      'Você pode acompanhar seus agendamentos na sua área de cliente.',
+    );
+    await this.send(opts.to, `${titles[opts.status].replace(/ [✅🔄]$/u, '')} — ${opts.dealerName}`, html, link);
+  }
+
+  private formatWhen(d: Date): string {
+    return new Intl.DateTimeFormat('pt-BR', {
+      weekday: 'long', day: '2-digit', month: 'long',
+      hour: '2-digit', minute: '2-digit',
+      timeZone: 'America/Sao_Paulo',
+    }).format(d);
+  }
+
   private async send(to: string, subject: string, html: string, devLink: string): Promise<void> {
     if (this.resend) {
       const result = await this.resend.emails.send({ from: this.from, to, subject, html });

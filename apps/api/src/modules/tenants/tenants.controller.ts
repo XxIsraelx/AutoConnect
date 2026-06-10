@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query, Req } from '@nestjs/common';
+import { Prisma } from '@autoconnect/db';
 import { TenantsService } from './tenants.service';
 import type { AuthenticatedRequest } from '../../common/middleware/tenant.middleware';
 
@@ -66,6 +67,7 @@ export class TenantsController {
       city?: string;
       state?: string;
       postalCode?: string;
+      businessHours?: Prisma.InputJsonValue;
     },
   ): Promise<unknown> {
     return this.tenants.updateBranch(req.tenantId!, id, body);

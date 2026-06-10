@@ -19,17 +19,26 @@ export class AppointmentsController {
    */
   @Get()
   findAll(
-    @Req()            req: AuthRequest,
-    @Query('status')  status?: string,
-    @Query('from')    from?: string,
-    @Query('to')      to?: string,
-    @Query('page')    page?: string,
+    @Req()                  req: AuthRequest,
+    @Query('status')        status?: string,
+    @Query('from')          from?: string,
+    @Query('to')            to?: string,
+    @Query('page')          page?: string,
+    @Query('salespersonId') salespersonId?: string,
+    @Query('type')          type?: string,
+    @Query('q')             q?: string,
+    @Query('limit')         limit?: string,
   ): Promise<unknown> {
     const { role, tenantId, id } = req.user;
     if (role === 'customer') {
       return this.svc.findByCustomer(id);
     }
-    return this.svc.findAll(tenantId!, { status, from, to, page: page ? parseInt(page, 10) : 1 });
+    return this.svc.findAll(tenantId!, {
+      status, from, to,
+      page: page ? parseInt(page, 10) : 1,
+      salespersonId, type, q,
+      limit: limit ? Math.min(parseInt(limit, 10), 500) : undefined,
+    });
   }
 
   /** POST /appointments — cliente solicita agendamento */

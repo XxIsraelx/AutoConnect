@@ -17,6 +17,7 @@ import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { UsersModule } from './modules/users/users.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
+import { TeamModule } from './modules/team/team.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { ConversationsModule } from './modules/conversations/conversations.modul
     AdminModule,
     AppointmentsModule,
     UsersModule,
+    TeamModule,
     InvitationsModule,
     ConversationsModule,
   ],

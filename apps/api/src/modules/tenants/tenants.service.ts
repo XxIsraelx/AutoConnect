@@ -165,7 +165,16 @@ export class TenantsService {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    const [vehiclesCount, leadsToday, leadsNew] = await Promise.all([
+    const todayEnd = new Date(todayStart);
+    todayEnd.setDate(todayEnd.getDate() + 1);
+    const weekEnd = new Date(todayStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+
+    const [
+      vehiclesCount, leadsToday, leadsNew,
+      appointmentsToday, appointmentsWeek, appointmentsPending,
+      openConversations,
+    ] = await Promise.all([
       this.prisma.vehicle.count({
         where: { tenantId, status: 'available' },
       }),
@@ -175,9 +184,68 @@ export class TenantsService {
       this.prisma.lead.count({
         where: { tenantId, status: 'new' },
       }),
+      this.prisma.appointment.count({
+        where: {
+          tenantId,
+          status: { in: ['scheduled', 'confirmed'] },
+          scheduledStart: { gte: todayStart, lt: todayEnd },
+        },
+      }),
+      this.prisma.appointment.count({
+        where: {
+          tenantId,
+          status: { in: ['scheduled', 'confirmed'] },
+          scheduledStart: { gte: todayStart, lt: weekEnd },
+        },
+      }),
+      this.prisma.appointment.count({
+        where: { tenantId, status: 'scheduled', scheduledStart: { gte: todayStart } },
+      }),
+      this.prisma.conversation.count({
+        where: { tenantId, status: 'open' },
+      }),
     ]);
 
-    return { vehiclesCount, leadsToday, leadsNew };
+    // Mensagens de clientes ainda não lidas pela equipe
+    const unreadMessages = await this.prisma.message.count({
+      where: {
+        tenantId,
+        readAt: null,
+        sender: { role: 'customer' },
+      },
+    });
+
+    // Dados para o checklist de onboarding
+    const [teamCount, firstBranch, tenant] = await Promise.all([
+      this.prisma.user.count({
+        where: { tenantId, role: { in: ['tenant_admin', 'manager', 'salesperson'] } },
+      }),
+      this.prisma.dealershipBranch.findFirst({
+        where: { tenantId },
+        select: { businessHours: true },
+        orderBy: { isHeadquarters: 'desc' },
+      }),
+      this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { logoUrl: true, slug: true },
+      }),
+    ]);
+
+    const bh = firstBranch?.businessHours;
+    const hasHours = !!bh && typeof bh === 'object' && Object.keys(bh as object).length > 0;
+
+    return {
+      vehiclesCount, leadsToday, leadsNew,
+      appointmentsToday, appointmentsWeek, appointmentsPending,
+      openConversations, unreadMessages,
+      onboarding: {
+        hasVehicle: vehiclesCount > 0,
+        hasTeam:    teamCount > 1,
+        hasHours,
+        hasLogo:    !!tenant?.logoUrl,
+        slug:       tenant?.slug ?? null,
+      },
+    };
   }
 
   /** Atualiza dados do tenant */
@@ -246,6 +314,16 @@ export class TenantsService {
       }),
     ]);
 
+    // Agendamentos do período (para o funil e o breakdown por status)
+    const apptByStatus = await this.prisma.appointment.groupBy({
+      by: ['status'],
+      where: { tenantId, createdAt: { gte: from } },
+      _count: { _all: true },
+    });
+    const apptCount = (s: string) =>
+      apptByStatus.find((a) => a.status === s)?._count._all ?? 0;
+    const totalAppointments = apptByStatus.reduce((acc, a) => acc + a._count._all, 0);
+
     // Enriquece top veículos com nome
     const vehicleIds = topVehicles.map((v) => v.vehicleId);
     const vehicles = vehicleIds.length
@@ -283,6 +361,21 @@ export class TenantsService {
         total, won: wonCount, lost: lostCount,
         rate: total > 0 ? Math.round((wonCount / total) * 100) : 0,
       },
+      appointments: {
+        total:     totalAppointments,
+        byStatus:  apptByStatus.map((a) => ({ status: a.status, count: a._count._all })),
+        completed: apptCount('completed'),
+        noShow:    apptCount('no_show'),
+        showRate:  apptCount('completed') + apptCount('no_show') > 0
+          ? Math.round((apptCount('completed') / (apptCount('completed') + apptCount('no_show'))) * 100)
+          : null,
+      },
+      funnel: [
+        { stage: 'Leads',        count: total },
+        { stage: 'Agendamentos', count: totalAppointments },
+        { stage: 'Concluídos',   count: apptCount('completed') },
+        { stage: 'Vendas',       count: wonCount },
+      ],
     };
   }
 
@@ -387,6 +480,7 @@ export class TenantsService {
       city?: string;
       state?: string;
       postalCode?: string;
+      businessHours?: Prisma.InputJsonValue;
     },
   ): Promise<unknown> {
     const branch = await this.prisma.dealershipBranch.findFirst({

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   MapContainer, TileLayer, Marker,
   CircleMarker, Circle, ZoomControl, useMap,
@@ -10,54 +10,71 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
-import type { DealershipPin } from './types';
+import { api } from '@/lib/api';
+import type { DealershipPin, PublicVehicle, VehiclesPage } from './types';
 
 /* ── Ícone balloon ───────────────────────────────────────────
    ATENÇÃO: os transforms ficam no CSS em .dealer-marker-inner.
 ─────────────────────────────────────────────────────────── */
 
-function createBalloonIcon(selected: boolean) {
-  const color = selected ? '#f59e0b' : '#3b82f6';
-  const glow  = selected
-    ? 'drop-shadow(0 5px 18px rgba(245,158,11,.7))'
-    : 'drop-shadow(0 5px 18px rgba(59,130,246,.6))';
+const CAR_PATH = `
+  M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11
+    c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1
+    c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1
+    v-8l-2.08-5.99z
+  M6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13
+    s1.5.67 1.5 1.5S7.33 16 6.5 16z
+  m11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5
+    1.5.67 1.5 1.5-.67 1.5-1.5 1.5z
+  M5 11l1.5-4.5h11L19 11H5z
+`;
 
-  const carPath = `
-    M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11
-      c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1
-      c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1
-      v-8l-2.08-5.99z
-    M6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13
-      s1.5.67 1.5 1.5S7.33 16 6.5 16z
-    m11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5
-      1.5.67 1.5 1.5-.67 1.5-1.5 1.5z
-    M5 11l1.5-4.5h11L19 11H5z
-  `;
+function createBalloonIcon(selected: boolean, vehiclesCount: number) {
+  const gradId = selected ? 'pin-grad-sel' : 'pin-grad';
+  const [c1, c2] = selected ? ['#fbbf24', '#d97706'] : ['#60a5fa', '#2563eb'];
+  const iconColor = selected ? '#d97706' : '#2563eb';
+  const glow = selected
+    ? 'drop-shadow(0 6px 20px rgba(245,158,11,.75))'
+    : 'drop-shadow(0 6px 18px rgba(59,130,246,.55))';
+
+  const badge = vehiclesCount > 0
+    ? `<div class="pin-badge${selected ? ' pin-badge--selected' : ''}">${vehiclesCount > 99 ? '99+' : vehiclesCount}</div>`
+    : '';
 
   return L.divIcon({
     html: `
-      <div class="dealer-marker-inner" style="width:40px;height:52px">
+      <div class="dealer-marker-inner" style="width:42px;height:54px;position:relative;overflow:visible">
         <svg xmlns="http://www.w3.org/2000/svg"
-             viewBox="0 0 40 52" width="40" height="52"
+             viewBox="0 0 42 54" width="42" height="54"
              overflow="visible"
              style="filter:${glow}">
+          <defs>
+            <linearGradient id="${gradId}" x1="0" y1="0" x2="0.6" y2="1">
+              <stop offset="0%" stop-color="${c1}"/>
+              <stop offset="100%" stop-color="${c2}"/>
+            </linearGradient>
+          </defs>
           <path
-            d="M20 0C8.954 0 0 8.954 0 20C0 34 20 52 20 52S40 34 40 20C40 8.954 31.046 0 20 0Z"
-            fill="${color}"/>
-          <ellipse cx="14" cy="12" rx="7" ry="5"
-            fill="rgba(255,255,255,.18)"
-            transform="rotate(-25 14 12)"/>
-          <circle cx="20" cy="19" r="13" fill="white"/>
-          <g transform="translate(12,11) scale(0.667)" fill="${color}">
-            <path d="${carPath}"/>
+            d="M21 1C10.507 1 2 9.507 2 20C2 33.3 21 53 21 53S40 33.3 40 20C40 9.507 31.493 1 21 1Z"
+            fill="url(#${gradId})"
+            stroke="rgba(255,255,255,.35)" stroke-width="1.5"/>
+          <ellipse cx="14.5" cy="11.5" rx="7.5" ry="5"
+            fill="rgba(255,255,255,.22)"
+            transform="rotate(-25 14.5 11.5)"/>
+          <circle cx="21" cy="19.5" r="12.5" fill="white"/>
+          <circle cx="21" cy="19.5" r="12.5" fill="none"
+            stroke="rgba(15,23,42,.08)" stroke-width="1"/>
+          <g transform="translate(13,11.5) scale(0.667)" fill="${iconColor}">
+            <path d="${CAR_PATH}"/>
           </g>
         </svg>
+        ${badge}
       </div>
     `,
     className: `dealer-marker${selected ? ' dealer-marker--selected' : ''}`,
-    iconSize:   [40, 52],
-    iconAnchor: [20, 52],
-    popupAnchor:[0,  -56],
+    iconSize:   [42, 54],
+    iconAnchor: [21, 54],
+    popupAnchor:[0,  -58],
   });
 }
 
@@ -68,12 +85,17 @@ function createUserIcon() {
     html: `
       <div style="width:22px;height:22px;position:relative;overflow:visible">
         <div class="user-ring"
-             style="position:absolute;top:-7px;left:-7px;width:36px;height:36px;
-                    border-radius:50%;background:rgba(59,130,246,.22)">
+             style="position:absolute;top:-9px;left:-9px;width:40px;height:40px;
+                    border-radius:50%;background:rgba(59,130,246,.25)">
+        </div>
+        <div class="user-ring user-ring--delay"
+             style="position:absolute;top:-9px;left:-9px;width:40px;height:40px;
+                    border-radius:50%;background:rgba(59,130,246,.18)">
         </div>
         <div style="width:22px;height:22px;border-radius:50%;
-                    background:#3b82f6;border:3px solid white;
-                    box-shadow:0 2px 14px rgba(59,130,246,.75);
+                    background:linear-gradient(135deg,#60a5fa,#2563eb);
+                    border:3px solid white;
+                    box-shadow:0 2px 16px rgba(59,130,246,.85);
                     position:relative;z-index:1">
         </div>
       </div>
@@ -143,6 +165,50 @@ function FlyToUser({ loc }: { loc: { lat: number; lng: number } | null }) {
   return null;
 }
 
+/* ── Tooltip dos pins (com preview de veículo) ──────────── */
+
+function formatTooltipPrice(v: string | null | undefined) {
+  if (!v) return '';
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency', currency: 'BRL',
+    minimumFractionDigits: 0, maximumFractionDigits: 0,
+  }).format(parseFloat(v));
+}
+
+function tooltipHtml(pin: DealershipPin, vehicle: PublicVehicle | null | undefined) {
+  /* vehicle === undefined → ainda carregando; null → sem veículos */
+  const preview = vehicle
+    ? `<div style="display:flex;gap:8px;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)">
+         <div style="width:52px;height:40px;border-radius:8px;overflow:hidden;background:rgba(255,255,255,.08);flex-shrink:0;display:flex;align-items:center;justify-content:center">
+           ${vehicle.images[0]?.url
+             ? `<img src="${vehicle.images[0].url}" style="width:100%;height:100%;object-fit:cover" alt=""/>`
+             : `<span style="font-size:14px">🚗</span>`}
+         </div>
+         <div style="min-width:0">
+           <p style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px">
+             ${vehicle.brand.name} ${vehicle.model.name}
+           </p>
+           <p style="font-size:12px;font-weight:800;color:#60a5fa;margin-top:1px">
+             ${formatTooltipPrice(vehicle.promoPrice ?? vehicle.price)}
+           </p>
+         </div>
+       </div>`
+    : vehicle === undefined && pin.vehiclesCount > 0
+    ? `<p style="font-size:10px;color:#64748b;margin-top:8px">carregando destaque…</p>`
+    : '';
+
+  return `<div class="pin-tooltip-accent"></div>
+    <p style="font-weight:700;font-size:13px;color:#fff;line-height:1.3">${pin.tenant.tradeName}</p>
+    ${(pin.city || pin.state) ? `<p style="font-size:11px;color:#94a3b8;margin-top:2px">${[pin.city, pin.state].filter(Boolean).join(', ')}</p>` : ''}
+    <div style="margin-top:7px;display:flex;gap:5px;align-items:center">
+      <span style="font-size:10px;font-weight:700;background:linear-gradient(135deg,rgba(96,165,250,.25),rgba(37,99,235,.25));color:#93c5fd;padding:3px 8px;border-radius:20px;border:1px solid rgba(96,165,250,.25)">
+        ${pin.vehiclesCount} veículo${pin.vehiclesCount !== 1 ? 's' : ''}
+      </span>
+      <span style="font-size:10px;color:#64748b">clique para ver</span>
+    </div>
+    ${preview}`;
+}
+
 /* ── ClusterLayer — leaflet.markercluster via imperativo ── */
 
 interface ClusterLayerProps {
@@ -157,6 +223,8 @@ function ClusterLayer({ pins, selectedId, matchingTenantIds, onSelect }: Cluster
   const clusterRef  = useRef<L.MarkerClusterGroup | null>(null);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  /* Cache de veículo em destaque por tenant (null = sem veículos) */
+  const previewCache = useRef(new Map<string, PublicVehicle | null>());
 
   useEffect(() => {
     // Remove cluster anterior
@@ -173,20 +241,18 @@ function ClusterLayer({ pins, selectedId, matchingTenantIds, onSelect }: Cluster
         animate: true,
         iconCreateFunction(c: L.MarkerCluster) {
           const count = c.getChildCount();
-          const size  = count < 5 ? 38 : count < 10 ? 44 : 52;
+          const size  = count < 5 ? 42 : count < 10 ? 48 : 56;
           return L.divIcon({
-            html: `<div style="
-              width:${size}px;height:${size}px;border-radius:50%;
-              background:rgba(59,130,246,.9);
-              border:2.5px solid rgba(255,255,255,.3);
-              box-shadow:0 4px 16px rgba(59,130,246,.55);
-              display:flex;align-items:center;justify-content:center;
-              color:white;font-weight:800;font-size:${count < 10 ? 14 : 12}px;
-              font-family:Inter,sans-serif;
-            ">${count}</div>`,
+            html: `
+              <div class="dealer-cluster-ring" style="width:${size + 12}px;height:${size + 12}px">
+                <div class="dealer-cluster-core" style="
+                  width:${size}px;height:${size}px;
+                  font-size:${count < 10 ? 15 : 13}px;
+                ">${count}</div>
+              </div>`,
             className: 'dealer-cluster',
-            iconSize: [size, size] as [number, number],
-            iconAnchor: [size / 2, size / 2] as [number, number],
+            iconSize: [size + 12, size + 12] as [number, number],
+            iconAnchor: [(size + 12) / 2, (size + 12) / 2] as [number, number],
           });
         },
       });
@@ -196,17 +262,28 @@ function ClusterLayer({ pins, selectedId, matchingTenantIds, onSelect }: Cluster
       const isDimmed   = matchingTenantIds !== null && !matchingTenantIds.has(pin.tenant.id);
 
       const marker = L.marker([pin.latitude, pin.longitude], {
-        icon:        createBalloonIcon(isSelected),
+        icon:        createBalloonIcon(isSelected, pin.vehiclesCount),
         opacity:     isDimmed ? 0.2 : 1,
         zIndexOffset: isSelected ? 1000 : isDimmed ? -100 : 0,
       });
 
       marker.bindTooltip(
-        `<p style="font-weight:700;font-size:13px;color:#fff;line-height:1.3">${pin.tenant.tradeName}</p>
-         ${(pin.city || pin.state) ? `<p style="font-size:11px;color:#94a3b8;margin-top:2px">${[pin.city, pin.state].filter(Boolean).join(', ')}</p>` : ''}
-         <div style="margin-top:6px"><span style="font-size:10px;font-weight:700;background:rgba(59,130,246,.2);color:#93c5fd;padding:2px 7px;border-radius:20px">${pin.vehiclesCount} veíc.</span></div>`,
-        { direction: 'top', offset: L.point(0, -58), opacity: 1, className: 'pin-tooltip' },
+        tooltipHtml(pin, previewCache.current.get(pin.tenant.id)),
+        { direction: 'top', offset: L.point(0, -60), opacity: 1, className: 'pin-tooltip' },
       );
+
+      /* Preview do veículo em destaque — busca 1x por tenant no hover */
+      marker.on('mouseover', () => {
+        const cached = previewCache.current.get(pin.tenant.id);
+        if (cached !== undefined || pin.vehiclesCount === 0) return;
+        api<VehiclesPage>(`/catalog/vehicles?tenantId=${pin.tenant.id}&limit=1`)
+          .then((data) => {
+            const v = data.items[0] ?? null;
+            previewCache.current.set(pin.tenant.id, v);
+            marker.setTooltipContent(tooltipHtml(pin, v));
+          })
+          .catch(() => previewCache.current.set(pin.tenant.id, null));
+      });
 
       marker.on('click', () => onSelectRef.current(pin));
       cluster.addLayer(marker);
@@ -224,6 +301,52 @@ function ClusterLayer({ pins, selectedId, matchingTenantIds, onSelect }: Cluster
   return null;
 }
 
+/* ── RouteAnimation — linha animada até a concessionária ── */
+
+interface RouteAnimProps {
+  from: { lat: number; lng: number } | null;
+  to: ValidPin | null;
+  onDone: () => void;
+}
+
+function RouteAnimation({ from, to, onDone }: RouteAnimProps) {
+  const map = useMap();
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+
+  useEffect(() => {
+    if (!from || !to) return;
+
+    const a: [number, number] = [from.lat, from.lng];
+    const b: [number, number] = [to.latitude, to.longitude];
+
+    map.flyToBounds(L.latLngBounds([a, b]), { padding: [80, 80], duration: 0.8 });
+
+    /* Glow por baixo + linha tracejada animada por cima */
+    const glow = L.polyline([a, b], {
+      color: '#3b82f6', weight: 8, opacity: 0.25, lineCap: 'round',
+    }).addTo(map);
+    const line = L.polyline([a, b], {
+      color: '#60a5fa', weight: 3, opacity: 0.95,
+      dashArray: '10 12', lineCap: 'round', className: 'route-line',
+    }).addTo(map);
+
+    const timer = setTimeout(() => {
+      map.removeLayer(line);
+      map.removeLayer(glow);
+      onDoneRef.current();
+    }, 1700);
+
+    return () => {
+      clearTimeout(timer);
+      map.removeLayer(line);
+      map.removeLayer(glow);
+    };
+  }, [from, to, map]);
+
+  return null;
+}
+
 /* ── Componente principal ────────────────────────────────── */
 
 interface Props {
@@ -236,87 +359,111 @@ interface Props {
   matchingTenantIds: Set<string> | null;
   /** Raio em km ao redor do usuário */
   radiusKm: number | null;
+  /** Pin alvo da animação de rota (abre Google Maps ao terminar) */
+  routeTo?: DealershipPin | null;
+  /** Chamado quando a animação de rota termina */
+  onRouteDone?: () => void;
 }
 
 export default function MapClient({
   pins, selectedId, onSelect, userLocation, matchingTenantIds, radiusKm,
+  routeTo, onRouteDone,
 }: Props) {
+  const [tilesLoaded, setTilesLoaded] = useState(false);
   const validPins = pins.filter(
     (p): p is ValidPin => p.latitude !== null && p.longitude !== null,
   );
   const selectedPin = validPins.find((p) => p.id === selectedId) ?? null;
+  const routePin = routeTo && routeTo.latitude !== null && routeTo.longitude !== null
+    ? (routeTo as ValidPin)
+    : null;
 
   return (
-    <MapContainer
-      center={[-15.7835, -47.8685]}
-      zoom={5}
-      style={{ height: '100%', width: '100%' }}
-      zoomControl={false}
-      className="bg-[#0f172a]"
-    >
-      {/* CartoDB Dark Matter — gratuito, sem API key */}
-      <TileLayer
-        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        subdomains="abcd"
-        maxZoom={20}
+    <div className="relative h-full w-full">
+      <MapContainer
+        center={[-15.7835, -47.8685]}
+        zoom={5}
+        style={{ height: '100%', width: '100%' }}
+        zoomControl={false}
+        className="bg-[#0f172a]"
+      >
+        {/* CartoDB Dark Matter — gratuito, sem API key */}
+        <TileLayer
+          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+          subdomains="abcd"
+          maxZoom={20}
+          eventHandlers={{ load: () => setTilesLoaded(true) }}
+        />
+
+        <ZoomControl position="bottomright" />
+
+        {/* Cluster layer */}
+        <ClusterLayer
+          pins={validPins}
+          selectedId={selectedId}
+          matchingTenantIds={matchingTenantIds}
+          onSelect={onSelect}
+        />
+
+        {/* Anel de pulso ao redor do selecionado */}
+        {selectedPin && (
+          <CircleMarker
+            center={[selectedPin.latitude, selectedPin.longitude]}
+            radius={18}
+            className="selected-pulse"
+            pathOptions={{
+              color: '#f59e0b',
+              fillColor: '#f59e0b',
+              fillOpacity: 0.12,
+              weight: 2,
+              opacity: 0.55,
+            }}
+          />
+        )}
+
+        {/* Círculo de raio ao redor do usuário */}
+        {userLocation && radiusKm && (
+          <Circle
+            center={[userLocation.lat, userLocation.lng]}
+            radius={radiusKm * 1000}
+            pathOptions={{
+              color: '#10b981',
+              fillColor: '#10b981',
+              fillOpacity: 0.05,
+              weight: 1.5,
+              opacity: 0.35,
+              dashArray: '6 5',
+            }}
+          />
+        )}
+
+        {/* Marcador GPS do usuário */}
+        {userLocation && (
+          <Marker
+            position={[userLocation.lat, userLocation.lng]}
+            icon={createUserIcon()}
+            zIndexOffset={2000}
+            interactive={false}
+          />
+        )}
+
+        <FitOnLoad pins={validPins} />
+        <FlyToSelected pin={selectedPin} allPins={validPins} />
+        <FlyToUser loc={userLocation} />
+        {routePin && onRouteDone && (
+          <RouteAnimation from={userLocation} to={routePin} onDone={onRouteDone} />
+        )}
+      </MapContainer>
+
+      {/* Shimmer enquanto os tiles carregam */}
+      <div
+        className={`map-shimmer ${tilesLoaded ? 'map-shimmer--done' : ''}`}
+        aria-hidden="true"
       />
 
-      <ZoomControl position="bottomright" />
-
-      {/* Cluster layer */}
-      <ClusterLayer
-        pins={validPins}
-        selectedId={selectedId}
-        matchingTenantIds={matchingTenantIds}
-        onSelect={onSelect}
-      />
-
-      {/* Anel de pulso ao redor do selecionado */}
-      {selectedPin && (
-        <CircleMarker
-          center={[selectedPin.latitude, selectedPin.longitude]}
-          radius={18}
-          className="selected-pulse"
-          pathOptions={{
-            color: '#f59e0b',
-            fillColor: '#f59e0b',
-            fillOpacity: 0.12,
-            weight: 2,
-            opacity: 0.55,
-          }}
-        />
-      )}
-
-      {/* Círculo de raio ao redor do usuário */}
-      {userLocation && radiusKm && (
-        <Circle
-          center={[userLocation.lat, userLocation.lng]}
-          radius={radiusKm * 1000}
-          pathOptions={{
-            color: '#10b981',
-            fillColor: '#10b981',
-            fillOpacity: 0.05,
-            weight: 1.5,
-            opacity: 0.35,
-            dashArray: '6 5',
-          }}
-        />
-      )}
-
-      {/* Marcador GPS do usuário */}
-      {userLocation && (
-        <Marker
-          position={[userLocation.lat, userLocation.lng]}
-          icon={createUserIcon()}
-          zIndexOffset={2000}
-          interactive={false}
-        />
-      )}
-
-      <FitOnLoad pins={validPins} />
-      <FlyToSelected pin={selectedPin} allPins={validPins} />
-      <FlyToUser loc={userLocation} />
-    </MapContainer>
+      {/* Vignette — profundidade nas bordas, sem bloquear interação */}
+      <div className="map-vignette" aria-hidden="true" />
+    </div>
   );
 }

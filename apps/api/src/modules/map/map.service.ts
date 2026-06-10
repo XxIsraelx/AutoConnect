@@ -12,6 +12,7 @@ export interface DealershipPin {
   latitude: number | null;
   longitude: number | null;
   vehiclesCount: number;
+  businessHours: unknown;
   tenant: {
     id: string;
     tradeName: string;
@@ -39,6 +40,7 @@ export class MapService {
         email: true,
         latitude: true,
         longitude: true,
+        businessHours: true,
         tenant: {
           select: { id: true, tradeName: true, logoUrl: true },
         },
@@ -84,6 +86,7 @@ export class MapService {
         latitude: lat,
         longitude: lng,
         vehiclesCount: branch._count.vehicles,
+        businessHours: branch.businessHours,
         tenant: branch.tenant,
       });
     }

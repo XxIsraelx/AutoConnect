@@ -4,11 +4,12 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import {
   Send, MessageSquare, Circle, Loader2, User,
-  RefreshCw, AlertCircle, ChevronLeft,
+  RefreshCw, AlertCircle, ChevronLeft, BadgeDollarSign, X,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
+import ProposalBubble, { getProposal } from '@/components/chat/ProposalBubble';
 
 /* ── Tipos ─────────────────────────────────────────────── */
 interface Conversation {
@@ -28,6 +29,7 @@ interface Message {
   createdAt: string;
   senderUserId: string | null;
   sender: { id: string; fullName: string; avatarUrl: string | null } | null;
+  metadata?: unknown;
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
@@ -103,6 +105,7 @@ export default function ChatPage() {
   const [loadingMsgs,   setLoadingMsgs]   = useState(false);
   const [sending,       setSending]       = useState(false);
   const [typingUsers,   setTypingUsers]   = useState<Set<string>>(new Set());
+  const [showProposal,  setShowProposal]  = useState(false);
   const socketRef  = useRef<Socket | null>(null);
   const msgsEndRef = useRef<HTMLDivElement>(null);
   const typingTimer = useRef<NodeJS.Timeout | null>(null);
@@ -152,6 +155,10 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, msg]);
     });
 
+    socket.on('conversation:message:update', (msg: Message) => {
+      setMessages((prev) => prev.map((m) => (m.id === msg.id ? msg : m)));
+    });
+
     socket.on('conversation:typing', ({ userId, isTyping }: { userId: string; isTyping: boolean }) => {
       setTypingUsers((prev) => {
         const next = new Set(prev);
@@ -163,11 +170,21 @@ export default function ChatPage() {
     return () => { socket.disconnect(); };
   }, [token]);
 
-  /* Join/leave sala */
+  /* Join/leave sala + marca como lida */
   useEffect(() => {
     if (!socketRef.current || !activeId) return;
     socketRef.current.emit('conversation:join', { conversationId: activeId });
+    socketRef.current.emit('conversation:read', { conversationId: activeId });
   }, [activeId]);
+
+  /* Mensagem recebida com a conversa aberta → marca como lida na hora */
+  useEffect(() => {
+    if (!socketRef.current || !activeId || messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    if (last.senderUserId !== user?.id) {
+      socketRef.current.emit('conversation:read', { conversationId: activeId });
+    }
+  }, [messages, activeId, user?.id]);
 
   /* Scroll ao fundo */
   useEffect(() => {
@@ -282,6 +299,14 @@ export default function ChatPage() {
                 </div>
               ) : messages.map((msg) => {
                 const isMe = msg.senderUserId === user?.id;
+                const proposal = getProposal(msg.metadata);
+                if (proposal) {
+                  return (
+                    <div key={msg.id} className={cn('flex gap-2', isMe && 'flex-row-reverse')}>
+                      <ProposalBubble proposal={proposal} mine={isMe} canRespond={false} />
+                    </div>
+                  );
+                }
                 return (
                   <div key={msg.id} className={cn('flex gap-2', isMe && 'flex-row-reverse')}>
                     {!isMe && (
@@ -321,6 +346,15 @@ export default function ChatPage() {
             {/* Input */}
             <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
               <div className="flex items-end gap-2">
+                <button
+                  onClick={() => setShowProposal(true)}
+                  title="Enviar proposta comercial"
+                  className="p-2.5 rounded-xl border border-amber-300 dark:border-amber-500/40
+                             text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10
+                             transition shrink-0"
+                >
+                  <BadgeDollarSign size={16} />
+                </button>
                 <textarea
                   value={newMsg}
                   onChange={(e) => { setNewMsg(e.target.value); onTyping(); }}
@@ -342,6 +376,122 @@ export default function ChatPage() {
           </>
         )}
       </main>
+
+      {/* Modal de proposta comercial */}
+      {showProposal && activeConv && (
+        <ProposalModal
+          conv={activeConv}
+          onClose={() => setShowProposal(false)}
+          onSend={(proposal, body) => {
+            socketRef.current?.emit('conversation:send', {
+              conversationId: activeId,
+              body,
+              metadata: { proposal },
+            });
+            setShowProposal(false);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/* ── Modal de envio de proposta ─────────────────────────── */
+function ProposalModal({ conv, onClose, onSend }: {
+  conv: Conversation;
+  onClose: () => void;
+  onSend: (proposal: Record<string, unknown>, body: string) => void;
+}) {
+  const vehicleLabel = conv.vehicle
+    ? `${conv.vehicle.brand.name} ${conv.vehicle.model.name} ${conv.vehicle.versionName ?? ''} ${conv.vehicle.yearModel}`.replace(/\s+/g, ' ').trim()
+    : undefined;
+
+  const [price, setPrice]               = useState('');
+  const [downPayment, setDownPayment]   = useState('');
+  const [installments, setInstallments] = useState(48);
+
+  const priceNum = parseFloat(price) || 0;
+  const downNum  = parseFloat(downPayment) || 0;
+  const financed = Math.max(priceNum - downNum, 0);
+  // Tabela PRICE com taxa de referência 1,49% a.m. (mesma da calculadora pública)
+  const rate = 0.0149;
+  const x = Math.pow(1 + rate, installments);
+  const installmentValue = financed > 0 ? (financed * rate * x) / (x - 1) : 0;
+
+  const brl = (v: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0 }).format(v);
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (priceNum <= 0) return;
+    onSend(
+      {
+        price: priceNum,
+        downPayment: downNum,
+        installments,
+        installmentValue: Math.round(installmentValue * 100) / 100,
+        vehicleLabel,
+        status: 'pending',
+      },
+      `Proposta: ${brl(priceNum)} · entrada ${brl(downNum)} · ${installments}× de ${brl(installmentValue)}`,
+    );
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+        <form onSubmit={submit}
+          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl max-w-sm w-full p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BadgeDollarSign size={16} className="text-amber-500" />
+              <h3 className="text-sm font-bold">Enviar proposta</h3>
+            </div>
+            <button type="button" onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+              <X size={14} />
+            </button>
+          </div>
+
+          {vehicleLabel && (
+            <p className="text-xs text-slate-500 bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2">{vehicleLabel}</p>
+          )}
+
+          <div>
+            <label className="text-xs font-medium text-slate-500 block mb-1">Valor do veículo (R$)</label>
+            <input type="number" min={1} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required
+              placeholder="85000"
+              className="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 block mb-1">Entrada (R$)</label>
+            <input type="number" min={0} step="0.01" value={downPayment} onChange={(e) => setDownPayment(e.target.value)}
+              placeholder="20000"
+              className="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 block mb-1">Parcelas</label>
+            <select value={installments} onChange={(e) => setInstallments(Number(e.target.value))}
+              className="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 outline-none focus:ring-2 focus:ring-blue-500">
+              {[12, 24, 36, 48, 60, 72].map((n) => <option key={n} value={n}>{n}×</option>)}
+            </select>
+          </div>
+
+          {priceNum > 0 && (
+            <div className="text-xs text-slate-500 bg-amber-50 dark:bg-amber-500/10 rounded-xl px-3 py-2.5">
+              Financiado: <b className="text-slate-700 dark:text-slate-200">{brl(financed)}</b> →{' '}
+              <b className="text-amber-600 dark:text-amber-400">{installments}× de {brl(installmentValue)}</b>
+              <span className="block text-[10px] mt-0.5 text-slate-400">Taxa de referência 1,49% a.m. (Tabela PRICE)</span>
+            </div>
+          )}
+
+          <button type="submit" disabled={priceNum <= 0}
+            className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold transition disabled:opacity-40">
+            Enviar proposta
+          </button>
+        </form>
+      </div>
+    </>
   );
 }

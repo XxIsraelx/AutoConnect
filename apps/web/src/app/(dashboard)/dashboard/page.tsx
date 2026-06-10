@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Car, Users, TrendingUp, ArrowRight, ArrowUpRight, Sparkles } from 'lucide-react';
+import { Car, Users, TrendingUp, ArrowRight, ArrowUpRight, Sparkles, CalendarCheck, MessageCircle } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
@@ -27,6 +27,17 @@ interface DashStats {
   vehiclesCount: number;
   leadsToday: number;
   leadsNew: number;
+  appointmentsToday: number;
+  appointmentsWeek: number;
+  appointmentsPending: number;
+  openConversations: number;
+  onboarding?: {
+    hasVehicle: boolean;
+    hasTeam: boolean;
+    hasHours: boolean;
+    hasLogo: boolean;
+    slug: string | null;
+  };
 }
 
 interface ProximityData {
@@ -92,6 +103,89 @@ function StatCard({
   );
 }
 
+/* ── Checklist de primeiros passos ──────────────────────── */
+function OnboardingChecklist({ ob }: { ob: NonNullable<DashStats['onboarding']> }) {
+  const [dismissed, setDismissed] = useState(
+    () => typeof window !== 'undefined' && localStorage.getItem('autoconnect:onboarding-dismissed') === '1',
+  );
+  const [copied, setCopied] = useState(false);
+
+  const steps = [
+    { done: ob.hasVehicle, label: 'Cadastre seu primeiro veículo', href: '/veiculos/novo' },
+    { done: ob.hasTeam,    label: 'Convide um vendedor para a equipe', href: '/equipe' },
+    { done: ob.hasHours,   label: 'Configure o horário de funcionamento', href: '/configuracoes' },
+    { done: ob.hasLogo,    label: 'Adicione o logo da concessionária', href: '/configuracoes' },
+  ];
+  const doneCount = steps.filter((s) => s.done).length;
+  const allDone = doneCount === steps.length;
+
+  if (dismissed || allDone) return null;
+
+  function copyLink() {
+    if (!ob.slug) return;
+    navigator.clipboard.writeText(`${window.location.origin}/c/${ob.slug}`).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div className="mb-8 bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-slate-900
+                    rounded-2xl border border-blue-200 dark:border-blue-900/50 p-6 relative">
+      <button
+        onClick={() => { localStorage.setItem('autoconnect:onboarding-dismissed', '1'); setDismissed(true); }}
+        className="absolute top-4 right-4 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+      >
+        Ocultar
+      </button>
+
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/25">
+          <Sparkles size={18} className="text-white" />
+        </div>
+        <div>
+          <h2 className="text-sm font-bold text-slate-900 dark:text-white">Primeiros passos</h2>
+          <p className="text-xs text-slate-500">{doneCount} de {steps.length} concluídos</p>
+        </div>
+      </div>
+
+      {/* Barra de progresso */}
+      <div className="h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden mb-4">
+        <div className="h-full bg-blue-600 rounded-full transition-all duration-700"
+             style={{ width: `${(doneCount / steps.length) * 100}%` }} />
+      </div>
+
+      <div className="space-y-2">
+        {steps.map((s) => (
+          <Link key={s.label} href={s.href}
+            className={`flex items-center gap-3 p-2.5 rounded-xl transition-colors text-sm
+              ${s.done
+                ? 'text-slate-400 dark:text-slate-600 line-through pointer-events-none'
+                : 'text-slate-700 dark:text-slate-200 hover:bg-blue-100/60 dark:hover:bg-blue-900/20'}`}>
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0
+              ${s.done
+                ? 'bg-emerald-500 text-white'
+                : 'border-2 border-slate-300 dark:border-slate-700'}`}>
+              {s.done ? '✓' : ''}
+            </span>
+            {s.label}
+            {!s.done && <ArrowRight size={13} className="ml-auto text-slate-300 dark:text-slate-700" />}
+          </Link>
+        ))}
+      </div>
+
+      {ob.slug && (
+        <button onClick={copyLink}
+          className="mt-4 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl
+                     border border-blue-300 dark:border-blue-800 text-blue-600 dark:text-blue-400
+                     text-xs font-semibold hover:bg-blue-100/60 dark:hover:bg-blue-900/20 transition-colors">
+          {copied ? '✓ Link copiado!' : 'Copiar link da sua página pública'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const { token, user } = useAuthStore();
 
@@ -148,6 +242,28 @@ export default function DashboardPage() {
         : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400',
       badge:   stats?.leadsNew,
     },
+    {
+      label:   'Agendamentos hoje',
+      value:   stats?.appointmentsToday ?? '—',
+      icon:    CalendarCheck,
+      href:    '/agendamentos',
+      accent:  'bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400',
+      badge:   stats?.appointmentsPending,
+    },
+    {
+      label:   'Próximos 7 dias',
+      value:   stats?.appointmentsWeek ?? '—',
+      icon:    CalendarCheck,
+      href:    '/agendamentos',
+      accent:  'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400',
+    },
+    {
+      label:   'Conversas abertas',
+      value:   stats?.openConversations ?? '—',
+      icon:    MessageCircle,
+      href:    '/chat',
+      accent:  'bg-cyan-50 dark:bg-cyan-500/10 text-cyan-600 dark:text-cyan-400',
+    },
   ];
 
   return (
@@ -176,8 +292,11 @@ export default function DashboardPage() {
         ) : null}
       </div>
 
+      {/* Onboarding */}
+      {stats?.onboarding && <OnboardingChecklist ob={stats.onboarding} />}
+
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         {statCards.map(({ label, value, icon, href, accent, badge }) => (
           <StatCard
             key={label}

@@ -5,12 +5,13 @@ import Link from 'next/link';
 import {
   MapPin, Phone, Globe, Search, X, Heart,
   Car, Fuel, Gauge, SlidersHorizontal, ChevronLeft, ChevronRight,
-  MessageCircle, ArrowLeft, Loader2,
+  MessageCircle, ArrowLeft, Loader2, CalendarPlus,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
 import ChatDrawer from '@/components/ChatDrawer';
+import ScheduleModal from '@/components/ScheduleModal';
 
 /* ── Tipos ─────────────────────────────────────────────── */
 interface Dealer {
@@ -51,6 +52,7 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
   const [q,        setQ]          = useState('');
   const [chatId, setChatId]       = useState<string | null>(null);
   const [startingChat, setStartingChat] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
 
   const canChat = !user || user.role === 'customer';
 
@@ -66,6 +68,7 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
     finally { setStartingChat(false); }
   }
   const [condition, setCondition] = useState('');
+  const [sort,      setSort]      = useState('');
   const [loading,  setLoading]    = useState(true);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
 
@@ -81,6 +84,7 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
       });
       if (q)         params.set('q', q);
       if (condition) params.set('condition', condition);
+      if (sort)      params.set('sort', sort);
       const r = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1'}/catalog/vehicles?${params}`,
       ).then((res) => res.json()) as { items: PublicVehicle[]; total: number };
@@ -88,7 +92,7 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
       setTotal(r.total);
     } catch { /* ignora */ }
     finally { setLoading(false); }
-  }, [dealer.id, page, q, condition]);
+  }, [dealer.id, page, q, condition, sort]);
 
   useEffect(() => { loadVehicles(); }, [loadVehicles]);
 
@@ -117,6 +121,9 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+      {/* Faixa com a cor da marca */}
+      <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${brandColor}, ${brandColor}88, transparent)` }} />
+
       {/* Hero header */}
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-6xl mx-auto px-4 py-5">
@@ -173,6 +180,15 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
                   Conversar
                 </button>
               )}
+              {canChat && (
+                <button
+                  onClick={() => setShowSchedule(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition"
+                >
+                  <CalendarPlus size={14} />
+                  Agendar visita
+                </button>
+              )}
             </div>
           </div>
 
@@ -226,8 +242,21 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
           </div>
         </div>
 
-        {/* Contagem */}
-        <p className="text-xs text-slate-500 mb-4">{total} veículo{total !== 1 ? 's' : ''} disponível{total !== 1 ? 'is' : ''}</p>
+        {/* Contagem + ordenação */}
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-xs text-slate-500">{total} veículo{total !== 1 ? 's' : ''} disponível{total !== 1 ? 'is' : ''}</p>
+          <select
+            value={sort}
+            onChange={(e) => { setSort(e.target.value); setPage(0); }}
+            className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Mais recentes</option>
+            <option value="price_asc">Menor preço</option>
+            <option value="price_desc">Maior preço</option>
+            <option value="year_desc">Ano mais novo</option>
+            <option value="km_asc">Menor km</option>
+          </select>
+        </div>
 
         {/* Grid */}
         {loading ? (
@@ -313,6 +342,15 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
           </div>
         )}
       </div>
+
+      {showSchedule && (
+        <ScheduleModal
+          tenantId={dealer.id}
+          dealerName={dealer.tradeName}
+          branches={dealer.branches.map(b => ({ id: b.id, name: b.name, city: b.city, state: b.state }))}
+          onClose={() => setShowSchedule(false)}
+        />
+      )}
 
       {chatId && (
         <ChatDrawer

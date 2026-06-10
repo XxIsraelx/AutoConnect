@@ -21,6 +21,14 @@ interface ReportsData {
   bySource:    { source: string; count: number }[];
   topVehicles: { vehicleId: string; views: number; vehicle?: { versionName: string | null; yearModel: number; brand: { name: string }; model: { name: string }; images: { url: string }[] } }[];
   conversion:  { total: number; won: number; lost: number; rate: number };
+  appointments?: {
+    total: number;
+    byStatus: { status: string; count: number }[];
+    completed: number;
+    noShow: number;
+    showRate: number | null;
+  };
+  funnel?: { stage: string; count: number }[];
 }
 
 /* ── Helpers ────────────────────────────────────────────── */
@@ -124,9 +132,48 @@ export default function RelatoriosPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <KpiCard label="Total de Leads" value={totalLeads} sub={`Últimos ${days} dias`} />
             <KpiCard label="Taxa de Conversão" value={`${data.conversion.rate}%`} sub={`${data.conversion.won} ganhos`} />
-            <KpiCard label="Leads Ganhos"  value={data.conversion.won}  />
-            <KpiCard label="Leads Perdidos" value={data.conversion.lost} />
+            <KpiCard label="Agendamentos" value={data.appointments?.total ?? 0} sub={`${data.appointments?.completed ?? 0} concluídos`} />
+            <KpiCard
+              label="Comparecimento"
+              value={data.appointments?.showRate !== null && data.appointments?.showRate !== undefined ? `${data.appointments.showRate}%` : '—'}
+              sub={data.appointments?.noShow ? `${data.appointments.noShow} faltas` : 'Sem dados ainda'}
+            />
           </div>
+
+          {/* Funil de conversão */}
+          {data.funnel && (
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5">
+              <div className="flex items-center gap-2 mb-5">
+                <Target size={15} className="text-blue-500" />
+                <h2 className="text-sm font-semibold">Funil de Conversão</h2>
+              </div>
+              <div className="space-y-2.5">
+                {data.funnel.map((f, i) => {
+                  const max = data.funnel![0]?.count || 1;
+                  const pct = Math.round((f.count / max) * 100);
+                  const colors = ['bg-blue-500', 'bg-violet-500', 'bg-amber-500', 'bg-emerald-500'];
+                  const prev = i > 0 ? data.funnel![i - 1].count : null;
+                  const stepRate = prev && prev > 0 ? Math.round((f.count / prev) * 100) : null;
+                  return (
+                    <div key={f.stage} className="flex items-center gap-3">
+                      <span className="w-28 text-xs text-slate-500 text-right shrink-0">{f.stage}</span>
+                      <div className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-lg h-7 overflow-hidden">
+                        <div
+                          className={cn('h-full rounded-lg flex items-center px-2.5 transition-all duration-700 min-w-[2rem]', colors[i % colors.length])}
+                          style={{ width: `${Math.max(pct, 4)}%` }}
+                        >
+                          <span className="text-[11px] font-bold text-white">{f.count}</span>
+                        </div>
+                      </div>
+                      <span className="w-12 text-[11px] text-slate-400 shrink-0">
+                        {stepRate !== null ? `${stepRate}%` : ''}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Leads por dia */}
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5">
