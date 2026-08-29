@@ -45,3 +45,7 @@ packages/db/.env
 
 # Uploads locais
 uploads/
+
+# arquivos de teste e backups locais
+teste-importacao-com-erros.csv
+.claude/backup-buscar/
