@@ -115,6 +115,20 @@ export class LeadsController {
     return this.leads.addInteraction(req.user.tenantId!, id, req.user.id, body.kind, body.content);
   }
 
+  /** POST /leads/:id/trade-in/appraisal — vendedor avalia o veículo da troca */
+  @Post(':id/trade-in/appraisal')
+  appraiseTradeIn(
+    @Req() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { value: number; note?: string; status?: 'offered' | 'rejected' },
+  ): Promise<unknown> {
+    return this.leads.setTradeInAppraisal(req.user.tenantId!, id, req.user.id, {
+      value: Number(body.value),
+      note: body.note,
+      status: body.status,
+    });
+  }
+
   /** GET /leads/export/csv — exporta como CSV */
   @Get('export/csv')
   async exportCsv(

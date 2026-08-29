@@ -6,12 +6,21 @@ import Link from 'next/link';
 import {
   ChevronLeft, ChevronRight, Check, Car, Gauge, DollarSign, ImagePlus,
   Search, Plus, X, Loader2, Star, Upload, Calendar, Users, BadgeCheck,
+  TrendingUp, TrendingDown, Minus, LineChart,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
 
 /* ── Tipos ───────────────────────────────────────────────── */
 interface Brand { id: string; name: string }
+interface FipeEstimate {
+  found: boolean;
+  price?: number;
+  fipeCode?: string;
+  vehicleName?: string;
+  yearModel?: number;
+  monthReference?: string;
+}
 interface Model { id: string; name: string; category: string | null }
 interface UploadedImage { url: string; uploading?: boolean; name: string }
 
@@ -188,6 +197,81 @@ function Combobox({
   );
 }
 
+/* ── Card de referência FIPE ─────────────────────────────── */
+function FipeCard({ fipe, loading, enteredPrice }: {
+  fipe: FipeEstimate | null;
+  loading: boolean;
+  enteredPrice: number;
+}) {
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 dark:border-slate-800
+                      bg-slate-50/60 dark:bg-slate-900/40 px-4 py-3 text-sm text-slate-500">
+        <Loader2 size={15} className="animate-spin" /> Consultando tabela FIPE…
+      </div>
+    );
+  }
+  if (!fipe) return null;
+  if (!fipe.found || !fipe.price) {
+    return (
+      <div className="rounded-xl border border-slate-200 dark:border-slate-800
+                      bg-slate-50/60 dark:bg-slate-900/40 px-4 py-3">
+        <p className="text-sm text-slate-500 flex items-center gap-2">
+          <LineChart size={15} className="shrink-0" />
+          Não encontramos este veículo na tabela FIPE — confira marca, modelo e ano.
+        </p>
+      </div>
+    );
+  }
+
+  const fmt = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const diffPct = enteredPrice > 0 ? ((enteredPrice - fipe.price) / fipe.price) * 100 : null;
+
+  let verdict: { Icon: typeof Minus; cls: string; text: string } | null = null;
+  if (diffPct !== null) {
+    if (diffPct > 5) {
+      verdict = {
+        Icon: TrendingUp, cls: 'text-amber-600 dark:text-amber-400',
+        text: `${diffPct.toFixed(0)}% acima da FIPE`,
+      };
+    } else if (diffPct < -5) {
+      verdict = {
+        Icon: TrendingDown, cls: 'text-emerald-600 dark:text-emerald-400',
+        text: `${Math.abs(diffPct).toFixed(0)}% abaixo da FIPE`,
+      };
+    } else {
+      verdict = {
+        Icon: Minus, cls: 'text-blue-600 dark:text-blue-400',
+        text: 'Na faixa da FIPE',
+      };
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-blue-200 dark:border-blue-900/50
+                    bg-blue-50/60 dark:bg-blue-950/20 px-4 py-3.5 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <LineChart size={15} className="text-blue-500 shrink-0" />
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+            Referência FIPE: {fmt(fipe.price)}
+          </p>
+        </div>
+        {verdict && (
+          <span className={`flex items-center gap-1 text-xs font-bold ${verdict.cls}`}>
+            <verdict.Icon size={13} /> {verdict.text}
+          </span>
+        )}
+      </div>
+      <p className="text-[11px] text-slate-400 leading-snug">
+        {fipe.vehicleName} {fipe.yearModel} · código {fipe.fipeCode}
+        {fipe.monthReference ? ` · ref. ${fipe.monthReference}` : ''}.
+        Valor de referência nacional — o preço final depende do estado e da região.
+      </p>
+    </div>
+  );
+}
+
 /* ── Input genérico ──────────────────────────────────────── */
 function Field({
   label, children, hint, className = '',
@@ -280,6 +364,32 @@ export default function NewVehiclePage() {
     setModels((prev) => [...prev, m].sort((a, z) => a.name.localeCompare(z.name)));
     setForm((f) => ({ ...f, modelId: m.id, modelName: m.name }));
   }
+
+  /* consulta FIPE ao entrar no passo de preço */
+  const [fipe, setFipe] = useState<FipeEstimate | null>(null);
+  const [fipeLoading, setFipeLoading] = useState(false);
+  const fipeKey = `${form.brandName}|${form.modelName}|${form.versionName}|${form.yearModel}|${form.fuel}`;
+  const fipeFetchedKey = useRef('');
+
+  useEffect(() => {
+    if (step !== 3 || !token) return;
+    if (!form.brandName || !form.modelName || !form.yearModel) return;
+    if (fipeFetchedKey.current === fipeKey) return;
+    fipeFetchedKey.current = fipeKey;
+
+    setFipeLoading(true);
+    const qs = new URLSearchParams({
+      brandName: form.brandName,
+      modelName: form.modelName,
+      yearModel: form.yearModel,
+      ...(form.versionName ? { versionName: form.versionName } : {}),
+      ...(form.fuel ? { fuel: form.fuel } : {}),
+    });
+    api<FipeEstimate>(`/fipe/estimate?${qs}`, { token })
+      .then(setFipe)
+      .catch(() => setFipe(null))
+      .finally(() => setFipeLoading(false));
+  }, [step, token, fipeKey, form.brandName, form.modelName, form.versionName, form.yearModel, form.fuel]);
 
   const isUsed = form.condition !== 'new';
   const usage  = form.firstRegistration ? usageLabel(form.firstRegistration) : null;
@@ -547,6 +657,8 @@ export default function NewVehiclePage() {
       {/* ── PASSO 3: Preço ── */}
       {step === 3 && (
         <div className="space-y-5">
+          <FipeCard fipe={fipe} loading={fipeLoading} enteredPrice={brlToNumber(form.price)} />
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Preço de tabela *">
               <div className="relative">

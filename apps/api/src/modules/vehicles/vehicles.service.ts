@@ -1,11 +1,18 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { EmailService } from '../../common/email/email.service';
 import { Prisma } from '@autoconnect/db';
 import type { CreateVehicleInput, UpdateVehicleInput, VehicleQuery } from '@autoconnect/shared';
+import type { ImportRow } from './import.schema';
 
 @Injectable()
 export class VehiclesService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(VehiclesService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly email: EmailService,
+  ) {}
 
   async findAll(tenantId: string, query: VehicleQuery): Promise<unknown> {
     const { q, brandId, modelId, minPrice, maxPrice, minYear, condition, status, page, perPage } = query;
@@ -108,8 +115,17 @@ export class VehiclesService {
     );
   }
 
-  async update(tenantId: string, id: string, input: UpdateVehicleInput): Promise<unknown> {
-    const existing = await this.findOne(tenantId, id);
+  async update(
+    tenantId: string,
+    id: string,
+    input: UpdateVehicleInput,
+    actorUserId?: string,
+  ): Promise<unknown> {
+    const existing = (await this.findOne(tenantId, id)) as {
+      metadata?: Record<string, unknown>;
+      price: Prisma.Decimal;
+      promoPrice: Prisma.Decimal | null;
+    };
     const {
       featureIds,
       previousOwners,
@@ -119,8 +135,7 @@ export class VehiclesService {
     } = input;
 
     // Mescla histórico de uso com metadata existente
-    const prevMeta =
-      (existing as { metadata?: Record<string, unknown> } | null)?.metadata ?? {};
+    const prevMeta = existing?.metadata ?? {};
     const metadata: Record<string, unknown> = { ...prevMeta };
     if (previousOwners !== undefined) metadata.previousOwners = previousOwners;
     if (firstRegistration !== undefined) metadata.firstRegistration = firstRegistration;
@@ -130,11 +145,15 @@ export class VehiclesService {
       firstRegistration !== undefined ||
       singleOwner !== undefined;
 
-    return this.prisma.withTenant(tenantId, async (tx) => {
+    // Snapshot do preço anterior para histórico/alertas
+    const prevPrice = Number(existing.price);
+    const prevPromo = existing.promoPrice != null ? Number(existing.promoPrice) : null;
+
+    const updated = await this.prisma.withTenant(tenantId, async (tx) => {
       if (featureIds !== undefined) {
         await tx.vehicleFeatureLink.deleteMany({ where: { vehicleId: id } });
       }
-      return tx.vehicle.update({
+      const v = await tx.vehicle.update({
         where: { id },
         data: {
           ...data,
@@ -148,7 +167,143 @@ export class VehiclesService {
           model: { select: { id: true, name: true } },
         },
       });
+
+      // Histórico de preço: grava quando preço ou promocional mudam
+      const newPrice = Number(v.price);
+      const newPromo = v.promoPrice != null ? Number(v.promoPrice) : null;
+      if (newPrice !== prevPrice || newPromo !== prevPromo) {
+        await tx.vehicleHistory.create({
+          data: {
+            vehicleId: id,
+            tenantId,
+            eventType: 'price_change',
+            actorUserId: actorUserId ?? null,
+            payload: { fromPrice: prevPrice, toPrice: newPrice, fromPromo: prevPromo, toPromo: newPromo },
+          },
+        });
+      }
+      return v;
     });
+
+    // Alertas de preço (fora da transação por tenant — PriceAlert é do cliente)
+    await this.triggerPriceAlerts(tenantId, updated).catch((err) =>
+      this.logger.warn(`Falha ao disparar alertas de preço do veículo ${id}: ${err}`),
+    );
+
+    return updated;
+  }
+
+  /**
+   * Notifica clientes que criaram alerta para este veículo quando o preço
+   * efetivo (promocional, se houver) cai até o valor-alvo. Marca triggeredAt
+   * para não reenviar o mesmo alerta.
+   */
+  private async triggerPriceAlerts(
+    tenantId: string,
+    vehicle: {
+      id: string;
+      price: Prisma.Decimal;
+      promoPrice: Prisma.Decimal | null;
+      versionName: string | null;
+      brand: { name: string };
+      model: { name: string };
+    },
+  ): Promise<void> {
+    const effective = vehicle.promoPrice != null ? Number(vehicle.promoPrice) : Number(vehicle.price);
+
+    const alerts = await this.prisma.priceAlert.findMany({
+      where: {
+        vehicleId: vehicle.id,
+        isActive: true,
+        triggeredAt: null,
+        targetPrice: { gte: effective },
+      },
+      include: { user: { select: { email: true, fullName: true } } },
+    });
+    if (alerts.length === 0) return;
+
+    const info = `${vehicle.brand.name} ${vehicle.model.name}${vehicle.versionName ? ` ${vehicle.versionName}` : ''}`;
+    const link = `${process.env.WEB_URL ?? 'http://localhost:3000'}/catalogo/${tenantId}?v=${vehicle.id}`;
+
+    for (const alert of alerts) {
+      try {
+        await this.email.sendPriceDropAlert({
+          to: alert.user.email,
+          name: alert.user.fullName ?? 'cliente',
+          vehicleInfo: info,
+          price: effective,
+          target: Number(alert.targetPrice),
+          link,
+        });
+        await this.prisma.priceAlert.update({
+          where: { id: alert.id },
+          data: { triggeredAt: new Date() },
+        });
+      } catch (err) {
+        this.logger.warn(`Falha ao notificar alerta ${alert.id}: ${err}`);
+      }
+    }
+  }
+
+  /** Linha do tempo de eventos do veículo (ex: mudanças de preço) */
+  async getHistory(tenantId: string, id: string): Promise<unknown> {
+    await this.findOne(tenantId, id);
+    return this.prisma.withTenant(tenantId, (tx) =>
+      tx.vehicleHistory.findMany({
+        where: { vehicleId: id, tenantId },
+        orderBy: { createdAt: 'desc' },
+        include: { actor: { select: { fullName: true } } },
+      }),
+    );
+  }
+
+  /**
+   * Importação em lote: resolve marca/modelo por nome (criando quando não
+   * existem, case-insensitive) e insere os veículos numa única transação.
+   */
+  async importMany(tenantId: string, rows: ImportRow[]) {
+    return this.prisma.$transaction(async (tx) => {
+      // Resolve marcas únicas por nome normalizado
+      const brandIdByKey = new Map<string, string>();
+      for (const name of new Set(rows.map((r) => r.brandName.trim()))) {
+        const key = name.toLowerCase();
+        const existing = await tx.vehicleBrand.findFirst({
+          where: { name: { equals: name, mode: 'insensitive' } },
+          select: { id: true },
+        });
+        brandIdByKey.set(
+          key,
+          existing?.id ?? (await tx.vehicleBrand.create({ data: { name }, select: { id: true } })).id,
+        );
+      }
+
+      // Resolve modelos únicos por (marca, nome)
+      const modelIdByKey = new Map<string, string>();
+      const modelPairs = new Set(rows.map((r) => `${r.brandName.trim().toLowerCase()}|${r.modelName.trim()}`));
+      for (const pair of modelPairs) {
+        const [brandKey, modelName] = pair.split('|');
+        const brandId = brandIdByKey.get(brandKey)!;
+        const existing = await tx.vehicleModel.findFirst({
+          where: { brandId, name: { equals: modelName, mode: 'insensitive' } },
+          select: { id: true },
+        });
+        modelIdByKey.set(
+          `${brandKey}|${modelName.toLowerCase()}`,
+          existing?.id ?? (await tx.vehicleModel.create({ data: { brandId, name: modelName }, select: { id: true } })).id,
+        );
+      }
+
+      const created = await tx.vehicle.createMany({
+        data: rows.map(({ brandName, modelName, ...rest }) => ({
+          ...rest,
+          tenantId,
+          brandId: brandIdByKey.get(brandName.trim().toLowerCase())!,
+          modelId: modelIdByKey.get(`${brandName.trim().toLowerCase()}|${modelName.trim().toLowerCase()}`)!,
+        })),
+      });
+
+      return { imported: created.count };
+    }, { timeout: 30_000 });
   }
 
   async remove(tenantId: string, id: string) {

@@ -119,13 +119,34 @@ function FitOnLoad({ pins }: { pins: ValidPin[] }) {
 
   useEffect(() => {
     if (fitted.current || pins.length === 0) return;
-    fitted.current = true;
-    if (pins.length === 1) {
-      map.setView([pins[0].latitude, pins[0].longitude], 13);
+
+    // O container pode ainda não ter altura no primeiro paint. Se ajustarmos
+    // nesse momento, o Leaflet calcula um zoom altíssimo e o resultado encosta
+    // no teto do maxZoom — o mapa abre "colado no chão" e sem nenhum pin à vista.
+    const fit = (): boolean => {
+      map.invalidateSize();
+      const { x, y } = map.getSize();
+      if (x === 0 || y === 0) return false;
+
+      if (pins.length === 1) {
+        map.setView([pins[0].latitude, pins[0].longitude], 13);
+      } else {
+        const bounds = L.latLngBounds(pins.map((p) => [p.latitude, p.longitude]));
+        map.fitBounds(bounds, { padding: [64, 64], maxZoom: 14, animate: false });
+      }
+      return true;
+    };
+
+    if (fit()) {
+      fitted.current = true;
       return;
     }
-    const bounds = L.latLngBounds(pins.map((p) => [p.latitude, p.longitude]));
-    map.fitBounds(bounds, { padding: [64, 64], maxZoom: 14, animate: false });
+
+    // Ainda sem dimensões — tenta de novo assim que o layout resolver.
+    const raf = requestAnimationFrame(() => {
+      if (fit()) fitted.current = true;
+    });
+    return () => cancelAnimationFrame(raf);
   }, [pins, map]);
 
   return null;
@@ -371,10 +392,10 @@ export default function MapClient({
 }: Props) {
   const [tilesLoaded, setTilesLoaded] = useState(false);
   const validPins = pins.filter(
-    (p): p is ValidPin => p.latitude !== null && p.longitude !== null,
+    (p): p is ValidPin => Number.isFinite(p.latitude) && Number.isFinite(p.longitude),
   );
   const selectedPin = validPins.find((p) => p.id === selectedId) ?? null;
-  const routePin = routeTo && routeTo.latitude !== null && routeTo.longitude !== null
+  const routePin = routeTo && Number.isFinite(routeTo.latitude) && Number.isFinite(routeTo.longitude)
     ? (routeTo as ValidPin)
     : null;
 
@@ -387,13 +408,23 @@ export default function MapClient({
         zoomControl={false}
         className="bg-[#0f172a]"
       >
-        {/* CartoDB Dark Matter — gratuito, sem API key */}
+        {/* Esri Dark Gray Canvas — gratuito e sem API key.
+            (A CARTO passou a exigir chave e carimba "API KEY REQUIRED" nos tiles.)
+            maxNativeZoom=16 é o limite da Esri; acima disso o Leaflet reamplia os tiles. */}
         <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          subdomains="abcd"
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+          attribution='&copy; <a href="https://www.esri.com">Esri</a>'
+          className="basemap-dark"
           maxZoom={20}
+          maxNativeZoom={16}
           eventHandlers={{ load: () => setTilesLoaded(true) }}
+        />
+
+        {/* Rótulos (cidades e vias) vêm em camada separada na Esri */}
+        <TileLayer
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
+          maxZoom={20}
+          maxNativeZoom={16}
         />
 
         <ZoomControl position="bottomright" />

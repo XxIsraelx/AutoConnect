@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Search, MapPin, Phone, Mail, Car, ChevronRight,
   ArrowLeft, Building2, SlidersHorizontal, X,
   LocateFixed, Loader2, Navigation, ExternalLink,
   Share2, Check, Map as MapIcon,
   Heart, Bell, GitCompare, ArrowUpDown, Bookmark,
-  BookmarkPlus, Trash2, Clock,
+  BookmarkPlus, Trash2, Clock, ChevronDown,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
@@ -25,10 +26,6 @@ function formatPrice(v: string | null | undefined) {
     style: 'currency', currency: 'BRL',
     minimumFractionDigits: 0, maximumFractionDigits: 0,
   }).format(parseFloat(v));
-}
-
-function formatKm(km: number) {
-  return km === 0 ? '0 km' : `${new Intl.NumberFormat('pt-BR').format(km)} km`;
 }
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -106,51 +103,6 @@ function VehicleSkeleton() {
   );
 }
 
-/* ── Vehicle card ────────────────────────────────────────── */
-
-function VehicleCard({ v }: { v: PublicVehicle }) {
-  const cond  = condMap[v.condition] ?? condMap.used;
-  const cover = v.images[0]?.url;
-  const price = v.promoPrice ?? v.price;
-  const promo = !!v.promoPrice;
-
-  return (
-    <div className="group flex gap-3 p-3 rounded-xl border border-white/[.06] bg-white/[.03]
-                    hover:border-blue-500/40 hover:bg-blue-500/[.06] transition-all cursor-pointer">
-      <div className="w-20 h-16 rounded-lg bg-white/10 shrink-0 overflow-hidden flex items-center justify-center">
-        {cover
-          // eslint-disable-next-line @next/next/no-img-element
-          ? <img src={cover} alt="" className="w-full h-full object-cover" />
-          : <Car size={18} className="text-white/20" />}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide truncate">
-          {v.brand.name} · {v.model.name}
-        </p>
-        <p className="text-sm font-bold text-white truncate leading-snug mt-0.5">
-          {v.versionName ?? String(v.yearModel)}
-        </p>
-        <div className="flex items-center gap-1.5 mt-1">
-          <span className={`text-[10px] font-bold px-1.5 py-px rounded-full ${cond.cls}`}>
-            {cond.label}
-          </span>
-          {v.mileageKm > 0 && (
-            <span className="text-[11px] text-slate-500">{formatKm(v.mileageKm)}</span>
-          )}
-        </div>
-        <p className={`text-sm font-extrabold mt-0.5 ${promo ? 'text-rose-400' : 'text-blue-400'}`}>
-          {formatPrice(price)}
-          {promo && (
-            <span className="ml-1.5 text-[11px] font-normal text-slate-600 line-through">
-              {formatPrice(v.price)}
-            </span>
-          )}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 /* ── Vehicle search result ───────────────────────────────── */
 
 function VehicleSearchResult({
@@ -196,10 +148,12 @@ function VehicleSearchResult({
       </div>
 
       <div className="flex-1 min-w-0">
-        <p className="text-[11px] text-slate-500 truncate flex items-center gap-1">
-          <Building2 size={9} className="shrink-0" />
-          {dealerName ?? 'Concessionária'}
-        </p>
+        {dealerName && (
+          <p className="text-[11px] text-slate-500 truncate flex items-center gap-1">
+            <Building2 size={9} className="shrink-0" />
+            {dealerName}
+          </p>
+        )}
         <p className="text-[11px] text-slate-500 uppercase tracking-wide truncate mt-px">
           {v.brand.name} · {v.model.name}
         </p>
@@ -332,6 +286,54 @@ function OpenBadge({ businessHours, className = '' }: { businessHours: unknown; 
       </span>
       <span className="text-slate-500 font-medium">· {status.label}</span>
     </span>
+  );
+}
+
+/* ── Horário de funcionamento (acordeão) ─────────────────── */
+
+function HoursAccordion({ hoursList }: {
+  hoursList: { label: string; hours: string; closed: boolean; today: boolean }[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const today = hoursList.find((d) => d.today);
+
+  return (
+    <div className="pt-0.5">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="flex items-center gap-2.5 w-full group"
+      >
+        <div className="w-6 h-6 rounded-lg bg-blue-500/15 flex items-center justify-center shrink-0">
+          <Clock size={12} className="text-blue-400" />
+        </div>
+        <span className="flex-1 min-w-0 flex items-center justify-between text-xs text-slate-400
+                         group-hover:text-blue-400 transition-colors">
+          <span>
+            Hoje · <span className={today?.closed ? 'text-slate-600' : 'text-white font-semibold'}>
+              {today?.hours ?? '—'}
+            </span>
+          </span>
+          <ChevronDown size={13} className={`shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="mt-1.5 ml-[34px]">
+          {hoursList.map((d) => (
+            <div key={d.label}
+                 className={`flex items-center justify-between text-xs py-0.5
+                   ${d.today ? 'text-white font-semibold' : 'text-slate-400'}`}>
+              <span className="flex items-center gap-1.5">
+                {d.label}
+                {d.today && <span className="text-[9px] text-blue-400 font-bold uppercase">hoje</span>}
+              </span>
+              <span className={d.closed ? 'text-slate-600' : ''}>{d.hours}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -479,9 +481,16 @@ function ShareButton({ pin }: { pin: DealershipPin }) {
 
 function DealerDetail({
   pin, onBack, onRoute,
+  favIds, onToggleFav, compare, onToggleCompare, onAlert, onOpenVehicle,
 }: {
   pin: DealershipPin; onBack: () => void;
   onRoute?: (pin: DealershipPin) => void;
+  favIds: Set<string>;
+  onToggleFav: (v: PublicVehicle) => void;
+  compare: PublicVehicle[];
+  onToggleCompare: (v: PublicVehicle) => void;
+  onAlert: (v: PublicVehicle) => void;
+  onOpenVehicle: (v: PublicVehicle) => void;
 }) {
   const [vehicles, setVehicles] = useState<PublicVehicle[]>([]);
   const [loadingV, setLoadingV] = useState(true);
@@ -574,27 +583,9 @@ function DealerDetail({
           </a>
         )}
 
-        {/* Horário de funcionamento */}
-        {hoursList && (
-          <div className="flex items-start gap-2.5 pt-0.5">
-            <div className="w-6 h-6 rounded-lg bg-blue-500/15 flex items-center justify-center shrink-0 mt-0.5">
-              <Clock size={12} className="text-blue-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-              {hoursList.map((d) => (
-                <div key={d.label}
-                     className={`flex items-center justify-between text-xs py-0.5
-                       ${d.today ? 'text-white font-semibold' : 'text-slate-400'}`}>
-                  <span className="flex items-center gap-1.5">
-                    {d.label}
-                    {d.today && <span className="text-[9px] text-blue-400 font-bold uppercase">hoje</span>}
-                  </span>
-                  <span className={d.closed ? 'text-slate-600' : ''}>{d.hours}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Horário de funcionamento — recolhido por padrão para não roubar
+            espaço da lista de veículos (só o estoque tem scroll próprio) */}
+        {hoursList && <HoursAccordion hoursList={hoursList} />}
       </div>
 
       {/* Veículos */}
@@ -632,7 +623,20 @@ function DealerDetail({
           </div>
         ) : (
           <div className="space-y-2.5">
-            {vehicles.map(v => <VehicleCard key={v.id} v={v} />)}
+            {vehicles.map(v => (
+              <VehicleSearchResult
+                key={v.id}
+                v={v}
+                dealerName={undefined}
+                onClick={() => onOpenVehicle(v)}
+                isFav={favIds.has(v.id)}
+                onToggleFav={() => onToggleFav(v)}
+                inCompare={compare.some(c => c.id === v.id)}
+                onToggleCompare={() => onToggleCompare(v)}
+                compareDisabled={compare.length >= 3 && !compare.some(c => c.id === v.id)}
+                onAlert={() => onAlert(v)}
+              />
+            ))}
           </div>
         )}
       </div>
@@ -683,6 +687,8 @@ export default function Sidebar({
   userLocation, geoLoading, onLocate,
   onMatchingTenantsChange, onRadiusChange, onRoute,
 }: Props) {
+
+  const router = useRouter();
 
   /* ── Estados ─────────────────────────────────────────────── */
   const [searchMode, setSearchMode]       = useState<SearchMode>('dealers');
@@ -949,10 +955,74 @@ export default function Sidebar({
     setRadiusKm(km);
   }, []);
 
-  if (selected) return <DealerDetail pin={selected} onBack={() => onSelect(null)} onRoute={onRoute} />;
+  /* ── Overlays compartilhados (lista + detalhe da loja) ───── */
+  const overlays = (
+    <>
+      {/* Barra de comparação flutuante */}
+      {compare.length > 0 && (
+        <div className="absolute bottom-0 left-0 right-0 z-30 p-3 border-t border-white/[.08]
+                        bg-[#0f172a]/95 backdrop-blur-sm">
+          <div className="flex items-center gap-2">
+            <div className="flex -space-x-2">
+              {compare.slice(0, 3).map(v => (
+                <div key={v.id} className="w-8 h-8 rounded-lg border-2 border-[#0f172a] overflow-hidden bg-white/10">
+                  {v.images[0]?.url
+                    // eslint-disable-next-line @next/next/no-img-element
+                    ? <img src={v.images[0].url} alt="" className="w-full h-full object-cover" />
+                    : <Car size={12} className="text-white/30 m-auto mt-2" />}
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-slate-400 flex-1">
+              {compare.length}/3 para comparar
+            </p>
+            <button onClick={() => setCompare([])}
+              className="text-[11px] text-slate-500 hover:text-rose-400 transition">Limpar</button>
+            <button
+              onClick={() => setCompareOpen(true)}
+              disabled={compare.length < 2}
+              className="flex items-center gap-1.5 bg-blue-600 text-white text-xs font-bold px-3 py-2 rounded-xl
+                         hover:bg-blue-500 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <GitCompare size={13} /> Comparar
+            </button>
+          </div>
+        </div>
+      )}
+
+      <CompareDrawer
+        vehicles={compare}
+        dealerNames={tenantNames}
+        open={compareOpen}
+        onClose={() => setCompareOpen(false)}
+        onRemove={(id) => setCompare(prev => prev.filter(v => v.id !== id))}
+      />
+
+      {alertVehicle && (
+        <AlertModal vehicle={alertVehicle} token={token} onClose={() => setAlertVehicle(null)} />
+      )}
+    </>
+  );
+
+  if (selected) return (
+    <div className="relative h-full">
+      <DealerDetail
+        pin={selected}
+        onBack={() => onSelect(null)}
+        onRoute={onRoute}
+        favIds={favIds}
+        onToggleFav={toggleFav}
+        compare={compare}
+        onToggleCompare={toggleCompare}
+        onAlert={setAlertVehicle}
+        onOpenVehicle={(v) => router.push(`/catalogo/${selected.tenant.id}?v=${v.id}`)}
+      />
+      {overlays}
+    </div>
+  );
 
   return (
-    <div className="flex flex-col h-full bg-[#0f172a]">
+    <div className="relative flex flex-col h-full bg-[#0f172a]">
 
       {/* ── Cabeçalho fixo ───────────────────────────── */}
       <div className="px-4 pt-4 pb-3 space-y-3 border-b border-white/[.06]">
@@ -1477,48 +1547,7 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* ── Barra de comparação ──────────────────────── */}
-      {compare.length > 0 && (
-        <div className="shrink-0 p-3 border-t border-white/[.08] bg-[#0f172a]">
-          <div className="flex items-center gap-2">
-            <div className="flex -space-x-2">
-              {compare.slice(0, 3).map(v => (
-                <div key={v.id} className="w-8 h-8 rounded-lg border-2 border-[#0f172a] overflow-hidden bg-white/10">
-                  {v.images[0]?.url
-                    // eslint-disable-next-line @next/next/no-img-element
-                    ? <img src={v.images[0].url} alt="" className="w-full h-full object-cover" />
-                    : <Car size={12} className="text-white/30 m-auto mt-2" />}
-                </div>
-              ))}
-            </div>
-            <p className="text-xs text-slate-400 flex-1">
-              {compare.length}/3 para comparar
-            </p>
-            <button onClick={() => setCompare([])}
-              className="text-[11px] text-slate-500 hover:text-rose-400 transition">Limpar</button>
-            <button
-              onClick={() => setCompareOpen(true)}
-              disabled={compare.length < 2}
-              className="flex items-center gap-1.5 bg-blue-600 text-white text-xs font-bold px-3 py-2 rounded-xl
-                         hover:bg-blue-500 transition disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <GitCompare size={13} /> Comparar
-            </button>
-          </div>
-        </div>
-      )}
-
-      <CompareDrawer
-        vehicles={compare}
-        dealerNames={tenantNames}
-        open={compareOpen}
-        onClose={() => setCompareOpen(false)}
-        onRemove={(id) => setCompare(prev => prev.filter(v => v.id !== id))}
-      />
-
-      {alertVehicle && (
-        <AlertModal vehicle={alertVehicle} token={token} onClose={() => setAlertVehicle(null)} />
-      )}
+      {overlays}
 
     </div>
   );

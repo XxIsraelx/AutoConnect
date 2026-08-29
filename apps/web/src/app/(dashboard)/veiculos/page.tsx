@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Search, Car } from 'lucide-react';
+import { Plus, Search, Car, FileSpreadsheet } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
+import VehicleImportModal from '@/components/VehicleImportModal';
 
 interface VehicleItem {
   id: string;
@@ -40,6 +41,8 @@ export default function VehiclesPage() {
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [showImport, setShowImport] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!token) return;
@@ -50,7 +53,7 @@ export default function VehiclesPage() {
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [token, page, q]);
+  }, [token, page, q, refreshKey]);
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -62,14 +65,33 @@ export default function VehiclesPage() {
             {data ? `${data.meta.total} veículos cadastrados` : 'Carregando…'}
           </p>
         </div>
-        <Link
-          href="/veiculos/novo"
-          className="flex items-center gap-2 bg-brand-accent text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-blue-600 transition"
-        >
-          <Plus size={16} />
-          Novo veículo
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg border
+                       border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300
+                       hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 transition"
+          >
+            <FileSpreadsheet size={16} />
+            Importar
+          </button>
+          <Link
+            href="/veiculos/novo"
+            className="flex items-center gap-2 bg-brand-accent text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-blue-600 transition"
+          >
+            <Plus size={16} />
+            Novo veículo
+          </Link>
+        </div>
       </div>
+
+      {showImport && token && (
+        <VehicleImportModal
+          token={token}
+          onClose={() => setShowImport(false)}
+          onImported={() => setRefreshKey((k) => k + 1)}
+        />
+      )}
 
       {/* Search */}
       <div className="relative mb-5">

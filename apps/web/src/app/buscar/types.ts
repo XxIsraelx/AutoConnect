@@ -71,6 +71,7 @@ export interface PublicDealer {
   brandColor: string | null;
   websiteUrl: string | null;
   primaryPhone: string | null;
+  acceptsTradeIn?: boolean;
   branches: {
     id: string;
     name: string;

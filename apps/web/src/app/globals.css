@@ -27,6 +27,21 @@ html, body {
 /* Fundo dos tiles enquanto carregam */
 .leaflet-tile-pane { background: #0f172a; }
 
+/* O basemap da Esri vem num cinza médio neutro (terreno ~rgb(63,63,65)).
+   Aqui ele é escurecido e tingido com o azul da paleta: o resultado no terreno
+   fica ~rgb(30,40,63), praticamente o slate-800 (rgb(30,41,59)) usado no app.
+
+   O sepia() é necessário e não é decorativo: hue-rotate() não tem efeito sobre
+   cinza puro (saturação zero), então sepia injeta saturação primeiro para que
+   a rotação de matiz consiga levar o tom até o azul.
+
+   Aplicado só na base — a camada de rótulos fica intacta e legível.
+   Para clarear/escurecer, mexa apenas no brightness:
+     0.5 → rgb(25,32,51)   0.6 → rgb(30,40,63)   0.7 → rgb(37,48,76) */
+.basemap-dark {
+  filter: brightness(0.6) contrast(1.05) sepia(1) hue-rotate(185deg) saturate(2.5);
+}
+
 /* Zoom controls — glass */
 .leaflet-control-zoom {
   border: none !important;

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@autoconnect/db';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
@@ -30,6 +30,7 @@ export class TeamService {
       select: {
         id: true, email: true, fullName: true, role: true,
         status: true, lastLoginAt: true, avatarUrl: true, createdAt: true,
+        salespersonProfile: { select: { commissionPct: true } },
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -76,11 +77,17 @@ export class TeamService {
       const won = wonLeads.length;
       const valueSold = wonLeads.reduce((s, l) => s + Number(l.vehicle?.price ?? 0), 0);
       const conversion = assigned > 0 ? Math.round((won / assigned) * 100) : 0;
+      const commissionPct =
+        mem.salespersonProfile?.commissionPct != null
+          ? Number(mem.salespersonProfile.commissionPct)
+          : null;
+      const commission = commissionPct != null ? (valueSold * commissionPct) / 100 : null;
       return {
         id: mem.id, email: mem.email, fullName: mem.fullName, role: mem.role,
         status: mem.status, lastLoginAt: mem.lastLoginAt, avatarUrl: mem.avatarUrl,
         goal: goalMap.get(mem.id) ?? null,
         assigned, won, conversion, valueSold,
+        commissionPct, commission,
         appointments: apptMap.get(mem.id) ?? 0,
       };
     });
@@ -113,6 +120,23 @@ export class TeamService {
     }
     return this.prisma.salesGoal.create({
       data: { tenantId, userId: userId ?? null, period, target },
+    });
+  }
+
+  /** Define o percentual de comissão de um vendedor (cria o perfil se faltar) */
+  async setCommission(tenantId: string, userId: string, pct: number | null): Promise<unknown> {
+    // Garante que o usuário pertence ao tenant
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, tenantId },
+      select: { id: true },
+    });
+    if (!user) throw new NotFoundException('Membro não encontrado');
+
+    return this.prisma.salespersonProfile.upsert({
+      where: { userId },
+      update: { commissionPct: pct },
+      create: { userId, tenantId, commissionPct: pct },
+      select: { userId: true, commissionPct: true },
     });
   }
 }

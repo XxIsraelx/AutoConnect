@@ -46,6 +46,7 @@ export class TenantsController {
       logoUrl?: string;
       brandColor?: string;
       websiteUrl?: string;
+      acceptsTradeIn?: boolean;
     },
   ): Promise<unknown> {
     return this.tenants.updateTenant(req.tenantId!, body);

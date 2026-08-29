@@ -257,6 +257,7 @@ export class TenantsService {
       logoUrl?: string;
       brandColor?: string;
       websiteUrl?: string;
+      acceptsTradeIn?: boolean;
     },
   ): Promise<unknown> {
     return this.prisma.tenant.update({

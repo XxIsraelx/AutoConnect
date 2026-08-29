@@ -9,13 +9,14 @@ import {
   SlidersHorizontal, ChevronLeft, ChevronRight,
   Navigation, Loader2, ExternalLink,
   Fuel, Gauge, Settings2, DoorOpen,
-  Heart, MessageCircle, Calculator, Scale, CalendarPlus,
+  Heart, MessageCircle, Calculator, Scale, CalendarPlus, Repeat,
   CheckSquare, Square, ArrowRight, Check, AlertCircle,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import ChatDrawer from '@/components/ChatDrawer';
 import ScheduleModal, { type ScheduleBranch } from '@/components/ScheduleModal';
+import TradeInModal from '@/components/TradeInModal';
 import type {
   PublicDealer, PublicVehicle, PublicVehicleDetail,
   VehiclesPage, PublicBrand,
@@ -588,6 +589,7 @@ function VehicleDrawer({
   dealerName,
   dealerLogo,
   branches,
+  acceptsTradeIn,
   onClose,
   isFav,
   onFavToggle,
@@ -598,6 +600,7 @@ function VehicleDrawer({
   dealerName: string;
   dealerLogo: string | null;
   branches: ScheduleBranch[];
+  acceptsTradeIn: boolean;
   onClose: () => void;
   isFav: boolean;
   onFavToggle: () => void;
@@ -610,6 +613,7 @@ function VehicleDrawer({
   const [showCalc, setShowCalc] = useState(false);
   const [showLead, setShowLead] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
+  const [showTradeIn, setShowTradeIn]   = useState(false);
   const [chatId, setChatId]     = useState<string | null>(null);
   const [startingChat, setStartingChat] = useState(false);
 
@@ -864,6 +868,19 @@ function VehicleDrawer({
                 </button>
               )}
 
+              {/* Oferecer carro na troca */}
+              {acceptsTradeIn && (
+                <button
+                  onClick={() => setShowTradeIn(true)}
+                  className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl
+                             bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold text-sm
+                             hover:bg-emerald-500/20 transition-colors"
+                >
+                  <Repeat size={15} />
+                  Tenho um carro na troca
+                </button>
+              )}
+
               {/* Toggle calculadora */}
               <button
                 onClick={() => setShowCalc(v => !v)}
@@ -946,6 +963,20 @@ function VehicleDrawer({
         />
       )}
 
+      {/* Oferta de troca */}
+      {showTradeIn && vehicle && (
+        <TradeInModal
+          tenantId={tenantId}
+          dealerName={dealerName}
+          desired={{
+            id: vehicle.id,
+            label: `${vehicle.brand.name} ${vehicle.model.name} ${vehicle.versionName ?? ''} ${vehicle.yearModel}`.replace(/\s+/g, ' ').trim(),
+            price: vehicle.promoPrice != null ? Number(vehicle.promoPrice) : (vehicle.price != null ? Number(vehicle.price) : null),
+          }}
+          onClose={() => setShowTradeIn(false)}
+        />
+      )}
+
       {chatId && (
         <ChatDrawer
           conversationId={chatId}
@@ -988,6 +1019,12 @@ export default function CatalogoContent() {
 
   // Drawer
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+
+  // Abre o veículo direto quando chega com ?v=<id> (ex: vindo da busca)
+  useEffect(() => {
+    const v = new URLSearchParams(window.location.search).get('v');
+    if (v) setSelectedVehicleId(v);
+  }, []);
 
   // Favoritos
   const [favIds, setFavIds]               = useState<Set<string>>(new Set());
@@ -1482,6 +1519,7 @@ export default function CatalogoContent() {
           dealerName={dealer?.tradeName ?? 'Concessionária'}
           dealerLogo={dealer?.logoUrl ?? null}
           branches={dealer?.branches ?? []}
+          acceptsTradeIn={dealer?.acceptsTradeIn ?? false}
           onClose={() => setSelectedVehicleId(null)}
           isFav={favIds.has(selectedVehicleId)}
           onFavToggle={() => handleFavToggle(selectedVehicleId)}

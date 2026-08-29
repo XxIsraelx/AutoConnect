@@ -1,7 +1,9 @@
 import { Metadata } from 'next';
 import CatalogoContent from './CatalogoContent';
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+// NEXT_PUBLIC_API_URL é sempre a origem da API, sem o prefixo /api/v1 (mesma
+// convenção de lib/api.ts). O prefixo é acrescentado aqui.
+const API = `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000'}/api/v1`;
 
 interface DealerMeta {
   tradeName: string;

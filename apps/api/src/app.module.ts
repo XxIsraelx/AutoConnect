@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -18,6 +19,8 @@ import { UsersModule } from './modules/users/users.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { TeamModule } from './modules/team/team.module';
+import { FipeModule } from './modules/fipe/fipe.module';
+import { TasksModule } from './modules/tasks/tasks.module';
 
 @Module({
   imports: [
@@ -26,6 +29,7 @@ import { TeamModule } from './modules/team/team.module';
       // CWD é apps/api/ no monorepo — procura .env local primeiro, depois na raiz
       envFilePath: ['.env', '../../.env'],
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
     TenantsModule,
@@ -41,6 +45,8 @@ import { TeamModule } from './modules/team/team.module';
     TeamModule,
     InvitationsModule,
     ConversationsModule,
+    FipeModule,
+    TasksModule,
   ],
   providers: [
     {

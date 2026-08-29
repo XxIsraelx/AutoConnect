@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import {
   Building2, Phone, Globe, Palette, MapPin,
-  Mail, Hash, Check, Loader2, AlertCircle, Save, Clock,
+  Mail, Hash, Check, Loader2, AlertCircle, Save, Clock, Repeat,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
@@ -38,6 +38,7 @@ interface TenantFull {
   logoUrl: string | null;
   brandColor: string | null;
   websiteUrl: string | null;
+  acceptsTradeIn: boolean;
   branches: Branch[];
   subscription: { plan: string; status: string } | null;
 }
@@ -193,6 +194,7 @@ export default function ConfiguracoesPage() {
   /* Forms separados para cada seção */
   const [tenantForm, setTenantForm] = useState({
     tradeName: '', primaryPhone: '', brandColor: '', websiteUrl: '', logoUrl: '',
+    acceptsTradeIn: false,
   });
   const [branchForm, setBranchForm] = useState({
     name: '', phone: '', email: '',
@@ -222,6 +224,7 @@ export default function ConfiguracoesPage() {
           brandColor:   t.brandColor   ?? '#3b82f6',
           websiteUrl:   t.websiteUrl   ?? '',
           logoUrl:      t.logoUrl      ?? '',
+          acceptsTradeIn: t.acceptsTradeIn ?? false,
         });
         const b = t.branches[0];
         if (b) {
@@ -258,6 +261,7 @@ export default function ConfiguracoesPage() {
           brandColor:   tenantForm.brandColor   || undefined,
           websiteUrl:   tenantForm.websiteUrl   || undefined,
           logoUrl:      tenantForm.logoUrl      || undefined,
+          acceptsTradeIn: tenantForm.acceptsTradeIn,
         }),
       });
       setTenant(updated);
@@ -307,7 +311,7 @@ export default function ConfiguracoesPage() {
     );
   }
 
-  const setT = (k: string, v: string) => setTenantForm(f => ({ ...f, [k]: v }));
+  const setT = (k: string, v: string | boolean) => setTenantForm(f => ({ ...f, [k]: v }));
   const setB = (k: string, v: string) => setBranchForm(f => ({ ...f, [k]: v }));
 
   return (
@@ -377,6 +381,32 @@ export default function ConfiguracoesPage() {
                 </div>
               </div>
             </Field>
+
+            {/* Aceita troca */}
+            <div className="flex items-start justify-between gap-4 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/40 flex items-center justify-center shrink-0">
+                  <Repeat size={16} className="text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Aceitar veículo na troca</p>
+                  <p className="text-xs text-slate-500 mt-0.5 max-w-sm">
+                    Quando ativo, clientes podem oferecer o próprio carro para abater do valor da compra. As propostas chegam como leads de troca.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={tenantForm.acceptsTradeIn}
+                onClick={() => setT('acceptsTradeIn', !tenantForm.acceptsTradeIn)}
+                className={`relative w-11 h-6 rounded-full transition-colors shrink-0 mt-0.5
+                  ${tenantForm.acceptsTradeIn ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform
+                  ${tenantForm.acceptsTradeIn ? 'translate-x-5' : ''}`} />
+              </button>
+            </div>
 
             {/* Info somente leitura */}
             <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">

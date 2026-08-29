@@ -5,19 +5,21 @@ import Link from 'next/link';
 import {
   MapPin, Phone, Globe, Search, X, Heart,
   Car, Fuel, Gauge, SlidersHorizontal, ChevronLeft, ChevronRight,
-  MessageCircle, ArrowLeft, Loader2, CalendarPlus,
+  MessageCircle, ArrowLeft, Loader2, CalendarPlus, Repeat,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
 import ChatDrawer from '@/components/ChatDrawer';
 import ScheduleModal from '@/components/ScheduleModal';
+import TradeInModal from '@/components/TradeInModal';
 
 /* ── Tipos ─────────────────────────────────────────────── */
 interface Dealer {
   id: string; slug: string; tradeName: string;
   logoUrl: string | null; brandColor: string | null;
   websiteUrl: string | null; primaryPhone: string | null;
+  acceptsTradeIn?: boolean;
   branches: {
     id: string; name: string; city: string; state: string;
     addressLine: string | null; addressNumber: string | null;
@@ -53,6 +55,7 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
   const [chatId, setChatId]       = useState<string | null>(null);
   const [startingChat, setStartingChat] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
+  const [showTradeIn, setShowTradeIn]   = useState(false);
 
   const canChat = !user || user.role === 'customer';
 
@@ -86,7 +89,7 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
       if (condition) params.set('condition', condition);
       if (sort)      params.set('sort', sort);
       const r = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1'}/catalog/vehicles?${params}`,
+        `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000'}/api/v1/catalog/vehicles?${params}`,
       ).then((res) => res.json()) as { items: PublicVehicle[]; total: number };
       setVehicles(r.items);
       setTotal(r.total);
@@ -187,6 +190,15 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
                 >
                   <CalendarPlus size={14} />
                   Agendar visita
+                </button>
+              )}
+              {dealer.acceptsTradeIn && (
+                <button
+                  onClick={() => setShowTradeIn(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition"
+                >
+                  <Repeat size={14} />
+                  Tenho um carro na troca
                 </button>
               )}
             </div>
@@ -349,6 +361,14 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
           dealerName={dealer.tradeName}
           branches={dealer.branches.map(b => ({ id: b.id, name: b.name, city: b.city, state: b.state }))}
           onClose={() => setShowSchedule(false)}
+        />
+      )}
+
+      {showTradeIn && (
+        <TradeInModal
+          tenantId={dealer.id}
+          dealerName={dealer.tradeName}
+          onClose={() => setShowTradeIn(false)}
         />
       )}
 

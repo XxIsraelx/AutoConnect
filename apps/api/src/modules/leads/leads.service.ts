@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@autoconnect/db';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { EmailService } from '../../common/email/email.service';
 import type { CreateLeadInput, UpdateLeadStatusInput } from '@autoconnect/shared';
@@ -252,6 +253,85 @@ export class LeadsService {
     });
 
     return interaction;
+  }
+
+  /**
+   * Avaliação de um lead de troca: o vendedor informa quanto vale o veículo
+   * oferecido. Guarda na metadata, registra na timeline e avisa o cliente.
+   */
+  async setTradeInAppraisal(
+    tenantId: string,
+    leadId: string,
+    actorUserId: string,
+    input: { value: number; note?: string; status?: 'offered' | 'rejected' },
+  ): Promise<unknown> {
+    const lead = await this.prisma.lead.findFirst({
+      where: { id: leadId, tenantId },
+      include: {
+        tenant:  { select: { tradeName: true } },
+        vehicle: {
+          select: {
+            price: true, versionName: true, yearModel: true,
+            brand: { select: { name: true } },
+            model: { select: { name: true } },
+          },
+        },
+      },
+    });
+    if (!lead) throw new NotFoundException('Lead não encontrado');
+    if (lead.source !== 'trade_in') throw new BadRequestException('Este lead não é uma proposta de troca');
+
+    const meta = (lead.metadata && typeof lead.metadata === 'object' ? lead.metadata : {}) as Record<string, unknown>;
+    const tradeIn = (meta.tradeIn && typeof meta.tradeIn === 'object' ? meta.tradeIn : {}) as Record<string, unknown>;
+    const offered = (tradeIn.vehicle ?? {}) as { brandName?: string; modelName?: string; versionName?: string; yearModel?: number };
+
+    const appraisal = {
+      value: input.value,
+      note: input.note ?? null,
+      status: input.status ?? 'offered',
+      evaluatedBy: actorUserId,
+      evaluatedAt: new Date().toISOString(),
+    };
+    const newMeta = { ...meta, tradeIn: { ...tradeIn, appraisal } };
+
+    const updated = await this.prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        metadata: newMeta as Prisma.InputJsonValue,
+        lastActivityAt: new Date(),
+      },
+    });
+
+    await this.prisma.leadInteraction.create({
+      data: {
+        leadId, tenantId, actorUserId,
+        kind: 'trade_in_appraisal',
+        content: input.status === 'rejected'
+          ? 'Proposta de troca recusada'
+          : `Veículo avaliado em R$ ${input.value.toLocaleString('pt-BR')}`,
+        payload: { value: input.value, status: appraisal.status } as never,
+      },
+    });
+
+    // Avisa o cliente (e-mail de contato do lead)
+    if (lead.contactEmail && input.status !== 'rejected') {
+      const offeredInfo = `${offered.brandName ?? ''} ${offered.modelName ?? ''} ${offered.versionName ?? ''} ${offered.yearModel ?? ''}`.replace(/\s+/g, ' ').trim();
+      const desiredInfo = lead.vehicle
+        ? `${lead.vehicle.brand.name} ${lead.vehicle.model.name} ${lead.vehicle.versionName ?? ''} ${lead.vehicle.yearModel}`.replace(/\s+/g, ' ').trim()
+        : null;
+      this.email.sendTradeInAppraisal({
+        to: lead.contactEmail,
+        customerName: lead.contactName ?? 'cliente',
+        dealerName: lead.tenant.tradeName,
+        offeredVehicle: offeredInfo || 'seu veículo',
+        value: input.value,
+        desiredVehicle: desiredInfo,
+        desiredPrice: lead.vehicle ? Number(lead.vehicle.price) : null,
+        note: input.note ?? null,
+      }).catch(() => {/* silencia erros de e-mail */});
+    }
+
+    return updated;
   }
 
   /** Exporta leads como CSV */

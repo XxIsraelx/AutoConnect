@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { VehiclesService } from './vehicles.service';
 import { createVehicleSchema, updateVehicleSchema, vehicleQuerySchema } from '@autoconnect/shared';
+import { importVehiclesSchema } from './import.schema';
 
 interface AuthRequest {
   user: { id: string; role: string; tenantId: string | null };
@@ -40,6 +41,19 @@ export class VehiclesController {
     return this.vehicles.create(req.user.tenantId!, parsed);
   }
 
+  /** POST /vehicles/import — importação em lote a partir de planilha */
+  @Post('import')
+  importMany(@Req() req: AuthRequest, @Body() body: unknown): Promise<unknown> {
+    const parsed = importVehiclesSchema.parse(body);
+    return this.vehicles.importMany(req.user.tenantId!, parsed.rows);
+  }
+
+  /** GET /vehicles/:id/history — linha do tempo (ex: mudanças de preço) */
+  @Get(':id/history')
+  history(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string): Promise<unknown> {
+    return this.vehicles.getHistory(req.user.tenantId!, id);
+  }
+
   @Patch(':id')
   update(
     @Req() req: AuthRequest,
@@ -47,7 +61,7 @@ export class VehiclesController {
     @Body() body: unknown,
   ): Promise<unknown> {
     const parsed = updateVehicleSchema.parse(body);
-    return this.vehicles.update(req.user.tenantId!, id, parsed);
+    return this.vehicles.update(req.user.tenantId!, id, parsed, req.user.id);
   }
 
   @Delete(':id')

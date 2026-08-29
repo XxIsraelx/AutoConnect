@@ -92,6 +92,7 @@ enum LeadSource {
   referral
   social
   ad
+  trade_in
   other
 }
 
@@ -172,6 +173,7 @@ model Tenant {
   websiteUrl          String?   @map("website_url")
   timezone            String    @default("America/Sao_Paulo")
   isActive            Boolean   @default(true) @map("is_active")
+  acceptsTradeIn      Boolean   @default(false) @map("accepts_trade_in")
   settings            Json      @default("{}")
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz()

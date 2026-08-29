@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { CatalogService } from './catalog.service';
 import { Public } from '../../common/decorators/public.decorator';
+import { tradeInSchema } from './trade-in.schema';
 
 interface AuthRequest {
   user: { id: string; role: string; tenantId: string | null };
@@ -45,6 +46,14 @@ export class CatalogController {
   @Get('dealer/:tenantId')
   async findDealer(@Param('tenantId', ParseUUIDPipe) tenantId: string) {
     return this.catalog.findPublicDealer(tenantId);
+  }
+
+  /** POST /catalog/trade-in — cliente oferece um veículo na troca (público) */
+  @Public()
+  @Post('trade-in')
+  createTradeIn(@Body() body: unknown) {
+    const parsed = tradeInSchema.parse(body);
+    return this.catalog.createTradeIn(parsed);
   }
 
   /** GET /catalog/vehicles/:id — detalhe de um veículo */

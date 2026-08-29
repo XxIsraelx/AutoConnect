@@ -16,6 +16,7 @@ interface MemberStat {
   status: string; lastLoginAt: string | null; avatarUrl: string | null;
   goal: number | null; assigned: number; won: number; conversion: number;
   valueSold: number; appointments: number;
+  commissionPct: number | null; commission: number | null;
 }
 interface TeamStat {
   goal: number | null; won: number; assigned: number; conversion: number;
@@ -132,6 +133,19 @@ export default function EquipePage() {
     if (!token) return;
     setBusyId(id);
     try { await api(`/users/${id}/status`, { token, method: 'PATCH', body: { status } }); await load(); setSelected(null); }
+    catch (e) { alert(e instanceof Error ? e.message : 'Erro'); }
+    finally { setBusyId(null); }
+  }
+  async function setCommission(id: string, commissionPct: number | null) {
+    if (!token) return;
+    setBusyId(id);
+    try {
+      await api(`/team/members/${id}/commission`, { token, method: 'PATCH', body: { commissionPct } });
+      await load();
+      setSelected((cur) => (cur && cur.id === id
+        ? { ...cur, commissionPct, commission: commissionPct != null ? (cur.valueSold * commissionPct) / 100 : null }
+        : cur));
+    }
     catch (e) { alert(e instanceof Error ? e.message : 'Erro'); }
     finally { setBusyId(null); }
   }
@@ -316,17 +330,24 @@ export default function EquipePage() {
         <MemberDrawer member={selected} period={period} isAdmin={isAdmin} busy={busyId === selected.id}
           onClose={() => setSelected(null)}
           onChangeRole={(r) => changeRole(selected.id, r)}
-          onSetStatus={(s) => setStatus(selected.id, s)} />
+          onSetStatus={(s) => setStatus(selected.id, s)}
+          onSetCommission={(pct) => setCommission(selected.id, pct)} />
       )}
     </div>
   );
 }
 
 /* ── Drawer do membro ───────────────────────────────────── */
-function MemberDrawer({ member, period, isAdmin, busy, onClose, onChangeRole, onSetStatus }: {
+function MemberDrawer({ member, period, isAdmin, busy, onClose, onChangeRole, onSetStatus, onSetCommission }: {
   member: MemberStat; period: string; isAdmin: boolean; busy: boolean;
   onClose: () => void; onChangeRole: (r: string) => void; onSetStatus: (s: 'active' | 'suspended') => void;
+  onSetCommission: (pct: number | null) => void;
 }) {
+  const [pctInput, setPctInput] = useState(member.commissionPct != null ? String(member.commissionPct) : '');
+  useEffect(() => {
+    setPctInput(member.commissionPct != null ? String(member.commissionPct) : '');
+  }, [member.commissionPct, member.id]);
+  const pctChanged = (pctInput === '' ? null : Number(pctInput)) !== member.commissionPct;
   const stats = [
     { Icon: Award, label: 'Vendas (ganhos)', value: String(member.won), accent: 'text-emerald-600' },
     { Icon: Users, label: 'Leads atendidos', value: String(member.assigned), accent: 'text-blue-600' },
@@ -376,6 +397,45 @@ function MemberDrawer({ member, period, isAdmin, busy, onClose, onChangeRole, on
           <div className="bg-white dark:bg-slate-900 rounded-xl p-4 border border-slate-200 dark:border-slate-800">
             <p className="text-xs text-slate-400">Valor vendido no período</p>
             <p className="text-2xl font-extrabold text-amber-600 mt-1">{brl(member.valueSold)}</p>
+          </div>
+
+          {/* Comissão */}
+          <div className="bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/20 dark:to-slate-900 rounded-xl p-4 border border-emerald-200 dark:border-emerald-900/40">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 mb-2">
+              <DollarSign size={13} /> Comissão estimada
+            </div>
+            {member.commissionPct != null ? (
+              <>
+                <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{brl(member.commission ?? 0)}</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {member.commissionPct.toLocaleString('pt-BR')}% sobre {brl(member.valueSold)} vendidos
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-slate-400">
+                {isAdmin ? 'Defina a porcentagem abaixo para calcular.' : 'Comissão não configurada.'}
+              </p>
+            )}
+            {isAdmin && (
+              <div className="flex items-center gap-2 mt-3">
+                <div className="relative flex-1">
+                  <input
+                    type="number" min={0} max={100} step="0.5" value={pctInput}
+                    onChange={(e) => setPctInput(e.target.value)}
+                    placeholder="ex: 1.5"
+                    className="w-full pl-3 pr-7 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">%</span>
+                </div>
+                <button
+                  onClick={() => onSetCommission(pctInput === '' ? null : Number(pctInput))}
+                  disabled={busy || !pctChanged}
+                  className="px-3 py-2 text-sm font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {busy ? <Loader2 size={15} className="animate-spin" /> : 'Salvar'}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Gestão (admin) */}

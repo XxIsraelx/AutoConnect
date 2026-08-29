@@ -32,6 +32,11 @@ async function bootstrap() {
       // Permite requisições sem origin (ex: curl, Postman, SSR do próprio Next)
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
+      // Em dev, aceita localhost/127.0.0.1 em qualquer porta (previews e ferramentas locais)
+      if (process.env.NODE_ENV !== 'production'
+          && /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) {
+        return callback(null, true);
+      }
       callback(new Error(`CORS bloqueado para origem: ${origin}`));
     },
     credentials: true,
@@ -40,10 +45,12 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1');
 
   const config = app.get(ConfigService);
-  const port = config.get<number>('API_PORT') ?? 4000;
+  // Plataformas de hospedagem (Railway, Render, Fly) injetam a porta em PORT e
+  // esperam bind em 0.0.0.0 — sem isso o healthcheck não alcança o processo.
+  const port = Number(process.env.PORT) || config.get<number>('API_PORT') || 4000;
 
-  await app.listen(port);
-  Logger.log(`AutoConnect API running on http://localhost:${port}/api/v1`, 'Bootstrap');
+  await app.listen(port, '0.0.0.0');
+  Logger.log(`AutoConnect API running on port ${port} (prefixo /api/v1)`, 'Bootstrap');
 }
 
 bootstrap();

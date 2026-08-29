@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ChevronLeft, Trash2, Upload, X, Star, Loader2,
-  ImagePlus, GripVertical,
+  ImagePlus, GripVertical, TrendingDown, TrendingUp, History,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
@@ -266,6 +266,84 @@ function ImageManager({ vehicleId }: { vehicleId: string }) {
   );
 }
 
+/* ── Histórico de preço ──────────────────────────────────── */
+
+interface PriceEvent {
+  id: string;
+  eventType: string;
+  createdAt: string;
+  actor: { fullName: string | null } | null;
+  payload: {
+    fromPrice?: number; toPrice?: number;
+    fromPromo?: number | null; toPromo?: number | null;
+  };
+}
+
+function brl(v: number | null | undefined) {
+  if (v == null) return '—';
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0,
+  }).format(v);
+}
+
+function PriceHistory({ vehicleId }: { vehicleId: string }) {
+  const token = useAuthStore((s) => s.token);
+  const [events, setEvents] = useState<PriceEvent[] | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    api<PriceEvent[]>(`/vehicles/${vehicleId}/history`, { token })
+      .then((all) => setEvents(all.filter((e) => e.eventType === 'price_change')))
+      .catch(() => setEvents([]));
+  }, [vehicleId, token]);
+
+  if (!events || events.length === 0) return null;
+
+  return (
+    <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
+      <h2 className="font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
+        <History size={16} className="text-slate-400" />
+        Histórico de preço
+      </h2>
+      <ol className="space-y-3">
+        {events.map((e) => {
+          const from = e.payload.toPromo != null || e.payload.fromPromo != null
+            ? (e.payload.fromPromo ?? e.payload.fromPrice)
+            : e.payload.fromPrice;
+          const to = e.payload.toPromo != null || e.payload.fromPromo != null
+            ? (e.payload.toPromo ?? e.payload.toPrice)
+            : e.payload.toPrice;
+          const dropped = (to ?? 0) < (from ?? 0);
+          const date = new Date(e.createdAt).toLocaleDateString('pt-BR', {
+            day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+          });
+          return (
+            <li key={e.id} className="flex items-center gap-3 text-sm">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0
+                ${dropped ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400'
+                          : 'bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400'}`}>
+                {dropped ? <TrendingDown size={15} /> : <TrendingUp size={15} />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium">
+                  <span className="text-slate-400 line-through">{brl(from)}</span>
+                  {' → '}
+                  <span className={dropped ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>
+                    {brl(to)}
+                  </span>
+                </p>
+                <p className="text-xs text-slate-400">
+                  {date}{e.actor?.fullName ? ` · ${e.actor.fullName}` : ''}
+                </p>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
 /* ── Página principal ────────────────────────────────────── */
 
 export default function EditVehiclePage() {
@@ -500,6 +578,8 @@ export default function EditVehiclePage() {
             </div>
           </div>
         </section>
+
+        <PriceHistory vehicleId={params.id} />
 
         <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
           <h2 className="font-semibold text-slate-700 dark:text-slate-300 mb-3">Descrição</h2>

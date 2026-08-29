@@ -1,9 +1,19 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@autoconnect/db';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { EmailService } from '../../common/email/email.service';
+import { FipeService } from '../fipe/fipe.service';
+import type { TradeInInput } from './trade-in.schema';
 
 @Injectable()
 export class CatalogService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(CatalogService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly email: EmailService,
+    private readonly fipe: FipeService,
+  ) {}
 
   findBrands() {
     return this.prisma.vehicleBrand.findMany({
@@ -68,6 +78,7 @@ export class CatalogService {
         brandColor: true,
         websiteUrl: true,
         primaryPhone: true,
+        acceptsTradeIn: true,
         branches: {
           where: { isActive: true },
           orderBy: { createdAt: 'asc' },
@@ -390,6 +401,7 @@ export class CatalogService {
         brandColor: true,
         websiteUrl: true,
         primaryPhone: true,
+        acceptsTradeIn: true,
         branches: {
           where: { isActive: true },
           orderBy: { createdAt: 'asc' },
@@ -439,5 +451,101 @@ export class CatalogService {
   async removePriceAlert(userId: string, vehicleId: string): Promise<{ deleted: boolean }> {
     await this.prisma.priceAlert.deleteMany({ where: { userId, vehicleId } });
     return { deleted: true };
+  }
+
+  /* ── Trade-in (oferta de veículo na troca) ────────────────── */
+
+  /**
+   * Cliente oferece um veículo próprio para abater o valor de uma compra.
+   * Só funciona se a concessionária aceitar troca. Vira um Lead (source
+   * trade_in) com os dados do carro na metadata, mais uma referência FIPE
+   * automática para ajudar o vendedor na avaliação.
+   */
+  async createTradeIn(input: TradeInInput): Promise<{ ok: true }> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: input.tenantId, isActive: true },
+      select: {
+        tradeName: true,
+        acceptsTradeIn: true,
+        branches: {
+          where: { isActive: true },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+          select: { email: true },
+        },
+      },
+    });
+    if (!tenant) throw new NotFoundException('Concessionária não encontrada');
+    if (!tenant.acceptsTradeIn) {
+      throw new ForbiddenException('Esta concessionária não aceita troca no momento');
+    }
+
+    // Referência FIPE automática do carro oferecido (não bloqueante se falhar)
+    let fipeReference: number | null = null;
+    try {
+      const est = await this.fipe.estimate({
+        brandName: input.vehicle.brandName,
+        modelName: input.vehicle.modelName,
+        versionName: input.vehicle.versionName,
+        yearModel: input.vehicle.yearModel,
+        fuel: input.vehicle.fuel,
+      });
+      fipeReference = est?.price ?? null;
+    } catch (err) {
+      this.logger.warn(`FIPE indisponível para trade-in: ${err}`);
+    }
+
+    // Veículo desejado (opcional) — para contextualizar o abatimento
+    let desiredVehicleInfo: string | null = null;
+    if (input.desiredVehicleId) {
+      const v = await this.prisma.vehicle.findUnique({
+        where: { id: input.desiredVehicleId },
+        select: {
+          versionName: true, yearModel: true,
+          brand: { select: { name: true } },
+          model: { select: { name: true } },
+        },
+      });
+      if (v) {
+        desiredVehicleInfo = `${v.brand.name} ${v.model.name} ${v.versionName ?? ''} ${v.yearModel}`.replace(/\s+/g, ' ').trim();
+      }
+    }
+
+    const tradeInMeta = {
+      vehicle: input.vehicle,
+      expectedValue: input.expectedValue ?? null,
+      fipeReference,
+      appraisal: { status: 'pending' as const },
+    };
+
+    await this.prisma.lead.create({
+      data: {
+        tenantId: input.tenantId,
+        vehicleId: input.desiredVehicleId ?? null,
+        contactName: input.contactName,
+        contactEmail: input.contactEmail,
+        contactPhone: input.contactPhone ?? null,
+        source: 'trade_in',
+        status: 'new',
+        message: input.message ?? null,
+        metadata: { tradeIn: tradeInMeta } as Prisma.InputJsonValue,
+      },
+    });
+
+    const offered = `${input.vehicle.brandName} ${input.vehicle.modelName} ${input.vehicle.versionName ?? ''} ${input.vehicle.yearModel}`.replace(/\s+/g, ' ').trim();
+    const dealerEmail = tenant.branches[0]?.email;
+    if (dealerEmail) {
+      this.email.sendTradeInReceived({
+        to: dealerEmail,
+        dealerName: tenant.tradeName,
+        customerName: input.contactName,
+        offeredVehicle: offered,
+        desiredVehicle: desiredVehicleInfo,
+        fipeReference,
+        expectedValue: input.expectedValue ?? null,
+      }).catch((err) => this.logger.warn(`Falha ao notificar troca: ${err}`));
+    }
+
+    return { ok: true };
   }
 }

@@ -162,6 +162,107 @@ export class EmailService {
     await this.send(opts.to, `${titles[opts.status].replace(/ [✅🔄]$/u, '')} — ${opts.dealerName}`, html, link);
   }
 
+  /** Lembrete ~24h antes do agendamento → avisa o cliente */
+  async sendAppointmentReminder(opts: {
+    to: string;
+    customerName: string;
+    dealerName: string;
+    typeLabel: string;
+    vehicleInfo: string | null;
+    when: Date;
+  }): Promise<void> {
+    const whenStr = this.formatWhen(opts.when);
+    const link = `${this.webUrl}/perfil`;
+    const html = this.buildHtml(
+      `Lembrete: seu ${opts.typeLabel.toLowerCase()} está chegando ⏰`,
+      `Olá, ${opts.customerName}! Passando para lembrar do seu <strong>${opts.typeLabel.toLowerCase()}</strong>${opts.vehicleInfo ? ` do <strong>${opts.vehicleInfo}</strong>` : ''} na <strong>${opts.dealerName}</strong>, marcado para <strong>${whenStr}</strong>. Te esperamos lá!`,
+      link,
+      'Ver meus agendamentos',
+      'Se precisar remarcar ou cancelar, acesse sua área de cliente ou entre em contato com a loja.',
+    );
+    await this.send(opts.to, `Lembrete — ${opts.typeLabel} em ${opts.dealerName}`, html, link);
+  }
+
+  /** Veículo monitorado baixou de preço → avisa o cliente */
+  async sendPriceDropAlert(opts: {
+    to: string;
+    name: string;
+    vehicleInfo: string;
+    price: number;
+    target: number;
+    link: string;
+  }): Promise<void> {
+    const subject = `📉 Baixou de preço: ${opts.vehicleInfo}`;
+    const html = this.buildHtml(
+      `Boa notícia, ${opts.name}! 🎉`,
+      `O <strong>${opts.vehicleInfo}</strong> que você está monitorando agora está por <strong>${this.brl(opts.price)}</strong> — dentro do alvo de ${this.brl(opts.target)} que você definiu. Corra antes que acabe!`,
+      opts.link,
+      'Ver veículo',
+      'Você recebeu este e-mail porque criou um alerta de preço no AutoConnect. O alerta deste veículo não será reenviado.',
+    );
+    await this.send(opts.to, subject, html, opts.link);
+  }
+
+  /** Cliente ofereceu um veículo na troca → avisa a concessionária */
+  async sendTradeInReceived(opts: {
+    to: string;
+    dealerName: string;
+    customerName: string;
+    offeredVehicle: string;
+    desiredVehicle: string | null;
+    fipeReference: number | null;
+    expectedValue: number | null;
+  }): Promise<void> {
+    const link = `${this.webUrl}/leads`;
+    const body = [
+      `<strong>${opts.customerName}</strong> ofereceu um veículo na troca: <strong>${opts.offeredVehicle}</strong>.`,
+      opts.desiredVehicle ? `<br/><br/>Interesse de compra: <strong>${opts.desiredVehicle}</strong>.` : '',
+      opts.fipeReference != null ? `<br/>Referência FIPE do usado: <strong>${this.brl(opts.fipeReference)}</strong>.` : '',
+      opts.expectedValue != null ? `<br/>Valor esperado pelo cliente: <strong>${this.brl(opts.expectedValue)}</strong>.` : '',
+    ].join('');
+    const html = this.buildHtml(
+      `Nova proposta de troca 🔁`,
+      body,
+      link,
+      'Avaliar no dashboard',
+      'Abra o lead para ver os detalhes do veículo e enviar sua avaliação ao cliente.',
+    );
+    await this.send(opts.to, `Proposta de troca — ${opts.customerName}`, html, link);
+  }
+
+  /** Concessionária avaliou o veículo de troca → avisa o cliente */
+  async sendTradeInAppraisal(opts: {
+    to: string;
+    customerName: string;
+    dealerName: string;
+    offeredVehicle: string;
+    value: number;
+    desiredVehicle: string | null;
+    desiredPrice: number | null;
+    note: string | null;
+  }): Promise<void> {
+    const link = `${this.webUrl}/perfil`;
+    const abatement =
+      opts.desiredPrice != null
+        ? `<br/><br/>Aplicando na compra do <strong>${opts.desiredVehicle}</strong> (${this.brl(opts.desiredPrice)}), você pagaria <strong>${this.brl(Math.max(0, opts.desiredPrice - opts.value))}</strong> de diferença.`
+        : '';
+    const html = this.buildHtml(
+      `Olá, ${opts.customerName}! Avaliamos seu carro 🔁`,
+      `A <strong>${opts.dealerName}</strong> avaliou seu <strong>${opts.offeredVehicle}</strong> em <strong>${this.brl(opts.value)}</strong> para a troca.${abatement}${opts.note ? `<br/><br/><em>Observação da loja:</em> "${opts.note}"` : ''}`,
+      link,
+      'Ver detalhes',
+      'Esta é uma avaliação inicial e pode mudar após a vistoria presencial do veículo.',
+    );
+    await this.send(opts.to, `Avaliação da sua troca — ${opts.dealerName}`, html, link);
+  }
+
+  private brl(v: number): string {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency', currency: 'BRL',
+      minimumFractionDigits: 0, maximumFractionDigits: 0,
+    }).format(v);
+  }
+
   private formatWhen(d: Date): string {
     return new Intl.DateTimeFormat('pt-BR', {
       weekday: 'long', day: '2-digit', month: 'long',

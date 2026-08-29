@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["/Users/israelaureliano/.cache/node/corepack/v1/pnpm/9.0.0/bin/pnpm.cjs", "--filter", "web", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["/Users/israelaureliano/.cache/node/corepack/v1/pnpm/9.0.0/bin/pnpm.cjs", "--filter", "api", "dev"],
+      "port": 4000
+    }
+  ]
+}
