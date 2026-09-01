@@ -18,12 +18,15 @@ export default function HomePage() {
       <LandingNav />
 
       {/* Hero */}
-      <section className="mx-auto max-w-6xl px-6 pt-20 pb-24 text-center">
+      <section className="mx-auto max-w-6xl px-4 sm:px-6 pt-20 pb-24 text-center">
         <div className="inline-flex items-center gap-2 bg-blue-50 dark:bg-blue-950/40 text-brand-accent text-xs font-semibold px-3 py-1.5 rounded-full mb-6">
           <Zap size={12} />
           Plataforma completa para concessionárias
         </div>
-        <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight leading-tight mb-6">
+        {/* "concessionária" mede 330px em text-5xl e não cabe nos 327px úteis
+            de uma tela de 375px — a última letra ficava cortada. Só volta aos
+            48px quando existe largura de sobra. */}
+        <h1 className="text-4xl min-[380px]:text-5xl sm:text-6xl font-extrabold tracking-tight leading-tight mb-6">
           Gerencie sua concessionária{' '}
           <span className="text-brand-accent">do jeito certo</span>
         </h1>
@@ -55,36 +58,38 @@ export default function HomePage() {
       </section>
 
       {/* Dashboard preview (placeholder visual) */}
-      <section className="mx-auto max-w-5xl px-6 mb-24">
+      <section className="mx-auto max-w-5xl px-4 sm:px-6 mb-24">
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 overflow-hidden shadow-2xl shadow-slate-200 dark:shadow-none">
           {/* Fake browser bar */}
-          <div className="px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-red-400" />
-            <div className="w-3 h-3 rounded-full bg-yellow-400" />
-            <div className="w-3 h-3 rounded-full bg-green-400" />
-            <div className="ml-3 flex-1 bg-slate-100 dark:bg-slate-700 rounded-md h-6 max-w-xs text-xs text-slate-400 flex items-center px-3">
+          <div className="px-3 sm:px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-red-400 shrink-0" />
+            <div className="w-3 h-3 rounded-full bg-yellow-400 shrink-0" />
+            <div className="w-3 h-3 rounded-full bg-green-400 shrink-0" />
+            <div className="ml-2 sm:ml-3 flex-1 min-w-0 bg-slate-100 dark:bg-slate-700 rounded-md h-6 max-w-xs text-xs text-slate-400 flex items-center px-3 truncate">
               localhost:3000/dashboard
             </div>
           </div>
           {/* Fake dashboard */}
-          <div className="flex h-64">
-            <div className="w-44 shrink-0 bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-800 p-4 space-y-2">
+          <div className="flex h-56 sm:h-64">
+            {/* Some 320px a barra lateral não deixa largura utilizável para os
+                cards; a maquete vira só o conteúdo, que é o que importa. */}
+            <div className="hidden sm:block w-36 md:w-44 shrink-0 bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-800 p-4 space-y-2">
               {['Dashboard', 'Veículos', 'Leads', 'Chat', 'Agendamentos'].map((item, i) => (
                 <div key={item} className={`h-8 rounded-lg text-xs flex items-center px-3 ${i === 0 ? 'bg-brand-accent text-white' : 'text-slate-400'}`}>
                   {item}
                 </div>
               ))}
             </div>
-            <div className="flex-1 p-5 space-y-4">
-              <div className="grid grid-cols-3 gap-3">
+            <div className="flex-1 min-w-0 p-3 sm:p-5 space-y-3 sm:space-y-4">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 {[
                   { label: 'Veículos ativos', value: '24' },
                   { label: 'Leads este mês', value: '138' },
                   { label: 'Agendamentos', value: '7' },
                 ].map((stat) => (
-                  <div key={stat.label} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-3">
-                    <p className="text-xs text-slate-400">{stat.label}</p>
-                    <p className="text-2xl font-bold mt-1">{stat.value}</p>
+                  <div key={stat.label} className="min-w-0 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-2.5 sm:p-3">
+                    <p className="text-[10px] sm:text-xs leading-tight text-slate-400">{stat.label}</p>
+                    <p className="text-lg sm:text-2xl font-bold mt-1">{stat.value}</p>
                   </div>
                 ))}
               </div>
@@ -93,7 +98,7 @@ export default function HomePage() {
                   {[4, 7, 5, 9, 6, 11, 8, 13, 10, 15, 12, 14].map((h, i) => (
                     <div
                       key={i}
-                      className="w-4 rounded-sm bg-brand-accent/20 dark:bg-brand-accent/30"
+                      className="w-2.5 sm:w-4 rounded-sm bg-brand-accent/20 dark:bg-brand-accent/30"
                       style={{ height: `${h * 5}px` }}
                     />
                   ))}
