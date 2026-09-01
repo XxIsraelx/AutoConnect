@@ -35,6 +35,15 @@ function fmtCEP(v: string) {
   return v.replace(/\D/g, '').slice(0, 8)
     .replace(/(\d{5})(\d{1,3})$/, '$1-$2');
 }
+/**
+ * Usa o valor vindo de API externa só se ele tiver conteúdo real.
+ * BrasilAPI e ViaCEP devolvem STRING VAZIA (não null) para campos que não têm,
+ * e `??` só cai no fallback em null/undefined — então o vazio passava adiante e
+ * apagava o que o usuário já havia digitado.
+ */
+function ou(valor: string | null | undefined, atual: string) {
+  return valor && valor.trim() ? valor.trim() : atual;
+}
 function toSlug(v: string) {
   return v.toLowerCase().normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
@@ -167,19 +176,27 @@ export default function SignupPage() {
       }
       setCnpjData(data);
       setCnpjStatus('valid');
-      // Auto-preenche campos com dados da Receita Federal
-      setForm((f) => ({
-        ...f,
-        legalName:  data.razao_social  ?? f.legalName,
-        tradeName:  data.nome_fantasia ?? data.razao_social ?? f.tradeName,
-        slug:       f.slug || toSlug(data.nome_fantasia ?? data.razao_social ?? ''),
-        city:       data.municipio ? data.municipio.charAt(0).toUpperCase() + data.municipio.slice(1).toLowerCase() : f.city,
-        state:      data.uf         ?? f.state,
-        addressLine: data.logradouro ?? f.addressLine,
-        addressNumber: data.numero   ?? f.addressNumber,
-        neighborhood:  data.bairro   ?? f.neighborhood,
-        postalCode: data.cep         ? fmtCEP(data.cep.replace(/\D/g, '')) : f.postalCode,
-      }));
+      // Auto-preenche campos com dados da Receita Federal.
+      // `nome_fantasia`, `logradouro` e `numero` costumam vir "" da BrasilAPI —
+      // ver o helper `ou` no topo do arquivo.
+      setForm((f) => {
+        const legalName = ou(data.razao_social, f.legalName);
+        const tradeName = ou(data.nome_fantasia, ou(data.razao_social, f.tradeName));
+        return {
+          ...f,
+          legalName,
+          tradeName,
+          slug:          f.slug || toSlug(tradeName),
+          city:          data.municipio?.trim()
+            ? data.municipio.trim().charAt(0).toUpperCase() + data.municipio.trim().slice(1).toLowerCase()
+            : f.city,
+          state:         ou(data.uf, f.state),
+          addressLine:   ou(data.logradouro, f.addressLine),
+          addressNumber: ou(data.numero, f.addressNumber),
+          neighborhood:  ou(data.bairro, f.neighborhood),
+          postalCode:    data.cep?.trim() ? fmtCEP(data.cep.replace(/\D/g, '')) : f.postalCode,
+        };
+      });
     } catch {
       setCnpjStatus('idle');
     }
@@ -200,10 +217,10 @@ export default function SignupPage() {
       if (!data.erro) {
         setForm((f) => ({
           ...f,
-          addressLine:  data.logradouro ?? f.addressLine,
-          neighborhood: data.bairro     ?? f.neighborhood,
-          city:         data.localidade ?? f.city,
-          state:        data.uf         ?? f.state,
+          addressLine:  ou(data.logradouro, f.addressLine),
+          neighborhood: ou(data.bairro,     f.neighborhood),
+          city:         ou(data.localidade, f.city),
+          state:        ou(data.uf,         f.state),
         }));
       }
     } catch { /* ignora */ }
