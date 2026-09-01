@@ -13,6 +13,7 @@ import {
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import ThemeToggle from '@/components/ThemeToggle';
 
 /* ── Badge de leads novos ─────────────────────────────────── */
 
@@ -283,6 +284,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             );
           })}
         </nav>
+
+        {/* Tema */}
+        <div className="px-3 pb-2">
+          <ThemeToggle compacto />
+        </div>
 
         {/* Notificações do navegador */}
         <NotificationPrompt />

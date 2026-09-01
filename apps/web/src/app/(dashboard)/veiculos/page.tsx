@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Search, Car, FileSpreadsheet } from 'lucide-react';
+import { Plus, Search, Car, FileSpreadsheet, Eye, Heart } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import VehicleImportModal from '@/components/VehicleImportModal';
 
 interface VehicleItem {
@@ -17,6 +18,10 @@ interface VehicleItem {
   status: string;
   condition: string;
   mileageKm: number;
+  viewsCount?: number;
+  favoritesCount?: number;
+  publishedAt?: string | null;
+  createdAt: string;
   brand: { id: string; name: string; logoUrl: string | null };
   model: { id: string; name: string };
   images: { url: string }[];
@@ -26,6 +31,9 @@ interface VehicleList {
   items: VehicleItem[];
   meta: { total: number; page: number; perPage: number; totalPages: number };
 }
+
+const brl = (v: string | number) =>
+  Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const statusLabel: Record<string, { label: string; color: string }> = {
   available: { label: 'Disponível', color: 'bg-green-100 text-green-700' },
@@ -120,6 +128,12 @@ export default function VehiclesPage() {
                   <th className="text-left px-4 py-3 font-medium text-slate-500">Ano</th>
                   <th className="text-left px-4 py-3 font-medium text-slate-500">KM</th>
                   <th className="text-left px-4 py-3 font-medium text-slate-500">Preço</th>
+                  <th className="text-left px-4 py-3 font-medium text-slate-500" title="Visualizações e favoritos na página pública">
+                    Interesse
+                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-slate-500" title="Dias desde o cadastro">
+                    Estoque
+                  </th>
                   <th className="text-left px-4 py-3 font-medium text-slate-500">Status</th>
                   <th className="px-4 py-3" />
                 </tr>
@@ -127,6 +141,15 @@ export default function VehiclesPage() {
               <tbody>
                 {data.items.map((v) => {
                   const st = statusLabel[v.status] ?? { label: v.status, color: 'bg-slate-100 text-slate-500' };
+                  // Só é promoção se houver valor E ele for menor que o de tabela.
+                  const emPromocao = v.promoPrice != null && Number(v.promoPrice) > 0
+                    && Number(v.promoPrice) < Number(v.price);
+                  const descontoPct = emPromocao
+                    ? Math.round((1 - Number(v.promoPrice) / Number(v.price)) * 100)
+                    : 0;
+                  const diasEmEstoque = Math.max(0, Math.floor(
+                    (Date.now() - new Date(v.publishedAt ?? v.createdAt).getTime()) / 86_400_000,
+                  ));
                   return (
                     <tr key={v.id} className="border-b border-slate-50 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
                       <td className="px-4 py-3">
@@ -154,8 +177,44 @@ export default function VehiclesPage() {
                       <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
                         {v.mileageKm.toLocaleString('pt-BR')} km
                       </td>
-                      <td className="px-4 py-3 font-medium">
-                        {Number(v.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      <td className="px-4 py-3">
+                        {emPromocao ? (
+                          <>
+                            {/* Promocional em destaque; o de tabela riscado ao lado,
+                                para o lojista ver na hora que há desconto ativo. */}
+                            <p className="font-semibold text-emerald-600 dark:text-emerald-400">
+                              {brl(v.promoPrice!)}
+                            </p>
+                            <p className="text-xs text-slate-400">
+                              <span className="line-through">{brl(v.price)}</span>
+                              <span className="ml-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+                                −{descontoPct}%
+                              </span>
+                            </p>
+                          </>
+                        ) : (
+                          <p className="font-medium">{brl(v.price)}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3 text-xs text-slate-500">
+                          <span className="flex items-center gap-1" title="Visualizações">
+                            <Eye size={13} /> {v.viewsCount ?? 0}
+                          </span>
+                          <span className="flex items-center gap-1" title="Favoritado por clientes">
+                            <Heart size={13} /> {v.favoritesCount ?? 0}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={cn(
+                          'text-xs',
+                          diasEmEstoque >= 90 ? 'text-rose-600 dark:text-rose-400 font-medium'
+                          : diasEmEstoque >= 60 ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-slate-500',
+                        )}>
+                          {diasEmEstoque}d
+                        </span>
                       </td>
                       <td className="px-4 py-3">
                         <span className={`text-xs font-medium px-2 py-1 rounded-full ${st.color}`}>

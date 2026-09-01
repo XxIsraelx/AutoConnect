@@ -1,6 +1,10 @@
 import type { Config } from 'tailwindcss';
 
 const config: Config = {
+  // 'class' em vez do padrão 'media': antes o tema seguia o sistema operacional
+  // e não havia como escolher — abrir em outro computador mudava a aparência.
+  // Agora quem manda é a classe `dark` no <html>, definida pelo ThemeProvider.
+  darkMode: 'class',
   content: ['./src/**/*.{ts,tsx}'],
   theme: {
     extend: {

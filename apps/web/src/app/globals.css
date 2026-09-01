@@ -2,16 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Claro é o padrão; a classe `dark` no <html> troca o par.
+   Antes isto era um @media (prefers-color-scheme), que seguia o sistema
+   operacional e ignorava a escolha do usuário: num Mac em modo escuro, ao
+   selecionar o tema claro o texto continuava claro e sumia no fundo branco.
+   Quem resolve 'sistema' para claro/escuro é o script no layout raiz. */
 :root {
   --background: 255 255 255;
   --foreground: 15 23 42;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: 15 23 42;
-    --foreground: 248 250 252;
-  }
+.dark {
+  --background: 15 23 42;
+  --foreground: 248 250 252;
 }
 
 html, body {
