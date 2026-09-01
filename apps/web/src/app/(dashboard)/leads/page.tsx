@@ -211,6 +211,7 @@ function HistoryModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [note, setNote]       = useState('');
   const [saving, setSaving]   = useState(false);
+  const [erroNota, setErroNota] = useState('');
   const [apprValue, setApprValue] = useState('');
   const [apprNote, setApprNote]   = useState('');
   const [apprSaving, setApprSaving] = useState(false);
@@ -255,7 +256,11 @@ function HistoryModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
       const updated = await api<LeadHistory>(`/leads/${lead.id}/history`, { token });
       setHistory(updated);
       setNote('');
-    } catch { /* ignora */ }
+      setErroNota('');
+    } catch (err) {
+      // A nota sumia do campo sem ter sido salva.
+      setErroNota(textoDoErro(err));
+    }
     finally { setSaving(false); }
   }
 
@@ -437,6 +442,9 @@ function HistoryModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
             </button>
           </div>
+          {erroNota && (
+            <p className="text-xs text-rose-600 dark:text-rose-400 mt-1.5">{erroNota}</p>
+          )}
         </div>
       </div>
     </div>
@@ -608,6 +616,7 @@ export default function LeadsPage() {
   const [search, setSearch]             = useState('');
   const [historyLead, setHistoryLead]   = useState<Lead | null>(null);
   const [csvLoading, setCsvLoading]     = useState(false);
+  const [erroCsv, setErroCsv]           = useState('');
   const [chatLoadingId, setChatLoadingId] = useState<string | null>(null);
 
   async function openChat(lead: Lead) {
@@ -680,7 +689,11 @@ export default function LeadsPage() {
       a.download = `leads_${Date.now()}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch { /* ignora */ }
+      setErroCsv('');
+    } catch (err) {
+      // Nenhum arquivo baixava e nada indicava o motivo.
+      setErroCsv(textoDoErro(err));
+    }
     finally { setCsvLoading(false); }
   }
 
@@ -732,6 +745,12 @@ export default function LeadsPage() {
           </button>
         </div>
       </div>
+
+      {erroCsv && (
+        <p className="text-xs text-rose-600 dark:text-rose-400 -mt-2">
+          Falha ao exportar: {erroCsv}
+        </p>
+      )}
 
       {/* Stats pills */}
       <div className="flex gap-2 flex-wrap mb-5">

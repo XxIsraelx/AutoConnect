@@ -12,6 +12,7 @@ import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
 import ChatDrawer from '@/components/ChatDrawer';
 import ScheduleModal from '@/components/ScheduleModal';
+import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import TradeInModal from '@/components/TradeInModal';
 
 /* ── Tipos ─────────────────────────────────────────────── */
@@ -49,11 +50,13 @@ const CONDITION_LABELS: Record<string, string> = {
 export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
   const { token, user } = useAuthStore();
   const [vehicles, setVehicles]   = useState<PublicVehicle[]>([]);
+  const [erroVeiculos, setErroVeiculos] = useState<unknown>(null);
   const [total,    setTotal]      = useState(0);
   const [page,     setPage]       = useState(0); // skip-based
   const [q,        setQ]          = useState('');
   const [chatId, setChatId]       = useState<string | null>(null);
   const [startingChat, setStartingChat] = useState(false);
+  const [erroChat, setErroChat] = useState('');
   const [showSchedule, setShowSchedule] = useState(false);
   const [showTradeIn, setShowTradeIn]   = useState(false);
 
@@ -67,7 +70,12 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
         method: 'POST', token, body: { tenantId: dealer.id },
       });
       setChatId(conv.id);
-    } catch { /* ignora */ }
+      setErroChat('');
+    } catch (err) {
+      // O botão girava e não abria nada; o cliente podia desistir de falar
+      // com a loja sem saber que houve falha.
+      setErroChat(textoDoErro(err));
+    }
     finally { setStartingChat(false); }
   }
   const [condition, setCondition] = useState('');
@@ -88,12 +96,19 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
       if (q)         params.set('q', q);
       if (condition) params.set('condition', condition);
       if (sort)      params.set('sort', sort);
-      const r = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000'}/api/v1/catalog/vehicles?${params}`,
-      ).then((res) => res.json()) as { items: PublicVehicle[]; total: number };
-      setVehicles(r.items);
-      setTotal(r.total);
-    } catch { /* ignora */ }
+      // Usa o helper api() em vez de fetch cru: fetch NÃO lança em resposta
+      // 500, então `r.items` vinha undefined, `setVehicles(undefined)` passava
+      // e a página quebrava em tela branca no `vehicles.length`.
+      const r = await api<{ items: PublicVehicle[]; total: number }>(
+        `/catalog/vehicles?${params}`,
+      );
+      setVehicles(r.items ?? []);
+      setTotal(r.total ?? 0);
+      setErroVeiculos(null);
+    } catch (err) {
+      // Catálogo vazio faria o visitante achar que a loja não tem carros.
+      setErroVeiculos(err);
+    }
     finally { setLoading(false); }
   }, [dealer.id, page, q, condition, sort]);
 
@@ -182,6 +197,9 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
                   {startingChat ? <Loader2 size={14} className="animate-spin" /> : <MessageCircle size={14} />}
                   Conversar
                 </button>
+              )}
+              {erroChat && (
+                <p className="w-full text-xs text-rose-600 dark:text-rose-400">{erroChat}</p>
               )}
               {canChat && (
                 <button
@@ -277,6 +295,8 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
               <div key={i} className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 h-64 animate-pulse" />
             ))}
           </div>
+        ) : erroVeiculos ? (
+          <ErroAoCarregar erro={erroVeiculos} onTentarNovamente={loadVehicles} carregando={loading} contexto="o catálogo" />
         ) : vehicles.length === 0 ? (
           <div className="text-center py-20 text-slate-400">
             <Car size={40} className="mx-auto mb-3" />

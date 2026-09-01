@@ -10,6 +10,7 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
 import ProposalBubble, { getProposal } from '@/components/chat/ProposalBubble';
+import { textoDoErro } from '@/components/ErroAoCarregar';
 
 /* ── Tipos ─────────────────────────────────────────────── */
 interface Conversation {
@@ -102,6 +103,7 @@ export default function ChatPage() {
   const [messages,      setMessages]      = useState<Message[]>([]);
   const [newMsg,        setNewMsg]        = useState('');
   const [loadingConvs,  setLoadingConvs]  = useState(true);
+  const [erroConvs,     setErroConvs]     = useState<unknown>(null);
   const [loadingMsgs,   setLoadingMsgs]   = useState(false);
   const [sending,       setSending]       = useState(false);
   const [typingUsers,   setTypingUsers]   = useState<Set<string>>(new Set());
@@ -119,7 +121,11 @@ export default function ChatPage() {
     try {
       const r = await api<{ items: Conversation[] }>('/conversations', { token });
       setConversations(r.items);
-    } catch { /* ignora */ }
+      setErroConvs(null);
+    } catch (err) {
+      // Lista vazia fazia parecer que nenhum cliente tinha escrito.
+      setErroConvs(err);
+    }
     finally { setLoadingConvs(false); }
   }, [token]);
 
@@ -233,6 +239,15 @@ export default function ChatPage() {
           {loadingConvs ? (
             <div className="flex items-center justify-center h-32 text-slate-500">
               <Loader2 size={16} className="animate-spin" />
+            </div>
+          ) : erroConvs ? (
+            <div className="flex flex-col items-center justify-center h-40 text-center gap-2 px-4">
+              <AlertCircle size={22} className="text-rose-500" />
+              <p className="text-xs text-slate-400">{textoDoErro(erroConvs)}</p>
+              <button onClick={loadConversations}
+                className="text-xs font-semibold text-blue-500 hover:underline">
+                Tentar novamente
+              </button>
             </div>
           ) : conversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-32 text-slate-400 gap-2">

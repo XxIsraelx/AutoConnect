@@ -11,6 +11,7 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { useRouter } from 'next/navigation';
 import ChatDrawer from '@/components/ChatDrawer';
+import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 
 const CLOUD_NAME    = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ?? '';
 const UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? '';
@@ -83,6 +84,8 @@ export default function PerfilPage() {
   const [appointments, setAppointments] = useState<CustomerAppointment[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading]   = useState(true);
+  const [erro, setErro]         = useState<unknown>(null);
+  const [erroAvatar, setErroAvatar] = useState('');
 
   const [editOpen, setEditOpen]     = useState(false);
   const [pwOpen, setPwOpen]         = useState(false);
@@ -108,7 +111,12 @@ export default function PerfilPage() {
       ]);
       setProfile(prof); setFavorites(favs); setViewed(vw); setSearches(srch);
       setAlerts(als); setAppointments(appts); setConversations(convs.items ?? []);
-    } catch { /* ignora */ }
+      setErro(null);
+    } catch (err) {
+      // Sem isto, favoritos/agendamentos/conversas apareciam todos vazios e o
+      // cliente concluía que não tinha nada salvo.
+      setErro(err);
+    }
     finally { setLoading(false); }
   }, [token]);
 
@@ -144,7 +152,11 @@ export default function PerfilPage() {
       await api('/users/me', { token, method: 'PATCH', body: { avatarUrl: url } });
       setProfile((p) => p ? { ...p, avatarUrl: url } : p);
       updateUser({ avatarUrl: url });
-    } catch { /* ignora */ }
+      setErroAvatar('');
+    } catch (err) {
+      // Antes a foto simplesmente não trocava, sem nenhum aviso.
+      setErroAvatar(textoDoErro(err));
+    }
     finally { setUploadingAvatar(false); }
   }
 
@@ -201,6 +213,11 @@ export default function PerfilPage() {
                 {uploadingAvatar ? <Loader2 size={12} className="animate-spin" /> : <Camera size={12} />}
               </button>
               <input ref={avatarInput} type="file" accept="image/*" hidden onChange={onAvatarPick} />
+              {erroAvatar && (
+                <p className="absolute top-full left-0 mt-2 w-48 text-xs text-rose-400">
+                  {erroAvatar}
+                </p>
+              )}
             </div>
 
             {/* Info */}
@@ -264,6 +281,8 @@ export default function PerfilPage() {
 
         {loading ? (
           <div className="flex items-center justify-center h-48 text-slate-500"><Loader2 size={26} className="animate-spin" /></div>
+        ) : erro ? (
+          <ErroAoCarregar erro={erro} onTentarNovamente={load} carregando={loading} contexto="seus dados" />
         ) : (
           <>
             {/* FAVORITOS */}

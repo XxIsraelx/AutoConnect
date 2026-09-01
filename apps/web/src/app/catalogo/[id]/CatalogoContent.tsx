@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
+import { textoDoErro } from '@/components/ErroAoCarregar';
 import ChatDrawer from '@/components/ChatDrawer';
 import ScheduleModal, { type ScheduleBranch } from '@/components/ScheduleModal';
 import TradeInModal from '@/components/TradeInModal';
@@ -616,6 +617,7 @@ function VehicleDrawer({
   const [showTradeIn, setShowTradeIn]   = useState(false);
   const [chatId, setChatId]     = useState<string | null>(null);
   const [startingChat, setStartingChat] = useState(false);
+  const [erroChat, setErroChat] = useState('');
 
   const canChat = !user || user.role === 'customer';
 
@@ -627,7 +629,12 @@ function VehicleDrawer({
         method: 'POST', token, body: { tenantId, vehicleId },
       });
       setChatId(conv.id);
-    } catch { /* ignora */ }
+      setErroChat('');
+    } catch (err) {
+      // O botão girava e não abria nada; o cliente podia desistir de falar
+      // com a loja sem saber que houve falha.
+      setErroChat(textoDoErro(err));
+    }
     finally { setStartingChat(false); }
   }
 
@@ -866,6 +873,9 @@ function VehicleDrawer({
                     : <MessageCircle size={15} className="text-blue-400" />}
                   Conversar com a loja
                 </button>
+              )}
+              {erroChat && (
+                <p className="text-xs text-rose-600 dark:text-rose-400">{erroChat}</p>
               )}
 
               {/* Oferecer carro na troca */}
