@@ -147,8 +147,20 @@ export default function SignupPage() {
     try {
       const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`);
       if (!res.ok) { setCnpjStatus('invalid'); return; }
-      const data = await res.json() as typeof cnpjData & { situacao_cadastral?: string };
-      if (data.situacao_cadastral !== 'ATIVA') {
+      // A BrasilAPI devolve DOIS campos: `situacao_cadastral` é numérico
+      // (2 = ativa) e `descricao_situacao_cadastral` é o texto ("ATIVA").
+      // Comparar o numérico com a string reprovava todo CNPJ válido.
+      const data = await res.json() as typeof cnpjData & {
+        situacao_cadastral?: number | string;
+        descricao_situacao_cadastral?: string;
+      };
+
+      const descricao = data.descricao_situacao_cadastral?.trim().toUpperCase();
+      const codigo = Number(data.situacao_cadastral);
+      const ativa = descricao ? descricao === 'ATIVA' : codigo === 2;
+      const conclusivo = Boolean(descricao) || Number.isFinite(codigo);
+
+      if (conclusivo && !ativa) {
         setCnpjStatus('inactive');
         setCnpjData(null);
         return;
