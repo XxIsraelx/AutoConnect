@@ -1,10 +1,19 @@
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
+/** Erro de validação de um campo, no formato que o ZodFilter da API devolve. */
+export type FieldError = { field: string; message: string };
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    /**
+     * Erros por campo vindos de `{ errors: [{ field, message }] }`.
+     * Sem isto o formulário só conseguia exibir "Validation failed", sem
+     * indicar ao usuário qual campo corrigir.
+     */
+    public readonly fieldErrors: FieldError[] = [],
   ) {
     super(message);
     this.name = 'ApiError';
@@ -30,15 +39,26 @@ export async function api<T>(
 
   if (!res.ok) {
     let message = `Erro ${res.status}`;
+    let fieldErrors: FieldError[] = [];
     try {
       const body = await res.json();
       // NestJS retorna { message: string } ou { message: string[] }
       if (typeof body.message === 'string') message = body.message;
       else if (Array.isArray(body.message)) message = body.message[0];
+
+      // ZodFilter acrescenta { errors: [{ field, message }] }
+      if (Array.isArray(body.errors)) {
+        fieldErrors = body.errors.filter(
+          (e: unknown): e is FieldError =>
+            typeof e === 'object' && e !== null &&
+            typeof (e as FieldError).field === 'string' &&
+            typeof (e as FieldError).message === 'string',
+        );
+      }
     } catch {
       // body não é JSON — usa mensagem genérica
     }
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, fieldErrors);
   }
 
   return res.json() as Promise<T>;

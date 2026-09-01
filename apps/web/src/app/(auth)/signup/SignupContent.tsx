@@ -81,6 +81,9 @@ type Form = {
   branchPhone: string;
 };
 
+/** Erros por campo do formulário: { tradeName: 'Informe o nome fantasia' } */
+type Errors = Partial<Record<keyof Form, string>>;
+
 // ─── Steps config ──────────────────────────────────────────────────────────────
 
 const STEPS = [
@@ -91,29 +94,94 @@ const STEPS = [
   { id: 'access',   label: 'Acesso',      icon: Lock      },
 ];
 
+/** Em que etapa cada campo aparece — usado para levar o usuário até o erro. */
+const STEP_DO_CAMPO: Record<string, number> = {
+  inviteToken: 0,
+  cnpj: 1, stateRegistration: 1, legalName: 1, tradeName: 1, slug: 1, primaryEmail: 1,
+  adminFullName: 2, adminCpf: 2, adminJobTitle: 2, adminPhone: 2,
+  postalCode: 3, addressLine: 3, addressNumber: 3, complement: 3,
+  neighborhood: 3, city: 3, state: 3, branchPhone: 3,
+  adminEmail: 4, adminPassword: 4,
+};
+
+/**
+ * A API responde com caminhos aninhados (`tenant.tradeName`, `branch.phone`);
+ * o formulário usa nomes planos. Sem esta tradução os erros do servidor não
+ * teriam como ser exibidos no campo correspondente.
+ */
+const CAMPO_DA_API: Record<string, keyof Form> = {
+  'inviteToken': 'inviteToken',
+  'tenant.cnpj': 'cnpj',
+  'tenant.stateRegistration': 'stateRegistration',
+  'tenant.legalName': 'legalName',
+  'tenant.tradeName': 'tradeName',
+  'tenant.slug': 'slug',
+  'tenant.primaryEmail': 'primaryEmail',
+  'admin.fullName': 'adminFullName',
+  'admin.email': 'adminEmail',
+  'admin.password': 'adminPassword',
+  'admin.cpf': 'adminCpf',
+  'admin.jobTitle': 'adminJobTitle',
+  'admin.phone': 'adminPhone',
+  'branch.phone': 'branchPhone',
+  'branch.postalCode': 'postalCode',
+  'branch.addressLine': 'addressLine',
+  'branch.addressNumber': 'addressNumber',
+  'branch.complement': 'complement',
+  'branch.neighborhood': 'neighborhood',
+  'branch.city': 'city',
+  'branch.state': 'state',
+};
+
+/**
+ * As mensagens padrão do Zod chegam em inglês ("String must contain at least
+ * 2 character(s)"). Traduz o que é comum para não expor isso ao usuário.
+ */
+function traduzirErro(msg: string): string {
+  const min = msg.match(/at least (\d+) character/i);
+  if (min) return `Mínimo de ${min[1]} caracteres`;
+  const max = msg.match(/at most (\d+) character/i);
+  if (max) return `Máximo de ${max[1]} caracteres`;
+  const exato = msg.match(/exactly (\d+) character/i);
+  if (exato) return `Deve ter exatamente ${exato[1]} caracteres`;
+  if (/invalid email/i.test(msg)) return 'E-mail inválido';
+  if (/^required$/i.test(msg.trim())) return 'Campo obrigatório';
+  if (/expected string/i.test(msg)) return 'Campo obrigatório';
+  return msg; // já vem em português (mensagens próprias do schema)
+}
+
 // ─── Componentes auxiliares ────────────────────────────────────────────────────
 
 const inputCls = 'w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 transition';
+const inputErrCls = 'w-full rounded-lg border border-red-500 dark:border-red-500 bg-white dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-red-500 transition';
 
 function Field({
   label, value, onChange, type = 'text', placeholder, autoComplete, required = false,
-  hint, maxLength,
+  hint, maxLength, error, name,
 }: {
   label: string; value: string; onChange: (v: string) => void;
   type?: string; placeholder?: string; autoComplete?: string;
   required?: boolean; hint?: string; maxLength?: number;
+  /** Mensagem de erro do campo; quando presente, destaca a borda. */
+  error?: string;
+  /** Usado para rolar até o campo quando a validação falha. */
+  name?: string;
 }) {
   return (
-    <div>
+    <div data-field={name}>
       <label className="block text-sm font-medium mb-1.5">
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       <input
         type={type} value={value} onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder} autoComplete={autoComplete}
-        maxLength={maxLength} className={inputCls}
+        maxLength={maxLength}
+        aria-invalid={error ? true : undefined}
+        className={error ? inputErrCls : inputCls}
       />
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
+      {error
+        ? <p className="text-xs text-red-600 dark:text-red-400 mt-1">{error}</p>
+        : hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
     </div>
   );
 }
@@ -128,6 +196,7 @@ export default function SignupPage() {
   const [step, setStep]       = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Errors>({});
 
   const [cnpjStatus, setCnpjStatus] = useState<CnpjStatus>('idle');
   const [cnpjData,   setCnpjData]   = useState<{ razao_social?: string; nome_fantasia?: string; municipio?: string; uf?: string; logradouro?: string; numero?: string; bairro?: string; cep?: string } | null>(null);
@@ -146,6 +215,15 @@ export default function SignupPage() {
 
   function set(field: keyof Form, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
+    // Some o erro assim que o usuário mexe no campo, em vez de deixá-lo
+    // aceso enquanto ele digita a correção.
+    setFieldErrors((e) => {
+      if (!e[field]) return e;
+      const { [field]: _, ...resto } = e;
+      // Sem campos destacados, o aviso geral não faz mais sentido.
+      if (!Object.keys(resto).length) setError('');
+      return resto;
+    });
   }
 
   // ── CNPJ lookup via BrasilAPI ────────────────────────────────────────────────
@@ -228,54 +306,96 @@ export default function SignupPage() {
   }
 
   // ── Validação por etapa ───────────────────────────────────────────────────────
-  function validateStep(): string {
-    switch (step) {
-      case 0: // Convite
-        if (!form.inviteToken.trim()) return 'Cole o token de convite recebido';
+  /**
+   * Valida TODOS os campos da etapa e devolve um erro por campo, em vez de
+   * parar no primeiro. Assim o usuário corrige tudo de uma vez e vê a mensagem
+   * ao lado do campo, não como um aviso solto no topo.
+   */
+  function validateFields(s: number): Errors {
+    const e: Errors = {};
+    const digits = (v: string) => v.replace(/\D/g, '');
+
+    switch (s) {
+      case 0:
+        if (!form.inviteToken.trim()) e.inviteToken = 'Cole o token de convite recebido';
         break;
-      case 1: // Empresa
-        if (form.cnpj.replace(/\D/g, '').length !== 14) return 'CNPJ inválido';
-        if (cnpjStatus === 'inactive') return 'CNPJ com situação inativa na Receita Federal';
-        if (!form.legalName.trim()) return 'Razão social é obrigatória';
-        if (!form.tradeName.trim()) return 'Nome fantasia é obrigatório';
-        if (!form.slug.trim()) return 'Slug é obrigatório';
-        if (!form.primaryEmail.includes('@')) return 'E-mail da concessionária inválido';
+      case 1:
+        if (digits(form.cnpj).length !== 14) e.cnpj = 'Informe os 14 dígitos do CNPJ';
+        else if (cnpjStatus === 'inactive') e.cnpj = 'CNPJ sem situação ativa na Receita Federal';
+        else if (cnpjStatus === 'invalid') e.cnpj = 'CNPJ não encontrado na Receita Federal';
+        if (form.legalName.trim().length < 2) e.legalName = 'Informe a razão social';
+        if (form.tradeName.trim().length < 2) e.tradeName = 'Informe o nome fantasia';
+        if (form.slug.trim().length < 3) e.slug = 'Mínimo de 3 caracteres';
+        else if (!/^[a-z0-9-]+$/.test(form.slug)) e.slug = 'Use apenas letras minúsculas, números e hífen';
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.primaryEmail)) e.primaryEmail = 'E-mail inválido';
         break;
-      case 2: // Responsável
-        if (!form.adminFullName.trim()) return 'Nome do responsável é obrigatório';
-        if (form.adminCpf.replace(/\D/g, '').length !== 11) return 'CPF inválido';
-        if (!form.adminJobTitle.trim()) return 'Cargo é obrigatório';
-        if (form.adminPhone.replace(/\D/g, '').length < 10) return 'Telefone inválido';
+      case 2:
+        if (form.adminFullName.trim().length < 2) e.adminFullName = 'Informe o nome completo';
+        // O dígito verificador é conferido pela API; aqui só o tamanho.
+        if (digits(form.adminCpf).length !== 11) e.adminCpf = 'Informe os 11 dígitos do CPF';
+        if (form.adminJobTitle.trim().length < 2) e.adminJobTitle = 'Informe o cargo';
+        if (digits(form.adminPhone).length < 10) e.adminPhone = 'Informe DDD + número';
         break;
-      case 3: // Endereço
-        if (form.postalCode.replace(/\D/g, '').length !== 8) return 'CEP inválido';
-        if (!form.addressLine.trim()) return 'Endereço é obrigatório';
-        if (!form.addressNumber.trim()) return 'Número é obrigatório';
-        if (!form.neighborhood.trim()) return 'Bairro é obrigatório';
-        if (!form.city.trim()) return 'Cidade é obrigatória';
-        if (!form.state) return 'Estado é obrigatório';
-        if (form.branchPhone.replace(/\D/g, '').length < 10) return 'Telefone comercial inválido';
+      case 3:
+        if (digits(form.postalCode).length !== 8) e.postalCode = 'Informe os 8 dígitos do CEP';
+        if (form.addressLine.trim().length < 3) e.addressLine = 'Informe o logradouro';
+        if (!form.addressNumber.trim()) e.addressNumber = 'Informe o número (ou "S/N")';
+        if (form.neighborhood.trim().length < 2) e.neighborhood = 'Informe o bairro';
+        if (form.city.trim().length < 2) e.city = 'Informe a cidade';
+        if (!form.state) e.state = 'Selecione o estado';
+        if (digits(form.branchPhone).length < 10) e.branchPhone = 'Informe DDD + número';
         break;
-      case 4: // Acesso
-        if (!form.adminEmail.includes('@')) return 'E-mail do administrador inválido';
-        if (form.adminPassword.length < 8) return 'Senha deve ter no mínimo 8 caracteres';
+      case 4:
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.adminEmail)) e.adminEmail = 'E-mail inválido';
+        if (form.adminPassword.length < 8) e.adminPassword = 'Mínimo de 8 caracteres';
         break;
     }
-    return '';
+    return e;
+  }
+
+  /** Marca os erros e leva o usuário até a etapa e o campo do primeiro problema. */
+  function aplicarErros(errs: Errors, etapa?: number) {
+    setFieldErrors(errs);
+    const primeiro = Object.keys(errs)[0];
+    if (!primeiro) return;
+
+    const destino = etapa ?? STEP_DO_CAMPO[primeiro] ?? step;
+    if (destino !== step) setStep(destino);
+
+    // rola até o campo depois que a etapa renderizar
+    setTimeout(() => {
+      document.querySelector(`[data-field="${primeiro}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 60);
   }
 
   function handleNext() {
-    const err = validateStep();
-    if (err) { setError(err); return; }
+    const errs = validateFields(step);
+    if (Object.keys(errs).length) {
+      setError('Revise os campos destacados abaixo.');
+      aplicarErros(errs, step);
+      return;
+    }
     setError('');
+    setFieldErrors({});
     setStep((s) => s + 1);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const err = validateStep();
-    if (err) { setError(err); return; }
+
+    // Revalida TODAS as etapas antes de enviar — um campo inválido lá atrás
+    // não pode mais explodir só no final como "Validation failed".
+    const todos: Errors = {};
+    for (let s = 0; s < STEPS.length; s++) Object.assign(todos, validateFields(s));
+    if (Object.keys(todos).length) {
+      setError('Revise os campos destacados antes de concluir.');
+      aplicarErros(todos);
+      return;
+    }
+
     setError('');
+    setFieldErrors({});
     setLoading(true);
 
     try {
@@ -314,7 +434,26 @@ export default function SignupPage() {
       setSession(data.accessToken, data.user);
       router.replace('/dashboard');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao criar conta');
+      if (err instanceof ApiError && err.fieldErrors.length) {
+        // Traduz os caminhos da API para os campos do formulário e leva o
+        // usuário até o primeiro problema, em vez de exibir "Validation failed".
+        const errs: Errors = {};
+        const semMapa: string[] = [];
+        for (const fe of err.fieldErrors) {
+          const campo = CAMPO_DA_API[fe.field];
+          if (campo) errs[campo] = traduzirErro(fe.message);
+          else semMapa.push(`${fe.field}: ${traduzirErro(fe.message)}`);
+        }
+
+        if (Object.keys(errs).length) {
+          setError('Revise os campos destacados abaixo.');
+          aplicarErros(errs);
+        } else {
+          setError(semMapa.join(' · ') || err.message);
+        }
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Erro ao criar conta');
+      }
     } finally {
       setLoading(false);
     }
@@ -371,7 +510,7 @@ export default function SignupPage() {
                 O cadastro de concessionárias é restrito. Você precisar de um link de convite enviado pela equipe AutoConnect.
               </p>
             </div>
-            <div>
+            <div data-field="inviteToken">
               <label className="block text-sm font-medium mb-1.5">
                 Token de convite <span className="text-red-500">*</span>
               </label>
@@ -379,10 +518,11 @@ export default function SignupPage() {
                 value={form.inviteToken}
                 onChange={(e) => set('inviteToken', e.target.value.trim())}
                 placeholder="Cole o token recebido por e-mail"
-                className={inputCls}
+                className={fieldErrors.inviteToken ? inputErrCls : inputCls}
                 autoComplete="off"
                 spellCheck={false}
               />
+              {fieldErrors.inviteToken && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.inviteToken}</p>}
               <p className="text-xs text-slate-400 mt-1.5">
                 Não tem um convite?{' '}
                 <a href="mailto:contato@autoconnect.app" className="text-blue-500 hover:underline">
@@ -401,13 +541,14 @@ export default function SignupPage() {
               <label className="block text-sm font-medium mb-1.5">
                 CNPJ <span className="text-red-500">*</span>
               </label>
-              <div className="relative">
+              <div className="relative" data-field="cnpj">
                 <input
                   value={form.cnpj}
                   onChange={(e) => set('cnpj', fmtCNPJ(e.target.value))}
                   placeholder="00.000.000/0000-00"
-                  className={inputCls}
+                  className={fieldErrors.cnpj ? inputErrCls : inputCls}
                 />
+                  {fieldErrors.cnpj && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.cnpj}</p>}
                 <div className="absolute right-3 top-1/2 -translate-y-1/2">
                   {cnpjStatus === 'loading' && <Loader2 size={14} className="animate-spin text-slate-400" />}
                   {cnpjStatus === 'valid'   && <Check size={14} className="text-emerald-500" />}
@@ -431,22 +572,26 @@ export default function SignupPage() {
               )}
             </div>
 
-            <Field label="Inscrição Estadual (IE)" value={form.stateRegistration}
+            <Field label="Inscrição Estadual (IE)" value={form.stateRegistration} name="stateRegistration" error={fieldErrors.stateRegistration}
               onChange={(v) => set('stateRegistration', v)}
               placeholder="000.000.000.000 ou ISENTO" hint="Deixe em branco se isento" />
 
-            <Field label="Razão social" value={form.legalName} required
+            <Field label="Razão social" value={form.legalName} name="legalName" error={fieldErrors.legalName} required
               onChange={(v) => set('legalName', v)} placeholder="Minha Auto Ltda" />
 
-            <Field label="Nome fantasia" value={form.tradeName} required
+            <Field label="Nome fantasia" value={form.tradeName} name="tradeName" error={fieldErrors.tradeName} required
               onChange={(v) => { set('tradeName', v); if (!form.slug) set('slug', toSlug(v)); }}
               placeholder="Minha Auto" />
 
-            <div>
+            <div data-field="slug">
               <label className="block text-sm font-medium mb-1.5">
                 Slug (URL pública) <span className="text-red-500">*</span>
               </label>
-              <div className="flex items-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500">
+              <div className={`flex items-center rounded-lg border bg-white dark:bg-slate-800 overflow-hidden focus-within:ring-2 ${
+                fieldErrors.slug
+                  ? 'border-red-500 focus-within:ring-red-500'
+                  : 'border-slate-200 dark:border-slate-700 focus-within:ring-blue-500'
+              }`}>
                 <span className="px-3 py-2 text-xs text-slate-400 border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 select-none whitespace-nowrap">
                   autoconnect.app/c/
                 </span>
@@ -457,9 +602,10 @@ export default function SignupPage() {
                   placeholder="minha-auto"
                 />
               </div>
+              {fieldErrors.slug && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.slug}</p>}
             </div>
 
-            <Field label="E-mail da concessionária" value={form.primaryEmail} required
+            <Field label="E-mail da concessionária" value={form.primaryEmail} name="primaryEmail" error={fieldErrors.primaryEmail} required
               onChange={(v) => set('primaryEmail', v)} type="email"
               placeholder="contato@minhauto.com.br" />
           </div>
@@ -468,7 +614,7 @@ export default function SignupPage() {
         {/* ── Step 2: Responsável ───────────────────────────────────────── */}
         {step === 2 && (
           <div className="space-y-4">
-            <Field label="Nome completo do responsável" value={form.adminFullName} required
+            <Field label="Nome completo do responsável" value={form.adminFullName} name="adminFullName" error={fieldErrors.adminFullName} required
               onChange={(v) => set('adminFullName', v)} placeholder="João Silva" autoComplete="name" />
 
             <div>
@@ -479,8 +625,9 @@ export default function SignupPage() {
                 value={form.adminCpf}
                 onChange={(e) => set('adminCpf', fmtCPF(e.target.value))}
                 placeholder="000.000.000-00"
-                className={inputCls}
+                className={fieldErrors.adminCpf ? inputErrCls : inputCls}
               />
+                {fieldErrors.adminCpf && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.adminCpf}</p>}
             </div>
 
             <div>
@@ -510,9 +657,10 @@ export default function SignupPage() {
                 value={form.adminPhone}
                 onChange={(e) => set('adminPhone', fmtPhone(e.target.value))}
                 placeholder="(11) 99999-9999"
-                className={inputCls}
+                className={fieldErrors.adminPhone ? inputErrCls : inputCls}
                 type="tel"
               />
+              {fieldErrors.adminPhone && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.adminPhone}</p>}
               <p className="text-xs text-slate-400 mt-1">Usado apenas para contato interno</p>
             </div>
           </div>
@@ -525,13 +673,14 @@ export default function SignupPage() {
               <label className="block text-sm font-medium mb-1.5">
                 CEP <span className="text-red-500">*</span>
               </label>
-              <div className="relative">
+              <div className="relative" data-field="postalCode">
                 <input
                   value={form.postalCode}
                   onChange={(e) => { const v = fmtCEP(e.target.value); set('postalCode', v); lookupCEP(v); }}
                   placeholder="00000-000"
-                  className={inputCls}
+                  className={fieldErrors.postalCode ? inputErrCls : inputCls}
                 />
+                  {fieldErrors.postalCode && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.postalCode}</p>}
                 {loadingCep && (
                   <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-slate-400" />
                 )}
@@ -539,14 +688,15 @@ export default function SignupPage() {
               {loadingCep && <p className="text-xs text-slate-400 mt-1">Buscando endereço…</p>}
             </div>
 
-            <Field label="Logradouro" value={form.addressLine} required
+            <Field label="Logradouro" value={form.addressLine} name="addressLine" error={fieldErrors.addressLine} required
               onChange={(v) => set('addressLine', v)} placeholder="Rua, Av., etc." />
 
-            <div className="grid grid-cols-5 gap-3">
-              <div className="col-span-2">
+            <div className="grid grid-cols-5 gap-3" data-field="addressNumber">
+              <div className="col-span-2" data-field="addressNumber">
                 <label className="block text-sm font-medium mb-1.5">Número <span className="text-red-500">*</span></label>
                 <input value={form.addressNumber} onChange={(e) => set('addressNumber', e.target.value)}
-                  className={inputCls} placeholder="123" />
+                  className={fieldErrors.addressNumber ? inputErrCls : inputCls} placeholder="123" />
+                {fieldErrors.addressNumber && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.addressNumber}</p>}
               </div>
               <div className="col-span-3">
                 <label className="block text-sm font-medium mb-1.5">Complemento</label>
@@ -555,21 +705,23 @@ export default function SignupPage() {
               </div>
             </div>
 
-            <Field label="Bairro" value={form.neighborhood} required
+            <Field label="Bairro" value={form.neighborhood} name="neighborhood" error={fieldErrors.neighborhood} required
               onChange={(v) => set('neighborhood', v)} placeholder="Centro" />
 
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2">
+            <div className="grid grid-cols-3 gap-3" data-field="city">
+              <div className="col-span-2" data-field="city">
                 <label className="block text-sm font-medium mb-1.5">Cidade <span className="text-red-500">*</span></label>
                 <input value={form.city} onChange={(e) => set('city', e.target.value)}
-                  className={inputCls} placeholder="São Paulo" />
+                  className={fieldErrors.city ? inputErrCls : inputCls} placeholder="São Paulo" />
+                {fieldErrors.city && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.city}</p>}
               </div>
-              <div>
+              <div data-field="state">
                 <label className="block text-sm font-medium mb-1.5">UF <span className="text-red-500">*</span></label>
-                <select value={form.state} onChange={(e) => set('state', e.target.value)} className={inputCls}>
+                <select value={form.state} onChange={(e) => set('state', e.target.value)} className={fieldErrors.state ? inputErrCls : inputCls}>
                   <option value="">UF</option>
                   {BR_STATES.map((uf) => <option key={uf}>{uf}</option>)}
                 </select>
+                {fieldErrors.state && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.state}</p>}
               </div>
             </div>
 
@@ -581,9 +733,10 @@ export default function SignupPage() {
                 value={form.branchPhone}
                 onChange={(e) => set('branchPhone', fmtPhone(e.target.value))}
                 placeholder="(11) 3000-0000"
-                className={inputCls}
+                className={fieldErrors.branchPhone ? inputErrCls : inputCls}
                 type="tel"
               />
+              {fieldErrors.branchPhone && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.branchPhone}</p>}
               <p className="text-xs text-slate-400 mt-1">Número exibido para clientes no catálogo</p>
             </div>
           </div>
@@ -600,12 +753,12 @@ export default function SignupPage() {
               <p><span className="text-slate-400">Endereço:</span> {form.city}/{form.state}</p>
             </div>
 
-            <Field label="E-mail de acesso" value={form.adminEmail} required
+            <Field label="E-mail de acesso" value={form.adminEmail} name="adminEmail" error={fieldErrors.adminEmail} required
               onChange={(v) => set('adminEmail', v)} type="email"
               placeholder="voce@minhauto.com.br" autoComplete="email"
               hint="Será seu login no painel" />
 
-            <Field label="Senha (mín. 8 caracteres)" value={form.adminPassword} required
+            <Field label="Senha (mín. 8 caracteres)" value={form.adminPassword} name="adminPassword" error={fieldErrors.adminPassword} required
               onChange={(v) => set('adminPassword', v)} type="password"
               placeholder="••••••••" autoComplete="new-password" />
           </div>
