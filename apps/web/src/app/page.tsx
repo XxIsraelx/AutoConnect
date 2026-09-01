@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import ThemeToggle from '@/components/ThemeToggle';
+import LandingNav from '@/components/LandingNav';
 import {
   Car,
   MessageSquare,
@@ -15,30 +15,7 @@ import {
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
-      {/* Navbar */}
-      <nav className="sticky top-0 z-50 border-b border-slate-100 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur">
-        <div className="mx-auto max-w-6xl px-6 h-16 flex items-center justify-between">
-          <span className="text-lg font-bold tracking-tight">AutoConnect</span>
-          <div className="flex items-center gap-6">
-            <Link href="#funcionalidades" className="text-sm text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hidden sm:block">
-              Funcionalidades
-            </Link>
-            <Link href="#planos" className="text-sm text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hidden sm:block">
-              Planos
-            </Link>
-            <ThemeToggle compacto />
-            <Link href="/login" className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">
-              Entrar
-            </Link>
-            <Link
-              href="/comecar"
-              className="text-sm bg-brand-accent text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-600 transition"
-            >
-              Começar grátis
-            </Link>
-          </div>
-        </div>
-      </nav>
+      <LandingNav />
 
       {/* Hero */}
       <section className="mx-auto max-w-6xl px-6 pt-20 pb-24 text-center">

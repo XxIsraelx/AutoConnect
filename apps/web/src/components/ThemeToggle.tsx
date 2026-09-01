@@ -7,6 +7,9 @@ export type Tema = 'light' | 'dark' | 'system';
 
 const CHAVE = 'autoconnect-tema';
 
+/** Mantém seletores montados em paralelo mostrando a mesma opção. */
+const EVENTO = 'autoconnect:tema';
+
 /** Resolve 'system' para o que o sistema operacional está usando agora. */
 function resolver(tema: Tema): 'light' | 'dark' {
   if (tema !== 'system') return tema;
@@ -43,10 +46,20 @@ export function useTema() {
     return () => mq.removeEventListener('change', onChange);
   }, [tema]);
 
+  // Pode haver mais de um seletor montado (o nav da landing tem um para
+  // desktop e outro dentro do menu do celular). Sem isto, trocar em um deles
+  // deixaria o outro marcando a opção antiga.
+  useEffect(() => {
+    const onTroca = (e: Event) => setTema((e as CustomEvent<Tema>).detail);
+    window.addEventListener(EVENTO, onTroca);
+    return () => window.removeEventListener(EVENTO, onTroca);
+  }, []);
+
   const trocar = useCallback((novo: Tema) => {
     setTema(novo);
     localStorage.setItem(CHAVE, novo);
     aplicarTema(novo);
+    window.dispatchEvent(new CustomEvent<Tema>(EVENTO, { detail: novo }));
   }, []);
 
   return { tema, trocar, pronto };
