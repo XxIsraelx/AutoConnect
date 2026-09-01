@@ -11,7 +11,11 @@ import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
 import { api } from '@/lib/api';
+import { useTemaResolvido } from '@/components/ThemeToggle';
 import type { DealershipPin, PublicVehicle, VehiclesPage } from './types';
+
+/** Nome da variante do basemap da Esri para cada tema. */
+const VARIANTE = { dark: 'Dark', light: 'Light' } as const;
 
 /* ── Ícone balloon ───────────────────────────────────────────
    ATENÇÃO: os transforms ficam no CSS em .dealer-marker-inner.
@@ -196,36 +200,42 @@ function formatTooltipPrice(v: string | null | undefined) {
   }).format(parseFloat(v));
 }
 
+/**
+ * O tooltip é injetado como HTML cru pelo Leaflet, então o Tailwind não
+ * alcança este conteúdo. As cores saíram do `style=` inline e viraram classes
+ * `tt-*`, definidas por tema no globals.css — antes o título era `#fff` fixo e
+ * ficava invisível no tooltip claro.
+ */
 function tooltipHtml(pin: DealershipPin, vehicle: PublicVehicle | null | undefined) {
   /* vehicle === undefined → ainda carregando; null → sem veículos */
   const preview = vehicle
-    ? `<div style="display:flex;gap:8px;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)">
-         <div style="width:52px;height:40px;border-radius:8px;overflow:hidden;background:rgba(255,255,255,.08);flex-shrink:0;display:flex;align-items:center;justify-content:center">
+    ? `<div class="tt-sep" style="display:flex;gap:8px;align-items:center;margin-top:8px;padding-top:8px">
+         <div class="tt-thumb" style="width:52px;height:40px;border-radius:8px;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center">
            ${vehicle.images[0]?.url
              ? `<img src="${vehicle.images[0].url}" style="width:100%;height:100%;object-fit:cover" alt=""/>`
              : `<span style="font-size:14px">🚗</span>`}
          </div>
          <div style="min-width:0">
-           <p style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px">
+           <p class="tt-sub" style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px">
              ${vehicle.brand.name} ${vehicle.model.name}
            </p>
-           <p style="font-size:12px;font-weight:800;color:#60a5fa;margin-top:1px">
+           <p class="tt-preco" style="font-size:12px;font-weight:800;margin-top:1px">
              ${formatTooltipPrice(vehicle.promoPrice ?? vehicle.price)}
            </p>
          </div>
        </div>`
     : vehicle === undefined && pin.vehiclesCount > 0
-    ? `<p style="font-size:10px;color:#64748b;margin-top:8px">carregando destaque…</p>`
+    ? `<p class="tt-dim" style="font-size:10px;margin-top:8px">carregando destaque…</p>`
     : '';
 
   return `<div class="pin-tooltip-accent"></div>
-    <p style="font-weight:700;font-size:13px;color:#fff;line-height:1.3">${pin.tenant.tradeName}</p>
-    ${(pin.city || pin.state) ? `<p style="font-size:11px;color:#94a3b8;margin-top:2px">${[pin.city, pin.state].filter(Boolean).join(', ')}</p>` : ''}
+    <p class="tt-titulo" style="font-weight:700;font-size:13px;line-height:1.3">${pin.tenant.tradeName}</p>
+    ${(pin.city || pin.state) ? `<p class="tt-sub" style="font-size:11px;margin-top:2px">${[pin.city, pin.state].filter(Boolean).join(', ')}</p>` : ''}
     <div style="margin-top:7px;display:flex;gap:5px;align-items:center">
-      <span style="font-size:10px;font-weight:700;background:linear-gradient(135deg,rgba(96,165,250,.25),rgba(37,99,235,.25));color:#93c5fd;padding:3px 8px;border-radius:20px;border:1px solid rgba(96,165,250,.25)">
+      <span class="tt-chip" style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px">
         ${pin.vehiclesCount} veículo${pin.vehiclesCount !== 1 ? 's' : ''}
       </span>
-      <span style="font-size:10px;color:#64748b">clique para ver</span>
+      <span class="tt-dim" style="font-size:10px">clique para ver</span>
     </div>
     ${preview}`;
 }
@@ -391,6 +401,7 @@ export default function MapClient({
   routeTo, onRouteDone,
 }: Props) {
   const [tilesLoaded, setTilesLoaded] = useState(false);
+  const tema = useTemaResolvido();
   const validPins = pins.filter(
     (p): p is ValidPin => Number.isFinite(p.latitude) && Number.isFinite(p.longitude),
   );
@@ -406,15 +417,21 @@ export default function MapClient({
         zoom={5}
         style={{ height: '100%', width: '100%' }}
         zoomControl={false}
-        className="bg-[#0f172a]"
+        className="sup-base"
       >
-        {/* Esri Dark Gray Canvas — gratuito e sem API key.
+        {/* Esri Canvas — gratuito e sem API key.
             (A CARTO passou a exigir chave e carimba "API KEY REQUIRED" nos tiles.)
-            maxNativeZoom=16 é o limite da Esri; acima disso o Leaflet reamplia os tiles. */}
+            maxNativeZoom=16 é o limite da Esri; acima disso o Leaflet reamplia os tiles.
+
+            A Esri publica o par Dark/Light do mesmo mapa, então o tema claro
+            troca os tiles na fonte em vez de tentar clarear o escuro por
+            filtro CSS — o filtro só serve para tingir a base escura de azul.
+            A `key` força o Leaflet a recriar a camada ao trocar de tema. */}
         <TileLayer
-          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+          key={`base-${tema}`}
+          url={`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${VARIANTE[tema]}_Gray_Base/MapServer/tile/{z}/{y}/{x}`}
           attribution='&copy; <a href="https://www.esri.com">Esri</a>'
-          className="basemap-dark"
+          className={tema === 'dark' ? 'basemap-dark' : undefined}
           maxZoom={20}
           maxNativeZoom={16}
           eventHandlers={{ load: () => setTilesLoaded(true) }}
@@ -422,7 +439,8 @@ export default function MapClient({
 
         {/* Rótulos (cidades e vias) vêm em camada separada na Esri */}
         <TileLayer
-          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
+          key={`ref-${tema}`}
+          url={`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${VARIANTE[tema]}_Gray_Reference/MapServer/tile/{z}/{y}/{x}`}
           maxZoom={20}
           maxNativeZoom={16}
         />

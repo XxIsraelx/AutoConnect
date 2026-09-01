@@ -21,8 +21,8 @@ const DEALER_ROLES = ['tenant_admin', 'manager', 'salesperson'];
 const MapClient = dynamic(() => import('./MapClient'), {
   ssr: false,
   loading: () => (
-    <div className="h-full flex items-center justify-center bg-[#0f172a]">
-      <div className="flex flex-col items-center gap-3 text-slate-600">
+    <div className="h-full flex items-center justify-center sup-base">
+      <div className="flex flex-col items-center gap-3 txt-tenue">
         <Loader2 className="animate-spin text-blue-500" size={36} />
         <span className="text-sm">Carregando mapa…</span>
       </div>
@@ -183,19 +183,19 @@ export default function BuscarPage() {
   const withCoords = pins.filter(p => p.latitude !== null && p.longitude !== null);
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-[#0f172a]">
+    <div className="h-screen flex flex-col overflow-hidden sup-base">
 
       {/* ── HEADER ─────────────────────────────────────────── */}
-      <header className="h-14 bg-[#0f172a]/85 backdrop-blur-xl border-b border-white/[.07] flex items-center px-4 gap-3 shrink-0 relative z-[900]">
+      <header className="h-14 sup-base/85 backdrop-blur-xl border-b borda flex items-center px-4 gap-3 shrink-0 relative z-[900]">
 
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 shrink-0 group">
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center
-                          shadow-lg shadow-blue-900/60 ring-1 ring-white/20
+                          shadow-lg shadow-blue-900/60 ring-1 ring-slate-200 dark:ring-white/20
                           group-hover:shadow-blue-700/60 group-hover:scale-105 transition-all">
-            <MapPin size={14} className="text-white" />
+            <MapPin size={14} className="txt-forte" />
           </div>
-          <span className="font-extrabold text-white text-base tracking-tight hidden sm:block">
+          <span className="font-extrabold txt-forte text-base tracking-tight hidden sm:block">
             Auto<span className="text-blue-400">Connect</span>
           </span>
         </Link>
@@ -207,7 +207,7 @@ export default function BuscarPage() {
         </div>
 
         {/* Badge de contagem — com dot "ao vivo" */}
-        <div className="hidden sm:flex items-center gap-2 text-xs bg-white/[.05] border border-white/[.06] text-slate-400 rounded-full px-3 py-1 select-none">
+        <div className="hidden sm:flex items-center gap-2 text-xs sup-fraca border borda txt-fraco rounded-full px-3 py-1 select-none">
           {loading ? (
             <><Loader2 size={11} className="animate-spin" /> Carregando…</>
           ) : (
@@ -216,9 +216,9 @@ export default function BuscarPage() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
                 <span className="relative inline-flex rounded-full w-1.5 h-1.5 bg-emerald-400" />
               </span>
-              <span className="font-semibold text-slate-300">{withCoords.length}</span> no mapa
-              <span className="text-slate-600">·</span>
-              <span className="font-semibold text-slate-300">{pins.length}</span> total
+              <span className="font-semibold txt-medio">{withCoords.length}</span> no mapa
+              <span className="txt-tenue">·</span>
+              <span className="font-semibold txt-medio">{pins.length}</span> total
             </>
           )}
         </div>
@@ -226,15 +226,15 @@ export default function BuscarPage() {
         <div className="flex-1" />
 
         {/* Toggle mobile */}
-        <div className="flex md:hidden bg-white/[.06] rounded-lg p-0.5 gap-0.5">
+        <div className="flex md:hidden sup-fraca rounded-lg p-0.5 gap-0.5">
           {(['map', 'list'] as const).map((v) => (
             <button
               key={v}
               onClick={() => setMobile(v)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all
                 ${mobileView === v
-                  ? 'bg-white/10 text-white shadow-sm'
-                  : 'text-slate-500 hover:text-slate-300'}`}
+                  ? 'sup-media txt-forte shadow-sm'
+                  : 'text-slate-500 hover:txt-medio'}`}
             >
               {v === 'map' ? <><MapIcon size={12}/> Mapa</> : <><List size={12}/> Lista</>}
             </button>
@@ -250,36 +250,36 @@ export default function BuscarPage() {
             <button
               onClick={() => setMenuOpen(!menuOpen)}
               className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-xl
-                         border border-white/[.08] bg-white/[.05]
-                         hover:bg-white/[.08] hover:border-white/20
+                         border borda sup-fraca
+                         hover:sup-media hover:borda-forte
                          transition-all text-sm"
             >
               <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
                 <User size={12} className="text-blue-400" />
               </div>
-              <span className="font-medium text-slate-300 hidden sm:block max-w-[120px] truncate">
+              <span className="font-medium txt-medio hidden sm:block max-w-[120px] truncate">
                 {user.fullName.split(' ')[0]}
               </span>
-              <ChevronDown size={12} className="text-slate-600" />
+              <ChevronDown size={12} className="txt-tenue" />
             </button>
 
             {menuOpen && (
               <>
                 <div className="fixed inset-0 z-[1000]" onClick={() => setMenuOpen(false)} />
-                <div className="absolute right-0 top-full mt-1.5 w-56 bg-[#1e293b] rounded-xl
-                                border border-white/[.08] shadow-2xl z-[1001] overflow-hidden py-1">
-                  <div className="px-4 py-2.5 border-b border-white/[.06]">
-                    <p className="text-xs font-semibold text-white truncate">{user.fullName}</p>
+                <div className="absolute right-0 top-full mt-1.5 w-56 sup-card rounded-xl
+                                border borda shadow-2xl z-[1001] overflow-hidden py-1">
+                  <div className="px-4 py-2.5 border-b borda">
+                    <p className="text-xs font-semibold txt-forte truncate">{user.fullName}</p>
                     <p className="text-xs text-slate-500 truncate">{user.email}</p>
                   </div>
                   {user.role === 'customer' && (
                     <Link
                       href="/perfil"
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-300
-                                 hover:bg-white/[.05] hover:text-white transition-colors"
+                      className="flex items-center gap-2.5 px-4 py-2.5 text-sm txt-medio
+                                 hover:sup-fraca hover:txt-forte transition-colors"
                     >
-                      <UserCircle size={14} className="text-slate-600" />
+                      <UserCircle size={14} className="txt-tenue" />
                       Meu Perfil
                     </Link>
                   )}
@@ -287,10 +287,10 @@ export default function BuscarPage() {
                     <Link
                       href="/dashboard"
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-300
-                                 hover:bg-white/[.05] hover:text-white transition-colors"
+                      className="flex items-center gap-2.5 px-4 py-2.5 text-sm txt-medio
+                                 hover:sup-fraca hover:txt-forte transition-colors"
                     >
-                      <LayoutDashboard size={14} className="text-slate-600" />
+                      <LayoutDashboard size={14} className="txt-tenue" />
                       Dashboard
                     </Link>
                   )}
@@ -310,8 +310,8 @@ export default function BuscarPage() {
           <div className="flex items-center gap-2 shrink-0">
             <Link
               href="/entrar"
-              className="text-sm text-slate-400 hover:text-white px-3 py-1.5
-                         rounded-lg hover:bg-white/[.06] transition-all font-medium"
+              className="text-sm txt-fraco hover:txt-forte px-3 py-1.5
+                         rounded-lg hover:sup-fraca transition-all font-medium"
             >
               Entrar
             </Link>
@@ -334,8 +334,8 @@ export default function BuscarPage() {
           <div className="w-6 h-6 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0">
             <LocateFixed size={12} className="text-blue-400" />
           </div>
-          <p className="text-xs text-slate-300 flex-1">
-            Quer ver as lojas e veículos <span className="font-semibold text-white">mais perto de você</span>?
+          <p className="text-xs txt-medio flex-1">
+            Quer ver as lojas e veículos <span className="font-semibold txt-forte">mais perto de você</span>?
           </p>
           <button
             onClick={handleLocate}
@@ -350,7 +350,7 @@ export default function BuscarPage() {
           </button>
           <button
             onClick={() => setGeoBannerDismissed(true)}
-            className="text-slate-500 hover:text-slate-300 transition shrink-0"
+            className="text-slate-500 hover:txt-medio transition shrink-0"
             title="Dispensar"
           >
             <X size={14} />
@@ -365,13 +365,13 @@ export default function BuscarPage() {
         <aside
           className={`
             w-full md:w-[380px] md:shrink-0
-            border-r border-white/[.08]
+            border-r borda
             flex flex-col overflow-hidden
             ${mobileView === 'list' ? 'flex' : 'hidden md:flex'}
           `}
         >
           {fetchError ? (
-            <div className="flex-1 flex items-center justify-center p-8 text-center bg-[#0f172a]">
+            <div className="flex-1 flex items-center justify-center p-8 text-center sup-base">
               <div>
                 <p className="text-rose-400 font-medium text-sm mb-2">{fetchError}</p>
                 <button onClick={() => window.location.reload()}
@@ -402,8 +402,8 @@ export default function BuscarPage() {
             ${mobileView === 'map' ? 'flex' : 'hidden md:flex'}`}
         >
           {fetchError ? (
-            <div className="h-full flex items-center justify-center bg-[#0f172a]">
-              <p className="text-slate-600 text-sm">Erro ao carregar mapa</p>
+            <div className="h-full flex items-center justify-center sup-base">
+              <p className="txt-tenue text-sm">Erro ao carregar mapa</p>
             </div>
           ) : (
             <MapClient
@@ -420,13 +420,13 @@ export default function BuscarPage() {
 
           {/* Empty state (sem coords) */}
           {!loading && !fetchError && withCoords.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center z-[900] bg-[#0f172a]/90 backdrop-blur-sm">
-              <div className="bg-[#1e293b]/90 backdrop-blur border border-white/[.08] rounded-2xl p-8 shadow-2xl text-center max-w-xs mx-4">
+            <div className="absolute inset-0 flex items-center justify-center z-[900] sup-base/90 backdrop-blur-sm">
+              <div className="sup-card/90 backdrop-blur border borda rounded-2xl p-8 shadow-2xl text-center max-w-xs mx-4">
                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/20 to-blue-700/10
                                 ring-1 ring-blue-500/20 flex items-center justify-center mx-auto mb-4">
                   <MapPin size={28} className="text-blue-400/70" />
                 </div>
-                <h3 className="font-bold text-white mb-1">Ainda sem pins no mapa</h3>
+                <h3 className="font-bold txt-forte mb-1">Ainda sem pins no mapa</h3>
                 <p className="text-sm text-slate-500 leading-relaxed">
                   Nenhuma concessionária com localização por aqui ainda. Volte em breve!
                 </p>
@@ -442,7 +442,7 @@ export default function BuscarPage() {
                          flex items-center gap-2
                          bg-gradient-to-r from-blue-600 to-blue-500 text-white text-sm font-bold
                          px-5 py-3 rounded-full shadow-2xl shadow-blue-900/60
-                         ring-1 ring-white/20 backdrop-blur
+                         ring-1 ring-slate-200 dark:ring-white/20 backdrop-blur
                          hover:from-blue-500 hover:to-blue-400 active:scale-95 transition-all"
             >
               <List size={15} />
@@ -460,16 +460,16 @@ export default function BuscarPage() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm bg-[#1e293b] border border-white/[.08] rounded-2xl p-5 shadow-2xl"
+            className="w-full max-w-sm sup-card border borda rounded-2xl p-5 shadow-2xl"
           >
             <div className="w-12 h-12 rounded-2xl bg-blue-500/15 ring-1 ring-blue-500/25
                             flex items-center justify-center mx-auto mb-3">
               <LocateFixed size={22} className="text-blue-400" />
             </div>
-            <h3 className="text-sm font-bold text-white text-center">
+            <h3 className="text-sm font-bold txt-forte text-center">
               Traçar rota até {routePrompt.tenant.tradeName}?
             </h3>
-            <p className="text-xs text-slate-400 text-center mt-1.5 leading-relaxed">
+            <p className="text-xs txt-fraco text-center mt-1.5 leading-relaxed">
               Compartilhe sua localização para abrir o trajeto completo no Google Maps,
               já saindo de onde você está.
             </p>
@@ -489,8 +489,8 @@ export default function BuscarPage() {
               <button
                 onClick={routeWithoutLocation}
                 disabled={sharingLoc}
-                className="py-2.5 rounded-xl border border-white/[.08] text-sm font-medium
-                           text-slate-400 hover:bg-white/[.04] hover:text-slate-200
+                className="py-2.5 rounded-xl border borda text-sm font-medium
+                           txt-fraco hover:sup-tenue hover:txt-medio
                            transition-all disabled:opacity-50"
               >
                 Abrir sem compartilhar

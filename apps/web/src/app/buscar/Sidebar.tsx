@@ -63,7 +63,7 @@ export function directionsUrl(
 const condMap: Record<string, { label: string; cls: string }> = {
   new:      { label: '0 km',     cls: 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/30' },
   semi_new: { label: 'Seminovo', cls: 'bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/30' },
-  used:     { label: 'Usado',    cls: 'bg-white/10 text-slate-400 ring-1 ring-white/10' },
+  used:     { label: 'Usado',    cls: 'sup-media txt-fraco ring-1 ring-slate-200 dark:ring-white/10' },
   demo:     { label: 'Demo',     cls: 'bg-violet-500/20 text-violet-400 ring-1 ring-violet-500/30' },
 };
 
@@ -79,12 +79,12 @@ const RADIUS_OPTIONS = [
 
 function CardSkeleton() {
   return (
-    <div className="p-4 rounded-2xl bg-[#1e293b] border border-white/[.06] animate-pulse flex gap-3">
-      <div className="w-11 h-11 rounded-xl bg-white/10 shrink-0" />
+    <div className="p-4 rounded-2xl sup-card border borda animate-pulse flex gap-3">
+      <div className="w-11 h-11 rounded-xl sup-media shrink-0" />
       <div className="flex-1 space-y-2.5 pt-0.5">
-        <div className="h-3.5 bg-white/10 rounded-lg w-2/3" />
-        <div className="h-3   bg-white/10 rounded-lg w-1/2" />
-        <div className="h-3   bg-white/10 rounded-lg w-1/3" />
+        <div className="h-3.5 sup-media rounded-lg w-2/3" />
+        <div className="h-3   sup-media rounded-lg w-1/2" />
+        <div className="h-3   sup-media rounded-lg w-1/3" />
       </div>
     </div>
   );
@@ -92,12 +92,12 @@ function CardSkeleton() {
 
 function VehicleSkeleton() {
   return (
-    <div className="flex gap-3 p-3 rounded-xl bg-white/[.04] animate-pulse">
-      <div className="w-20 h-16 rounded-lg bg-white/10 shrink-0" />
+    <div className="flex gap-3 p-3 rounded-xl sup-tenue animate-pulse">
+      <div className="w-20 h-16 rounded-lg sup-media shrink-0" />
       <div className="flex-1 space-y-2 pt-1">
-        <div className="h-3   bg-white/10 rounded w-3/4" />
-        <div className="h-3.5 bg-white/10 rounded w-1/2" />
-        <div className="h-4   bg-white/10 rounded w-2/5" />
+        <div className="h-3   sup-media rounded w-3/4" />
+        <div className="h-3.5 sup-media rounded w-1/2" />
+        <div className="h-4   sup-media rounded w-2/5" />
       </div>
     </div>
   );
@@ -128,14 +128,14 @@ function VehicleSearchResult({
   return (
     <div
       onClick={onClick}
-      className={`w-full text-left group flex gap-3 p-3 rounded-xl border bg-white/[.03] cursor-pointer transition-all
-        ${inCompare ? 'border-blue-500/60 bg-blue-500/[.08]' : 'border-white/[.06] hover:border-blue-500/40 hover:bg-blue-500/[.06]'}`}
+      className={`w-full text-left group flex gap-3 p-3 rounded-xl border sup-tenue cursor-pointer transition-all
+        ${inCompare ? 'border-blue-500/60 bg-blue-500/[.08]' : 'borda hover:border-blue-500/40 hover:bg-blue-500/[.06]'}`}
     >
-      <div className="w-20 h-16 rounded-lg bg-white/10 shrink-0 overflow-hidden flex items-center justify-center relative">
+      <div className="w-20 h-16 rounded-lg sup-media shrink-0 overflow-hidden flex items-center justify-center relative">
         {cover
           // eslint-disable-next-line @next/next/no-img-element
           ? <img src={cover} alt="" className="w-full h-full object-cover" />
-          : <Car size={18} className="text-white/20" />}
+          : <Car size={18} className="text-slate-300 dark:text-white/20" />}
         {/* Favoritar */}
         <button
           onClick={(e) => { stop(e); onToggleFav(); }}
@@ -157,7 +157,7 @@ function VehicleSearchResult({
         <p className="text-[11px] text-slate-500 uppercase tracking-wide truncate mt-px">
           {v.brand.name} · {v.model.name}
         </p>
-        <p className="text-sm font-bold text-white truncate leading-snug mt-0.5">
+        <p className="text-sm font-bold txt-forte truncate leading-snug mt-0.5">
           {v.versionName ?? String(v.yearModel)}
         </p>
         <div className="flex items-center gap-1.5 mt-1">
@@ -222,26 +222,26 @@ function AlertModal({
     <div className="fixed inset-0 z-[2100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
          onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}
-           className="w-full max-w-sm bg-[#1e293b] border border-white/[.08] rounded-2xl p-5 shadow-2xl">
+           className="w-full max-w-sm sup-card border borda rounded-2xl p-5 shadow-2xl">
         {done ? (
           <div className="text-center py-6">
             <div className="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto mb-3">
               <Check size={22} className="text-emerald-400" />
             </div>
-            <p className="text-sm font-bold text-white">Alerta criado!</p>
+            <p className="text-sm font-bold txt-forte">Alerta criado!</p>
             <p className="text-xs text-slate-500 mt-1">Avisaremos quando o preço baixar.</p>
           </div>
         ) : (
           <>
             <div className="flex items-center gap-2 mb-1">
               <Bell size={16} className="text-amber-400" />
-              <h3 className="text-sm font-bold text-white">Alerta de preço</h3>
+              <h3 className="text-sm font-bold txt-forte">Alerta de preço</h3>
             </div>
             <p className="text-xs text-slate-500 mb-4">
               {vehicle.brand.name} {vehicle.model.name} · hoje a{' '}
               <span className="text-blue-400 font-bold">{formatPrice(vehicle.promoPrice ?? vehicle.price)}</span>
             </p>
-            <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1.5">
+            <label className="block text-[11px] font-semibold txt-fraco uppercase mb-1.5">
               Avise-me quando baixar para
             </label>
             <div className="relative mb-4">
@@ -249,17 +249,17 @@ function AlertModal({
               <input
                 type="number" inputMode="numeric" value={target}
                 onChange={(e) => setTarget(e.target.value)}
-                className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-[#0f172a] border border-white/[.08]
-                           text-sm text-white outline-none focus:border-amber-500"
+                className="w-full pl-9 pr-3 py-2.5 rounded-xl sup-base border borda
+                           text-sm txt-forte outline-none focus:border-amber-500"
               />
             </div>
             <div className="flex gap-2">
               <button onClick={onClose}
-                className="flex-1 py-2.5 text-sm font-medium text-slate-400 border border-white/[.08] rounded-xl hover:bg-white/[.04]">
+                className="flex-1 py-2.5 text-sm font-medium txt-fraco border borda rounded-xl hover:sup-tenue">
                 Cancelar
               </button>
               <button onClick={submit} disabled={saving || !target}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-bold text-white
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-bold txt-forte
                            bg-amber-600 rounded-xl hover:bg-amber-500 transition disabled:opacity-50">
                 {saving ? <Loader2 size={15} className="animate-spin" /> : <Bell size={14} />}
                 Criar alerta
@@ -307,10 +307,10 @@ function HoursAccordion({ hoursList }: {
         <div className="w-6 h-6 rounded-lg bg-blue-500/15 flex items-center justify-center shrink-0">
           <Clock size={12} className="text-blue-400" />
         </div>
-        <span className="flex-1 min-w-0 flex items-center justify-between text-xs text-slate-400
+        <span className="flex-1 min-w-0 flex items-center justify-between text-xs txt-fraco
                          group-hover:text-blue-400 transition-colors">
           <span>
-            Hoje · <span className={today?.closed ? 'text-slate-600' : 'text-white font-semibold'}>
+            Hoje · <span className={today?.closed ? 'txt-tenue' : 'txt-forte font-semibold'}>
               {today?.hours ?? '—'}
             </span>
           </span>
@@ -323,12 +323,12 @@ function HoursAccordion({ hoursList }: {
           {hoursList.map((d) => (
             <div key={d.label}
                  className={`flex items-center justify-between text-xs py-0.5
-                   ${d.today ? 'text-white font-semibold' : 'text-slate-400'}`}>
+                   ${d.today ? 'txt-forte font-semibold' : 'txt-fraco'}`}>
               <span className="flex items-center gap-1.5">
                 {d.label}
                 {d.today && <span className="text-[9px] text-blue-400 font-bold uppercase">hoje</span>}
               </span>
-              <span className={d.closed ? 'text-slate-600' : ''}>{d.hours}</span>
+              <span className={d.closed ? 'txt-tenue' : ''}>{d.hours}</span>
             </div>
           ))}
         </div>
@@ -345,14 +345,14 @@ function DealerAvatar({ pin, size = 44 }: { pin: DealershipPin; size?: number })
   const radius = size >= 56 ? 'rounded-2xl' : 'rounded-xl';
   return (
     <div
-      className={`${radius} bg-gradient-to-br from-blue-500 to-blue-700 ring-1 ring-white/15
+      className={`${radius} bg-gradient-to-br from-blue-500 to-blue-700 ring-1 ring-slate-200 dark:ring-white/15
                   flex items-center justify-center shrink-0 overflow-hidden`}
       style={{ width: size, height: size }}
     >
       {logo
         // eslint-disable-next-line @next/next/no-img-element
         ? <img src={logo} alt="" className="w-full h-full object-cover" />
-        : <span className="text-white font-extrabold tracking-tight"
+        : <span className="txt-forte font-extrabold tracking-tight"
                 style={{ fontSize: size >= 56 ? 18 : 14 }}>{initials}</span>}
     </div>
   );
@@ -372,8 +372,9 @@ function DealerCard({
     <div className="relative group dealer-card-in">
       <button
         onClick={onClick}
-        className="w-full text-left p-4 rounded-2xl border border-white/[.07]
-                   bg-gradient-to-b from-[#1e293b] to-[#1a2438]
+        className="w-full text-left p-4 rounded-2xl border borda
+                   bg-gradient-to-b from-white to-slate-50
+                   dark:from-[#1e293b] dark:to-[#1a2438]
                    hover:border-blue-500/50 hover:-translate-y-0.5
                    hover:shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_8px_28px_rgba(59,130,246,0.12)]
                    transition-all duration-200"
@@ -385,13 +386,13 @@ function DealerCard({
           </div>
           <div className="flex-1 min-w-0 pr-8">
             <div className="flex items-center gap-1.5">
-              <p className="font-bold text-white text-sm leading-snug truncate
+              <p className="font-bold txt-forte text-sm leading-snug truncate
                             group-hover:text-blue-400 transition-colors">
                 {pin.tenant.tradeName}
               </p>
               {visited && (
                 <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide
-                                 text-slate-400 bg-white/[.07] border border-white/[.08]
+                                 txt-fraco sup-fraca border borda
                                  px-1.5 py-px rounded-full">
                   Visitado
                 </span>
@@ -400,7 +401,7 @@ function DealerCard({
             <p className="text-xs text-slate-500 truncate mt-0.5">{pin.name}</p>
             {(pin.city || pin.state) && (
               <div className="flex items-center gap-1 mt-1.5">
-                <MapPin size={11} className="text-slate-600 shrink-0" />
+                <MapPin size={11} className="txt-tenue shrink-0" />
                 <span className="text-xs text-slate-500">
                   {[pin.city, pin.state].filter(Boolean).join(', ')}
                 </span>
@@ -412,7 +413,7 @@ function DealerCard({
             <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full
               ${pin.vehiclesCount > 0
                 ? 'bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/30'
-                : 'bg-white/[.06] text-slate-500 ring-1 ring-white/10'}`}>
+                : 'sup-fraca text-slate-500 ring-1 ring-slate-200 dark:ring-white/10'}`}>
               {pin.vehiclesCount} veíc.
             </span>
             {dist !== null && (
@@ -469,7 +470,7 @@ function ShareButton({ pin }: { pin: DealershipPin }) {
                   transition-all
         ${copied
           ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400'
-          : 'border-white/[.08] bg-white/[.04] text-slate-400 hover:border-white/20 hover:text-slate-200'}`}
+          : 'borda sup-tenue txt-fraco hover:borda-forte hover:txt-medio'}`}
     >
       {copied ? <Check size={12} /> : <Share2 size={12} />}
       {copied ? 'Copiado!' : 'Compartilhar'}
@@ -507,9 +508,9 @@ function DealerDetail({
   const hoursList = getOpenHoursList(pin.businessHours);
 
   return (
-    <div className="flex flex-col h-full bg-[#0f172a]">
+    <div className="flex flex-col h-full sup-base">
       {/* Header */}
-      <div className="px-4 pt-4 pb-4 border-b border-white/[.06] sticky top-0 z-10 bg-[#0f172a]">
+      <div className="px-4 pt-4 pb-4 border-b borda sticky top-0 z-10 sup-base">
         <button
           onClick={onBack}
           className="flex items-center gap-1.5 text-xs font-semibold text-slate-500
@@ -524,7 +525,7 @@ function DealerDetail({
             <DealerAvatar pin={pin} size={56} />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="font-extrabold text-white text-[15px] leading-tight">
+            <h2 className="font-extrabold txt-forte text-[15px] leading-tight">
               {pin.tenant.tradeName}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5 leading-snug">{pin.name}</p>
@@ -539,7 +540,7 @@ function DealerDetail({
                   if (onRoute && pin.latitude !== null) { e.preventDefault(); onRoute(pin); }
                 }}
                 className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl
-                           border border-white/[.08] bg-white/[.04] text-slate-400
+                           border borda sup-tenue txt-fraco
                            hover:border-blue-500/50 hover:text-blue-400 transition-all"
               >
                 <Navigation size={12} /> Como chegar
@@ -550,13 +551,13 @@ function DealerDetail({
       </div>
 
       {/* Contato */}
-      <div className="px-4 py-3 space-y-2 border-b border-white/[.06] bg-white/[.02]">
+      <div className="px-4 py-3 space-y-2 border-b borda sup-tenue">
         {(pin.city || pin.state || pin.addressLine) && (
           <div className="flex items-start gap-2.5">
             <div className="w-6 h-6 rounded-lg bg-blue-500/15 flex items-center justify-center shrink-0 mt-0.5">
               <MapPin size={12} className="text-blue-400" />
             </div>
-            <span className="text-sm text-slate-400 leading-snug">
+            <span className="text-sm txt-fraco leading-snug">
               {[pin.addressLine, [pin.city, pin.state].filter(Boolean).join(', ')]
                 .filter(Boolean).join(' — ')}
             </span>
@@ -567,7 +568,7 @@ function DealerDetail({
             <div className="w-6 h-6 rounded-lg bg-blue-500/15 flex items-center justify-center shrink-0">
               <Phone size={12} className="text-blue-400" />
             </div>
-            <span className="text-sm text-slate-400 group-hover:text-blue-400 transition-colors">
+            <span className="text-sm txt-fraco group-hover:text-blue-400 transition-colors">
               {pin.phone}
             </span>
           </a>
@@ -577,7 +578,7 @@ function DealerDetail({
             <div className="w-6 h-6 rounded-lg bg-blue-500/15 flex items-center justify-center shrink-0">
               <Mail size={12} className="text-blue-400" />
             </div>
-            <span className="text-sm text-slate-400 group-hover:text-blue-400 transition-colors truncate">
+            <span className="text-sm txt-fraco group-hover:text-blue-400 transition-colors truncate">
               {pin.email}
             </span>
           </a>
@@ -613,11 +614,11 @@ function DealerDetail({
           <div className="space-y-2.5">{[1,2,3].map(i => <VehicleSkeleton key={i} />)}</div>
         ) : vehicles.length === 0 ? (
           <div className="flex flex-col items-center py-12 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-white/[.05] flex items-center justify-center mb-3">
-              <Car size={28} className="text-white/20" />
+            <div className="w-16 h-16 rounded-2xl sup-fraca flex items-center justify-center mb-3">
+              <Car size={28} className="text-slate-300 dark:text-white/20" />
             </div>
             <p className="text-sm font-bold text-slate-500 mb-1">Sem veículos publicados</p>
-            <p className="text-xs text-slate-600 leading-relaxed max-w-[200px]">
+            <p className="text-xs txt-tenue leading-relaxed max-w-[200px]">
               Esta concessionária ainda não tem veículos no estoque.
             </p>
           </div>
@@ -642,12 +643,12 @@ function DealerDetail({
       </div>
 
       {/* CTA */}
-      <div className="p-4 border-t border-white/[.06] bg-[#0f172a]">
+      <div className="p-4 border-t borda sup-base">
         <Link
           href={`/catalogo/${pin.tenant.id}`}
           className="flex items-center justify-center gap-2 w-full
                      bg-gradient-to-r from-blue-600 to-blue-500
-                     text-white text-sm font-bold py-3 rounded-2xl
+                     txt-forte text-sm font-bold py-3 rounded-2xl
                      hover:from-blue-500 hover:to-blue-400
                      shadow-lg shadow-blue-900/50
                      transition-all duration-200"
@@ -960,20 +961,20 @@ export default function Sidebar({
     <>
       {/* Barra de comparação flutuante */}
       {compare.length > 0 && (
-        <div className="absolute bottom-0 left-0 right-0 z-30 p-3 border-t border-white/[.08]
-                        bg-[#0f172a]/95 backdrop-blur-sm">
+        <div className="absolute bottom-0 left-0 right-0 z-30 p-3 border-t borda
+                        sup-base/95 backdrop-blur-sm">
           <div className="flex items-center gap-2">
             <div className="flex -space-x-2">
               {compare.slice(0, 3).map(v => (
-                <div key={v.id} className="w-8 h-8 rounded-lg border-2 border-[#0f172a] overflow-hidden bg-white/10">
+                <div key={v.id} className="w-8 h-8 rounded-lg border-2 border-white dark:border-[#0f172a] overflow-hidden sup-media">
                   {v.images[0]?.url
                     // eslint-disable-next-line @next/next/no-img-element
                     ? <img src={v.images[0].url} alt="" className="w-full h-full object-cover" />
-                    : <Car size={12} className="text-white/30 m-auto mt-2" />}
+                    : <Car size={12} className="text-slate-300 dark:text-white/30 m-auto mt-2" />}
                 </div>
               ))}
             </div>
-            <p className="text-xs text-slate-400 flex-1">
+            <p className="text-xs txt-fraco flex-1">
               {compare.length}/3 para comparar
             </p>
             <button onClick={() => setCompare([])}
@@ -1022,15 +1023,15 @@ export default function Sidebar({
   );
 
   return (
-    <div className="relative flex flex-col h-full bg-[#0f172a]">
+    <div className="relative flex flex-col h-full sup-base">
 
       {/* ── Cabeçalho fixo ───────────────────────────── */}
-      <div className="px-4 pt-4 pb-3 space-y-3 border-b border-white/[.06]">
+      <div className="px-4 pt-4 pb-3 space-y-3 border-b borda">
 
         {/* Título + botão GPS */}
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <h1 className="text-base font-extrabold text-white">
+            <h1 className="text-base font-extrabold txt-forte">
               Encontre uma concessionária
             </h1>
             {!loading && (
@@ -1047,7 +1048,7 @@ export default function Sidebar({
                         border transition-all shrink-0 disabled:cursor-not-allowed
               ${userLocation
                 ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400'
-                : 'border-white/[.08] bg-[#1e293b] text-slate-400 hover:border-blue-500/50 hover:text-blue-400 hover:bg-blue-500/[.06]'}`}
+                : 'borda sup-card txt-fraco hover:border-blue-500/50 hover:text-blue-400 hover:bg-blue-500/[.06]'}`}
           >
             {geoLoading
               ? <Loader2 size={12} className="animate-spin" />
@@ -1066,7 +1067,7 @@ export default function Sidebar({
                 className={`text-xs font-semibold px-2.5 py-1 rounded-lg border transition-all
                   ${radiusKm === km
                     ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-300'
-                    : 'border-white/[.07] bg-[#1e293b] text-slate-500 hover:border-white/20 hover:text-slate-300'}`}
+                    : 'borda sup-card text-slate-500 hover:borda-forte hover:txt-medio'}`}
               >
                 {label}
               </button>
@@ -1075,7 +1076,7 @@ export default function Sidebar({
         )}
 
         {/* Tabs Lojas / Veículos */}
-        <div className="flex gap-1 bg-white/[.04] rounded-xl p-0.5">
+        <div className="flex gap-1 sup-tenue rounded-xl p-0.5">
           {(['dealers', 'vehicles'] as const).map(mode => (
             <button
               key={mode}
@@ -1083,8 +1084,8 @@ export default function Sidebar({
               className={`flex-1 flex items-center justify-center gap-1.5
                           text-xs font-semibold py-2 rounded-[10px] transition-all
                 ${searchMode === mode
-                  ? 'bg-white/[.08] text-white shadow-sm'
-                  : 'text-slate-500 hover:text-slate-300'}`}
+                  ? 'sup-media txt-forte shadow-sm'
+                  : 'text-slate-500 hover:txt-medio'}`}
             >
               {mode === 'dealers' ? <><Building2 size={11}/> Lojas</> : <><Car size={11}/> Veículos</>}
             </button>
@@ -1095,21 +1096,21 @@ export default function Sidebar({
         {searchMode === 'dealers' && (
           <>
             <div className="relative">
-              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-600" />
+              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 txt-tenue" />
               <input
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Buscar por nome, cidade…"
                 className="w-full pl-9 pr-9 py-2.5 rounded-xl
-                           bg-[#1e293b] border border-transparent
-                           text-sm text-white placeholder-slate-600
+                           sup-card border border-transparent
+                           text-sm txt-forte placeholder-slate-400 dark:placeholder-slate-600
                            outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20
                            transition-all"
               />
               {search && (
                 <button onClick={() => setSearch('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-400">
+                        className="absolute right-3 top-1/2 -translate-y-1/2 txt-tenue hover:txt-fraco">
                   <X size={14} />
                 </button>
               )}
@@ -1119,9 +1120,9 @@ export default function Sidebar({
               <select
                 value={stateFilter}
                 onChange={e => setStateFilter(e.target.value)}
-                style={{ colorScheme: 'dark' }}
-                className="flex-1 py-2 px-3 rounded-xl bg-[#1e293b] border border-transparent
-                           text-sm text-slate-300 cursor-pointer
+                
+                className="flex-1 py-2 px-3 rounded-xl sup-card border border-transparent
+                           text-sm txt-medio cursor-pointer
                            outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20
                            transition-all"
               >
@@ -1135,13 +1136,13 @@ export default function Sidebar({
                             text-sm font-semibold transition-all border
                   ${filtersOpen || activeFilters > 0
                     ? 'border-blue-500/50 bg-blue-500/10 text-blue-400'
-                    : 'border-white/[.07] bg-[#1e293b] text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
+                    : 'borda sup-card txt-fraco hover:borda-forte hover:txt-medio'}`}
               >
                 <SlidersHorizontal size={14} />
                 Filtros
                 {activeFilters > 0 && (
                   <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-600
-                                   text-white text-[10px] font-bold rounded-full
+                                   txt-forte text-[10px] font-bold rounded-full
                                    flex items-center justify-center">
                     {activeFilters}
                   </span>
@@ -1150,7 +1151,7 @@ export default function Sidebar({
             </div>
 
             {filtersOpen && (
-              <div className="pt-1 pb-0.5 px-1 space-y-3 border-t border-white/[.06]">
+              <div className="pt-1 pb-0.5 px-1 space-y-3 border-t borda">
                 {/* Filtro por marca */}
                 {brands.length > 0 && (
                   <div>
@@ -1160,9 +1161,9 @@ export default function Sidebar({
                     <select
                       value={brandFilter}
                       onChange={e => setBrandFilter(e.target.value)}
-                      style={{ colorScheme: 'dark' }}
-                      className="w-full py-2 px-3 rounded-xl bg-[#0f172a] border border-white/[.07]
-                                 text-sm text-slate-300 cursor-pointer
+                      
+                      className="w-full py-2 px-3 rounded-xl sup-base border borda
+                                 text-sm txt-medio cursor-pointer
                                  outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20
                                  transition-all"
                     >
@@ -1173,14 +1174,14 @@ export default function Sidebar({
                 )}
 
                 {/* Só com veículos */}
-                <label className="flex items-center gap-2.5 text-sm text-slate-400 cursor-pointer group">
+                <label className="flex items-center gap-2.5 text-sm txt-fraco cursor-pointer group">
                   <div
                     className={`w-4 h-4 rounded flex items-center justify-center border-2 transition-all
-                      ${onlyVehicles ? 'border-blue-500 bg-blue-600' : 'border-white/20 bg-transparent group-hover:border-blue-500/50'}`}
+                      ${onlyVehicles ? 'border-blue-500 bg-blue-600' : 'borda-forte bg-transparent group-hover:border-blue-500/50'}`}
                     onClick={() => setOnlyVehicles(!onlyVehicles)}
                   >
                     {onlyVehicles && (
-                      <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12">
+                      <svg className="w-2.5 h-2.5 txt-forte" fill="none" viewBox="0 0 12 12">
                         <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                       </svg>
                     )}
@@ -1198,7 +1199,7 @@ export default function Sidebar({
         {searchMode === 'vehicles' && (
           <div className="space-y-2">
             <div className="relative">
-              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-600" />
+              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 txt-tenue" />
               <input
                 type="text"
                 value={vehicleQuery}
@@ -1206,15 +1207,15 @@ export default function Sidebar({
                 placeholder="Ex: Corolla, HB20, Tracker…"
                 autoFocus
                 className="w-full pl-9 pr-9 py-2.5 rounded-xl
-                           bg-[#1e293b] border border-transparent
-                           text-sm text-white placeholder-slate-600
+                           sup-card border border-transparent
+                           text-sm txt-forte placeholder-slate-400 dark:placeholder-slate-600
                            outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20
                            transition-all"
               />
               {vehicleQuery && (
                 <button
                   onClick={() => setVehicleQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-400"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 txt-tenue hover:txt-fraco"
                 >
                   <X size={14} />
                 </button>
@@ -1228,7 +1229,7 @@ export default function Sidebar({
                 className={`relative flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all border
                   ${vFiltersOpen || vActiveFilters > 0
                     ? 'border-blue-500/50 bg-blue-500/10 text-blue-400'
-                    : 'border-white/[.07] bg-[#1e293b] text-slate-400 hover:border-white/20'}`}
+                    : 'borda sup-card txt-fraco hover:borda-forte'}`}
               >
                 <SlidersHorizontal size={14} /> Filtros
                 {vActiveFilters > 0 && (
@@ -1239,13 +1240,13 @@ export default function Sidebar({
               </button>
 
               <div className="relative flex-1">
-                <ArrowUpDown size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" />
+                <ArrowUpDown size={13} className="absolute left-3 top-1/2 -translate-y-1/2 txt-tenue pointer-events-none" />
                 <select
                   value={vFilters.sort}
                   onChange={e => setVFilters(f => ({ ...f, sort: e.target.value }))}
-                  style={{ colorScheme: 'dark' }}
-                  className="w-full pl-8 pr-2 py-2 rounded-xl bg-[#1e293b] border border-white/[.07]
-                             text-xs text-slate-300 cursor-pointer outline-none focus:border-blue-500"
+                  
+                  className="w-full pl-8 pr-2 py-2 rounded-xl sup-card border borda
+                             text-xs txt-medio cursor-pointer outline-none focus:border-blue-500"
                 >
                   <option value="recent">Mais recentes</option>
                   <option value="price_asc">Menor preço</option>
@@ -1260,7 +1261,7 @@ export default function Sidebar({
                 title="Buscas salvas"
                 className={`relative flex items-center px-3 py-2 rounded-xl border transition-all
                   ${savedOpen ? 'border-blue-500/50 bg-blue-500/10 text-blue-400'
-                              : 'border-white/[.07] bg-[#1e293b] text-slate-400 hover:border-white/20'}`}
+                              : 'borda sup-card txt-fraco hover:borda-forte'}`}
               >
                 <Bookmark size={14} />
                 {saved.some(s => s.newCount > 0) && (
@@ -1271,7 +1272,7 @@ export default function Sidebar({
 
             {/* Painel de buscas salvas */}
             {savedOpen && (
-              <div className="rounded-xl border border-white/[.07] bg-[#0f172a] p-2 space-y-1">
+              <div className="rounded-xl border borda sup-base p-2 space-y-1">
                 <div className="flex items-center justify-between px-1 pb-1">
                   <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Buscas salvas</p>
                   {hasVehicleCriteria && (
@@ -1282,13 +1283,13 @@ export default function Sidebar({
                   )}
                 </div>
                 {!token ? (
-                  <p className="text-[11px] text-slate-600 px-1 py-2">Entre para salvar buscas.</p>
+                  <p className="text-[11px] txt-tenue px-1 py-2">Entre para salvar buscas.</p>
                 ) : saved.length === 0 ? (
-                  <p className="text-[11px] text-slate-600 px-1 py-2">Nenhuma busca salva ainda.</p>
+                  <p className="text-[11px] txt-tenue px-1 py-2">Nenhuma busca salva ainda.</p>
                 ) : saved.map(s => (
-                  <div key={s.id} className="flex items-center gap-2 group rounded-lg hover:bg-white/[.04] px-2 py-1.5">
+                  <div key={s.id} className="flex items-center gap-2 group rounded-lg hover:sup-tenue px-2 py-1.5">
                     <button onClick={() => applySavedSearch(s)} className="flex-1 min-w-0 text-left">
-                      <p className="text-xs font-semibold text-slate-300 truncate">{s.name}</p>
+                      <p className="text-xs font-semibold txt-medio truncate">{s.name}</p>
                     </button>
                     {s.newCount > 0 && (
                       <span className="text-[10px] font-bold bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full shrink-0">
@@ -1296,7 +1297,7 @@ export default function Sidebar({
                       </span>
                     )}
                     <button onClick={() => deleteSavedSearch(s.id)}
-                      className="text-slate-600 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition shrink-0">
+                      className="txt-tenue hover:text-rose-400 opacity-0 group-hover:opacity-100 transition shrink-0">
                       <Trash2 size={12} />
                     </button>
                   </div>
@@ -1306,20 +1307,20 @@ export default function Sidebar({
 
             {/* Painel de filtros */}
             {vFiltersOpen && (
-              <div className="rounded-xl border border-white/[.07] bg-[#0f172a] p-3 space-y-3">
+              <div className="rounded-xl border borda sup-base p-3 space-y-3">
                 {/* Preço */}
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <p className="text-[10px] font-semibold text-slate-500 uppercase mb-1">Preço mín.</p>
                     <input type="number" inputMode="numeric" placeholder="R$ 0" value={vFilters.minPrice}
                       onChange={e => setVFilters(f => ({ ...f, minPrice: e.target.value }))}
-                      className="w-full py-1.5 px-2 rounded-lg bg-[#1e293b] border border-white/[.07] text-xs text-white outline-none focus:border-blue-500" />
+                      className="w-full py-1.5 px-2 rounded-lg sup-card border borda text-xs txt-forte outline-none focus:border-blue-500" />
                   </div>
                   <div>
                     <p className="text-[10px] font-semibold text-slate-500 uppercase mb-1">Preço máx.</p>
                     <input type="number" inputMode="numeric" placeholder="sem limite" value={vFilters.maxPrice}
                       onChange={e => setVFilters(f => ({ ...f, maxPrice: e.target.value }))}
-                      className="w-full py-1.5 px-2 rounded-lg bg-[#1e293b] border border-white/[.07] text-xs text-white outline-none focus:border-blue-500" />
+                      className="w-full py-1.5 px-2 rounded-lg sup-card border borda text-xs txt-forte outline-none focus:border-blue-500" />
                   </div>
                 </div>
                 {/* Slider de preço máximo */}
@@ -1338,19 +1339,19 @@ export default function Sidebar({
                     <p className="text-[10px] font-semibold text-slate-500 uppercase mb-1">Ano mín.</p>
                     <input type="number" inputMode="numeric" placeholder="2010" value={vFilters.minYear}
                       onChange={e => setVFilters(f => ({ ...f, minYear: e.target.value }))}
-                      className="w-full py-1.5 px-2 rounded-lg bg-[#1e293b] border border-white/[.07] text-xs text-white outline-none focus:border-blue-500" />
+                      className="w-full py-1.5 px-2 rounded-lg sup-card border borda text-xs txt-forte outline-none focus:border-blue-500" />
                   </div>
                   <div>
                     <p className="text-[10px] font-semibold text-slate-500 uppercase mb-1">Ano máx.</p>
                     <input type="number" inputMode="numeric" placeholder="2025" value={vFilters.maxYear}
                       onChange={e => setVFilters(f => ({ ...f, maxYear: e.target.value }))}
-                      className="w-full py-1.5 px-2 rounded-lg bg-[#1e293b] border border-white/[.07] text-xs text-white outline-none focus:border-blue-500" />
+                      className="w-full py-1.5 px-2 rounded-lg sup-card border borda text-xs txt-forte outline-none focus:border-blue-500" />
                   </div>
                   <div>
                     <p className="text-[10px] font-semibold text-slate-500 uppercase mb-1">KM máx.</p>
                     <input type="number" inputMode="numeric" placeholder="80000" value={vFilters.maxKm}
                       onChange={e => setVFilters(f => ({ ...f, maxKm: e.target.value }))}
-                      className="w-full py-1.5 px-2 rounded-lg bg-[#1e293b] border border-white/[.07] text-xs text-white outline-none focus:border-blue-500" />
+                      className="w-full py-1.5 px-2 rounded-lg sup-card border borda text-xs txt-forte outline-none focus:border-blue-500" />
                   </div>
                 </div>
                 {/* Selects */}
@@ -1365,8 +1366,8 @@ export default function Sidebar({
                       <p className="text-[10px] font-semibold text-slate-500 uppercase mb-1">{label}</p>
                       <select value={vFilters[key as keyof typeof vFilters]}
                         onChange={e => setVFilters(f => ({ ...f, [key]: e.target.value }))}
-                        style={{ colorScheme: 'dark' }}
-                        className="w-full py-1.5 px-2 rounded-lg bg-[#1e293b] border border-white/[.07] text-xs text-slate-300 cursor-pointer outline-none focus:border-blue-500">
+                        
+                        className="w-full py-1.5 px-2 rounded-lg sup-card border borda text-xs txt-medio cursor-pointer outline-none focus:border-blue-500">
                         {opts.map(([val, lab]) => <option key={val} value={val}>{lab}</option>)}
                       </select>
                     </div>
@@ -1374,7 +1375,7 @@ export default function Sidebar({
                 </div>
                 {vActiveFilters > 0 && (
                   <button onClick={() => setVFilters({ ...emptyVFilters, sort: vFilters.sort })}
-                    className="w-full text-xs font-semibold text-slate-400 hover:text-white py-1.5 rounded-lg border border-white/[.07] hover:bg-white/[.04] transition">
+                    className="w-full text-xs font-semibold txt-fraco hover:txt-forte py-1.5 rounded-lg border borda hover:sup-tenue transition">
                     Limpar filtros
                   </button>
                 )}
@@ -1399,7 +1400,7 @@ export default function Sidebar({
                   return (
                     <span key={k} className="flex items-center gap-1 text-[10px] font-semibold bg-blue-500/15 text-blue-300 px-2 py-1 rounded-full">
                       {lbl} {val}
-                      <button onClick={() => setVFilters(f => ({ ...f, [k]: '' }))} className="hover:text-white">
+                      <button onClick={() => setVFilters(f => ({ ...f, [k]: '' }))} className="hover:txt-forte">
                         <X size={10} />
                       </button>
                     </span>
@@ -1422,28 +1423,28 @@ export default function Sidebar({
             )}
             {!vehicleLoading && !hasVehicleCriteria && (
               <div className="flex flex-col items-center py-16 text-center px-4">
-                <div className="w-16 h-16 rounded-2xl bg-white/[.04] flex items-center justify-center mb-4">
-                  <Car size={28} className="text-white/15" />
+                <div className="w-16 h-16 rounded-2xl sup-tenue flex items-center justify-center mb-4">
+                  <Car size={28} className="text-slate-300 dark:text-white/15" />
                 </div>
-                <p className="text-sm font-bold text-slate-400 mb-1">Busca global de veículos</p>
-                <p className="text-xs text-slate-600 leading-relaxed">
+                <p className="text-sm font-bold txt-fraco mb-1">Busca global de veículos</p>
+                <p className="text-xs txt-tenue leading-relaxed">
                   Digite o modelo, marca ou versão — ou use os filtros — para encontrar em todas as concessionárias.
                 </p>
               </div>
             )}
             {!vehicleLoading && vehicleSearched && vehicleResults.length === 0 && (
               <div className="flex flex-col items-center py-16 text-center px-4">
-                <div className="w-16 h-16 rounded-2xl bg-white/[.04] flex items-center justify-center mb-4">
-                  <Search size={28} className="text-white/15" />
+                <div className="w-16 h-16 rounded-2xl sup-tenue flex items-center justify-center mb-4">
+                  <Search size={28} className="text-slate-300 dark:text-white/15" />
                 </div>
-                <p className="text-sm font-bold text-slate-400 mb-1">Nenhum veículo encontrado</p>
-                <p className="text-xs text-slate-600 leading-relaxed">Tente ajustar a busca ou os filtros.</p>
+                <p className="text-sm font-bold txt-fraco mb-1">Nenhum veículo encontrado</p>
+                <p className="text-xs txt-tenue leading-relaxed">Tente ajustar a busca ou os filtros.</p>
               </div>
             )}
             {!vehicleLoading && vehicleResults.length > 0 && (
               <>
                 <div className="px-1 pb-1">
-                  <p className="text-xs text-slate-600 font-medium">
+                  <p className="text-xs txt-tenue font-medium">
                     {vehicleTotal} resultado{vehicleTotal !== 1 ? 's' : ''}
                     <span className="text-blue-500"> · pins destacados no mapa</span>
                   </p>
@@ -1469,8 +1470,8 @@ export default function Sidebar({
                   <button
                     onClick={loadMoreVehicles}
                     disabled={loadingMore}
-                    className="w-full py-2.5 mt-1 rounded-xl border border-white/[.08] text-xs font-semibold
-                               text-slate-400 hover:text-white hover:bg-white/[.04] transition disabled:opacity-50
+                    className="w-full py-2.5 mt-1 rounded-xl border borda text-xs font-semibold
+                               txt-fraco hover:txt-forte hover:sup-tenue transition disabled:opacity-50
                                flex items-center justify-center gap-2"
                   >
                     {loadingMore ? <><Loader2 size={13} className="animate-spin" /> Carregando…</>
@@ -1489,15 +1490,15 @@ export default function Sidebar({
               Array.from({ length: 5 }).map((_, i) => <CardSkeleton key={i} />)
             ) : filteredWithDist.length === 0 ? (
               <div className="flex flex-col items-center py-16 text-center px-4">
-                <div className="w-16 h-16 rounded-2xl bg-white/[.04] flex items-center justify-center mb-4">
+                <div className="w-16 h-16 rounded-2xl sup-tenue flex items-center justify-center mb-4">
                   {pins.length === 0
-                    ? <Building2 size={28} className="text-white/15" />
-                    : <Search size={28}   className="text-white/15" />}
+                    ? <Building2 size={28} className="text-slate-300 dark:text-white/15" />
+                    : <Search size={28}   className="text-slate-300 dark:text-white/15" />}
                 </div>
-                <p className="text-sm font-bold text-slate-400 mb-1">
+                <p className="text-sm font-bold txt-fraco mb-1">
                   {pins.length === 0 ? 'Nenhuma concessionária por aqui' : 'Sem resultados'}
                 </p>
-                <p className="text-xs text-slate-600 leading-relaxed mb-4">
+                <p className="text-xs txt-tenue leading-relaxed mb-4">
                   {pins.length === 0
                     ? 'Em breve novas lojas aparecerão na sua região.'
                     : radiusKm
@@ -1516,7 +1517,7 @@ export default function Sidebar({
             ) : (
               <>
                 <div className="px-1 pb-1 flex items-center justify-between">
-                  <p className="text-xs text-slate-600 font-medium">
+                  <p className="text-xs txt-tenue font-medium">
                     {filteredWithDist.length} resultado{filteredWithDist.length !== 1 ? 's' : ''}
                     {stateFilter && <span className="text-blue-500"> · {stateFilter}</span>}
                     {userLocation && <span className="text-emerald-500"> · por distância</span>}
@@ -1525,7 +1526,7 @@ export default function Sidebar({
                   {(search || stateFilter || onlyVehicles || brandFilter) && (
                     <button
                       onClick={() => { setSearch(''); setStateFilter(''); setOnlyVehicles(false); setBrandFilter(''); }}
-                      className="text-[11px] text-slate-600 hover:text-slate-400 flex items-center gap-1 transition-colors"
+                      className="text-[11px] txt-tenue hover:txt-fraco flex items-center gap-1 transition-colors"
                     >
                       <X size={11} /> Limpar
                     </button>

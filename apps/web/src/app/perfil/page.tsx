@@ -63,10 +63,10 @@ function formatPrice(v: string | number | null | undefined) {
 const STATUS_LABELS: Record<string, string> = { scheduled: 'Agendado', confirmed: 'Confirmado', in_progress: 'Em andamento', completed: 'Concluído', canceled: 'Cancelado', no_show: 'Não compareceu' };
 const STATUS_COLORS: Record<string, string> = {
   scheduled: 'bg-blue-500/15 text-blue-400', confirmed: 'bg-emerald-500/15 text-emerald-400',
-  in_progress: 'bg-amber-500/15 text-amber-400', completed: 'bg-slate-500/15 text-slate-400',
+  in_progress: 'bg-amber-500/15 text-amber-400', completed: 'bg-slate-500/15 txt-fraco',
   canceled: 'bg-rose-500/15 text-rose-400', no_show: 'bg-rose-500/15 text-rose-400',
 };
-const CARD = 'bg-[#1e293b] border border-white/[.06] rounded-2xl';
+const CARD = 'sup-card border borda rounded-2xl';
 
 type Tab = 'favorites' | 'viewed' | 'searches' | 'alerts' | 'appointments' | 'conversations';
 
@@ -178,16 +178,16 @@ export default function PerfilPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-white">
+    <div className="min-h-screen sup-base txt-forte">
       {/* Nav */}
-      <div className="sticky top-0 z-20 bg-[#0f172a]/90 backdrop-blur border-b border-white/[.06]">
+      <div className="sticky top-0 z-20 sup-base/90 backdrop-blur border-b borda">
         <div className="max-w-4xl mx-auto px-4 h-14 flex items-center gap-3">
-          <Link href="/buscar" className="p-1.5 rounded-lg hover:bg-white/[.06] transition text-slate-400 hover:text-white">
+          <Link href="/buscar" className="p-1.5 rounded-lg hover:sup-fraca transition txt-fraco hover:txt-forte">
             <ArrowLeft size={18} />
           </Link>
           <span className="font-bold text-sm flex-1">Meu Perfil</span>
           <button onClick={() => { clear(); router.replace('/buscar'); }}
-            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-rose-400 transition">
+            className="flex items-center gap-1.5 text-xs txt-fraco hover:text-rose-400 transition">
             <LogOut size={14} /> Sair
           </button>
         </div>
@@ -202,14 +202,14 @@ export default function PerfilPage() {
           <div className="relative flex flex-col sm:flex-row sm:items-center gap-4">
             {/* Avatar */}
             <div className="relative shrink-0">
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-3xl font-extrabold overflow-hidden ring-2 ring-white/10">
+              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-3xl font-extrabold overflow-hidden ring-2 ring-slate-200 dark:ring-white/10">
                 {profile?.avatarUrl
                   // eslint-disable-next-line @next/next/no-img-element
                   ? <img src={profile.avatarUrl} alt="" className="w-full h-full object-cover" />
                   : (user?.fullName?.charAt(0).toUpperCase() ?? '?')}
               </div>
               <button onClick={() => avatarInput.current?.click()} disabled={uploadingAvatar}
-                className="absolute -bottom-1.5 -right-1.5 w-7 h-7 rounded-full bg-blue-600 border-2 border-[#1e293b] flex items-center justify-center hover:bg-blue-500 transition">
+                className="absolute -bottom-1.5 -right-1.5 w-7 h-7 rounded-full bg-blue-600 border-2 border-slate-50 dark:border-[#1e293b] flex items-center justify-center hover:bg-blue-500 transition">
                 {uploadingAvatar ? <Loader2 size={12} className="animate-spin" /> : <Camera size={12} />}
               </button>
               <input ref={avatarInput} type="file" accept="image/*" hidden onChange={onAvatarPick} />
@@ -223,24 +223,24 @@ export default function PerfilPage() {
             {/* Info */}
             <div className="flex-1 min-w-0">
               <h1 className="text-xl font-extrabold truncate">{profile?.fullName ?? user?.fullName}</h1>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-slate-400">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs txt-fraco">
                 <span className="flex items-center gap-1"><Mail size={11} /> {profile?.email ?? user?.email}</span>
                 {profile?.phone && <span className="flex items-center gap-1"><Phone size={11} /> {profile.phone}</span>}
                 {profile?.customerProfile?.city && (
                   <span className="flex items-center gap-1"><MapPin size={11} /> {profile.customerProfile.city}/{profile.customerProfile.state}</span>
                 )}
               </div>
-              {memberSince && <p className="text-[11px] text-slate-600 mt-1">Cliente desde {memberSince}</p>}
+              {memberSince && <p className="text-[11px] txt-tenue mt-1">Cliente desde {memberSince}</p>}
             </div>
 
             {/* Ações */}
             <div className="flex sm:flex-col gap-2 shrink-0">
               <button onClick={() => setEditOpen(true)}
-                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white/[.06] hover:bg-white/[.1] text-xs font-semibold transition">
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl sup-fraca hover:sup-media text-xs font-semibold transition">
                 <Pencil size={13} /> Editar
               </button>
               <button onClick={() => setPwOpen(true)}
-                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white/[.06] hover:bg-white/[.1] text-xs font-semibold transition">
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl sup-fraca hover:sup-media text-xs font-semibold transition">
                 <KeyRound size={13} /> Senha
               </button>
             </div>
@@ -254,7 +254,7 @@ export default function PerfilPage() {
               { label: 'Alertas', value: alerts.length, Icon: Bell, color: 'text-amber-400' },
               { label: 'Vistos', value: viewed.length, Icon: Eye, color: 'text-emerald-400' },
             ].map((s) => (
-              <div key={s.label} className="bg-white/[.03] border border-white/[.05] rounded-xl px-2 py-3 text-center">
+              <div key={s.label} className="sup-tenue border borda rounded-xl px-2 py-3 text-center">
                 <s.Icon size={15} className={`${s.color} mx-auto mb-1`} />
                 <p className="text-lg font-extrabold leading-none">{s.value}</p>
                 <p className="text-[10px] text-slate-500 mt-0.5">{s.label}</p>
@@ -268,13 +268,13 @@ export default function PerfilPage() {
           {TABS.map(({ value, label, Icon, count, dot }) => (
             <button key={value} onClick={() => setTab(value)}
               className={`relative flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all
-                ${tab === value ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'bg-[#1e293b] text-slate-400 hover:text-white border border-white/[.06]'}`}>
+                ${tab === value ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'sup-card txt-fraco hover:txt-forte border borda'}`}>
               <Icon size={13} /> {label}
               {count !== undefined && count > 0 && (
                 <span className={`text-[10px] font-bold rounded-full min-w-[16px] h-[16px] px-1 flex items-center justify-center
-                  ${tab === value ? 'bg-white/25' : 'bg-white/[.08] text-slate-400'}`}>{count}</span>
+                  ${tab === value ? 'sup-media' : 'sup-media txt-fraco'}`}>{count}</span>
               )}
-              {dot && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-400 rounded-full border-2 border-[#0f172a]" />}
+              {dot && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-400 rounded-full border-2 border-white dark:border-[#0f172a]" />}
             </button>
           ))}
         </div>
@@ -296,11 +296,11 @@ export default function PerfilPage() {
                     right={
                       <>
                         <button onClick={() => setScheduleVehicle(f.vehicle)} title="Agendar test drive"
-                          className="p-2 rounded-lg bg-white/[.04] hover:bg-blue-500/15 hover:text-blue-400 transition">
+                          className="p-2 rounded-lg sup-tenue hover:bg-blue-500/15 hover:text-blue-400 transition">
                           <CalendarDays size={14} />
                         </button>
                         <button onClick={() => removeFavorite(f.vehicle.id)} title="Remover"
-                          className="p-2 rounded-lg bg-white/[.04] hover:bg-rose-500/15 transition">
+                          className="p-2 rounded-lg sup-tenue hover:bg-rose-500/15 transition">
                           <Heart size={14} className="fill-rose-500 text-rose-500" />
                         </button>
                       </>
@@ -326,7 +326,7 @@ export default function PerfilPage() {
             ) : (
               <div className="space-y-3">
                 {searches.map((s) => (
-                  <div key={s.id} className={`${CARD} p-4 flex items-center gap-3 group hover:border-white/[.12] transition`}>
+                  <div key={s.id} className={`${CARD} p-4 flex items-center gap-3 group hover:borda-forte transition`}>
                     <div className="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center shrink-0">
                       <Bookmark size={16} className="text-blue-400" />
                     </div>
@@ -340,7 +340,7 @@ export default function PerfilPage() {
                     <Link href="/buscar" className="p-2 rounded-lg bg-blue-600 hover:bg-blue-500 transition" title="Abrir busca">
                       <ChevronRight size={14} />
                     </Link>
-                    <button onClick={() => deleteSearch(s.id)} className="p-2 rounded-lg bg-white/[.04] hover:bg-rose-500/15 hover:text-rose-400 transition opacity-0 group-hover:opacity-100" title="Remover">
+                    <button onClick={() => deleteSearch(s.id)} className="p-2 rounded-lg sup-tenue hover:bg-rose-500/15 hover:text-rose-400 transition opacity-0 group-hover:opacity-100" title="Remover">
                       <X size={14} />
                     </button>
                   </div>
@@ -367,22 +367,22 @@ export default function PerfilPage() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold truncate">{a.vehicle.brand.name} {a.vehicle.model.name} {a.vehicle.yearModel}</p>
                           <div className="flex items-center gap-3 mt-0.5 text-xs">
-                            <span className="text-slate-400">Atual <b className="text-white">{formatPrice(a.vehicle.price)}</b></span>
-                            <span className="text-slate-400">Alvo <b className="text-amber-400">{formatPrice(a.targetPrice)}</b></span>
+                            <span className="txt-fraco">Atual <b className="txt-forte">{formatPrice(a.vehicle.price)}</b></span>
+                            <span className="txt-fraco">Alvo <b className="text-amber-400">{formatPrice(a.targetPrice)}</b></span>
                           </div>
                         </div>
-                        <button onClick={() => removeAlert(a.vehicle.id)} className="p-2 rounded-lg bg-white/[.04] hover:bg-rose-500/15 hover:text-rose-400 transition" title="Remover alerta">
+                        <button onClick={() => removeAlert(a.vehicle.id)} className="p-2 rounded-lg sup-tenue hover:bg-rose-500/15 hover:text-rose-400 transition" title="Remover alerta">
                           <BellOff size={14} />
                         </button>
                       </div>
                       <div className="mt-3">
-                        <div className="h-1.5 rounded-full bg-white/[.06] overflow-hidden">
+                        <div className="h-1.5 rounded-full sup-fraca overflow-hidden">
                           <div className={`h-full rounded-full ${reached ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${progress}%` }} />
                         </div>
                         <p className="text-[11px] mt-1.5 text-slate-500">
                           {reached
                             ? <span className="text-emerald-400 font-semibold">✓ Preço atingiu seu alvo!</span>
-                            : <>Faltam <b className="text-slate-300">{formatPrice(dropNeeded)}</b> para o seu alvo</>}
+                            : <>Faltam <b className="txt-medio">{formatPrice(dropNeeded)}</b> para o seu alvo</>}
                         </p>
                       </div>
                     </div>
@@ -399,10 +399,10 @@ export default function PerfilPage() {
                 {appointments.map((a) => (
                   <div key={a.id} className={`${CARD} p-4`}>
                     <div className="flex items-center justify-between mb-3">
-                      <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${STATUS_COLORS[a.status] ?? 'bg-white/[.06] text-slate-400'}`}>
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${STATUS_COLORS[a.status] ?? 'sup-fraca txt-fraco'}`}>
                         {STATUS_LABELS[a.status] ?? a.status}
                       </span>
-                      <p className="text-xs text-slate-400 flex items-center gap-1.5">
+                      <p className="text-xs txt-fraco flex items-center gap-1.5">
                         <Clock size={12} />
                         {new Date(a.scheduledStart).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
                         {' · '}{new Date(a.scheduledStart).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
@@ -432,7 +432,7 @@ export default function PerfilPage() {
                   const last = c.messages[0];
                   return (
                     <button key={c.id} onClick={() => setChatConv(c)}
-                      className={`${CARD} w-full p-4 flex items-center gap-3 text-left hover:border-white/[.12] transition`}>
+                      className={`${CARD} w-full p-4 flex items-center gap-3 text-left hover:borda-forte transition`}>
                       <div className="w-11 h-11 rounded-xl bg-blue-500/15 flex items-center justify-center shrink-0 overflow-hidden">
                         {c.tenant.logoUrl
                           // eslint-disable-next-line @next/next/no-img-element
@@ -444,7 +444,7 @@ export default function PerfilPage() {
                         {c.vehicle && <p className="text-[11px] text-blue-400 truncate">{c.vehicle.brand.name} {c.vehicle.model.name} {c.vehicle.yearModel}</p>}
                         {last && <p className="text-xs text-slate-500 truncate mt-0.5">{last.body}</p>}
                       </div>
-                      <ChevronRight size={16} className="text-slate-600 shrink-0" />
+                      <ChevronRight size={16} className="txt-tenue shrink-0" />
                     </button>
                   );
                 })}
@@ -485,7 +485,7 @@ function ScheduleModal({ vehicle, token, onClose, onScheduled }: { vehicle: Smal
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
-  const input = 'w-full rounded-xl bg-[#0f172a] border border-white/[.08] px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500 transition';
+  const input = 'w-full rounded-xl sup-base border borda px-3 py-2.5 text-sm txt-forte outline-none focus:border-blue-500 transition';
   const minDt = new Date(Date.now() + 3600000).toISOString().slice(0, 16);
 
   async function save() {
@@ -503,7 +503,7 @@ function ScheduleModal({ vehicle, token, onClose, onScheduled }: { vehicle: Smal
 
   return (
     <Modal title="Agendar test drive" onClose={onClose}>
-      <div className="flex items-center gap-3 mb-4 p-3 rounded-xl bg-white/[.03] border border-white/[.05]">
+      <div className="flex items-center gap-3 mb-4 p-3 rounded-xl sup-tenue border borda">
         <Thumb v={vehicle} />
         <div className="min-w-0">
           <p className="text-sm font-bold truncate">{vehicle.brand.name} {vehicle.model.name} {vehicle.yearModel}</p>
@@ -512,7 +512,7 @@ function ScheduleModal({ vehicle, token, onClose, onScheduled }: { vehicle: Smal
       </div>
       <div className="space-y-3">
         <Labeled label="Data e horário">
-          <input type="datetime-local" min={minDt} value={datetime} onChange={(e) => setDatetime(e.target.value)} style={{ colorScheme: 'dark' }} className={input} />
+          <input type="datetime-local" min={minDt} value={datetime} onChange={(e) => setDatetime(e.target.value)} className={input} />
         </Labeled>
         <Labeled label="Observações (opcional)">
           <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ex: prefiro de manhã" className={`${input} resize-none`} />
@@ -520,7 +520,7 @@ function ScheduleModal({ vehicle, token, onClose, onScheduled }: { vehicle: Smal
       </div>
       {err && <p className="text-xs text-rose-400 mt-3">{err}</p>}
       <div className="flex gap-2 mt-5">
-        <button onClick={onClose} className="flex-1 py-2.5 text-sm font-medium text-slate-400 border border-white/[.08] rounded-xl hover:bg-white/[.04]">Cancelar</button>
+        <button onClick={onClose} className="flex-1 py-2.5 text-sm font-medium txt-fraco border borda rounded-xl hover:sup-tenue">Cancelar</button>
         <button onClick={save} disabled={saving} className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-bold bg-blue-600 hover:bg-blue-500 rounded-xl transition disabled:opacity-50">
           {saving ? <Loader2 size={15} className="animate-spin" /> : <CalendarDays size={15} />} Agendar
         </button>
@@ -533,18 +533,18 @@ function ScheduleModal({ vehicle, token, onClose, onScheduled }: { vehicle: Smal
 
 function Thumb({ v }: { v: SmallVehicle }) {
   return (
-    <div className="w-14 h-11 rounded-lg bg-white/[.06] overflow-hidden shrink-0 flex items-center justify-center">
+    <div className="w-14 h-11 rounded-lg sup-fraca overflow-hidden shrink-0 flex items-center justify-center">
       {v.images[0]
         // eslint-disable-next-line @next/next/no-img-element
         ? <img src={v.images[0].url} alt="" className="w-full h-full object-cover" />
-        : <Car size={16} className="text-white/20" />}
+        : <Car size={16} className="text-slate-300 dark:text-white/20" />}
     </div>
   );
 }
 
 function VehicleRow({ v, right }: { v: SmallVehicle; right?: React.ReactNode }) {
   return (
-    <div className={`${CARD} p-3 flex items-center gap-3 hover:border-white/[.12] transition group`}>
+    <div className={`${CARD} p-3 flex items-center gap-3 hover:borda-forte transition group`}>
       <Thumb v={v} />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold truncate">{v.brand.name} {v.model.name} {v.yearModel}</p>
@@ -562,10 +562,10 @@ function VehicleRow({ v, right }: { v: SmallVehicle; right?: React.ReactNode }) 
 function Empty({ Icon, title, hint, ctaHref, ctaLabel }: { Icon: React.ElementType; title: string; hint: string; ctaHref?: string; ctaLabel?: string }) {
   return (
     <div className={`${CARD} flex flex-col items-center text-center py-14 px-6`}>
-      <div className="w-16 h-16 rounded-2xl bg-white/[.04] flex items-center justify-center mb-4">
-        <Icon size={28} className="text-white/15" />
+      <div className="w-16 h-16 rounded-2xl sup-tenue flex items-center justify-center mb-4">
+        <Icon size={28} className="text-slate-300 dark:text-white/15" />
       </div>
-      <p className="text-sm font-bold text-slate-300">{title}</p>
+      <p className="text-sm font-bold txt-medio">{title}</p>
       <p className="text-xs text-slate-500 mt-1 max-w-xs">{hint}</p>
       {ctaHref && (
         <Link href={ctaHref} className="mt-4 flex items-center gap-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-xl transition">
@@ -586,7 +586,7 @@ function EditProfileModal({ profile, token, onClose, onSaved }: { profile: FullP
   });
   const [saving, setSaving] = useState(false);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
-  const input = 'w-full rounded-xl bg-[#0f172a] border border-white/[.08] px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500 transition';
+  const input = 'w-full rounded-xl sup-base border borda px-3 py-2.5 text-sm txt-forte outline-none focus:border-blue-500 transition';
 
   async function save() {
     setSaving(true);
@@ -611,7 +611,7 @@ function EditProfileModal({ profile, token, onClose, onSaved }: { profile: FullP
         </div>
       </div>
       <div className="flex gap-2 mt-5">
-        <button onClick={onClose} className="flex-1 py-2.5 text-sm font-medium text-slate-400 border border-white/[.08] rounded-xl hover:bg-white/[.04]">Cancelar</button>
+        <button onClick={onClose} className="flex-1 py-2.5 text-sm font-medium txt-fraco border borda rounded-xl hover:sup-tenue">Cancelar</button>
         <button onClick={save} disabled={saving} className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-bold bg-blue-600 hover:bg-blue-500 rounded-xl transition disabled:opacity-50">
           {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Salvar
         </button>
@@ -624,7 +624,7 @@ function EditProfileModal({ profile, token, onClose, onSaved }: { profile: FullP
 function ChangePasswordModal({ token, onClose }: { token: string; onClose: () => void }) {
   const [cur, setCur] = useState(''); const [nw, setNw] = useState(''); const [conf, setConf] = useState('');
   const [saving, setSaving] = useState(false); const [err, setErr] = useState(''); const [done, setDone] = useState(false);
-  const input = 'w-full rounded-xl bg-[#0f172a] border border-white/[.08] px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500 transition';
+  const input = 'w-full rounded-xl sup-base border borda px-3 py-2.5 text-sm txt-forte outline-none focus:border-blue-500 transition';
 
   async function save() {
     setErr('');
@@ -653,7 +653,7 @@ function ChangePasswordModal({ token, onClose }: { token: string; onClose: () =>
           </div>
           {err && <p className="text-xs text-rose-400 mt-3">{err}</p>}
           <div className="flex gap-2 mt-5">
-            <button onClick={onClose} className="flex-1 py-2.5 text-sm font-medium text-slate-400 border border-white/[.08] rounded-xl hover:bg-white/[.04]">Cancelar</button>
+            <button onClick={onClose} className="flex-1 py-2.5 text-sm font-medium txt-fraco border borda rounded-xl hover:sup-tenue">Cancelar</button>
             <button onClick={save} disabled={saving} className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-bold bg-blue-600 hover:bg-blue-500 rounded-xl transition disabled:opacity-50">
               {saving ? <Loader2 size={15} className="animate-spin" /> : <KeyRound size={15} />} Alterar
             </button>
@@ -668,10 +668,10 @@ function ChangePasswordModal({ token, onClose }: { token: string; onClose: () =>
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-[2100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md bg-[#1e293b] border border-white/[.08] rounded-2xl p-5 shadow-2xl">
+      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md sup-card border borda rounded-2xl p-5 shadow-2xl">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-bold">{title}</h3>
-          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/[.06]"><X size={18} /></button>
+          <button onClick={onClose} className="p-1 rounded-lg txt-fraco hover:txt-forte hover:sup-fraca"><X size={18} /></button>
         </div>
         {children}
       </div>
@@ -681,7 +681,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">{label}</label>
+      <label className="block text-[11px] font-semibold txt-fraco uppercase tracking-wider mb-1.5">{label}</label>
       {children}
     </div>
   );

@@ -24,11 +24,43 @@ html, body {
 }
 
 /* ─────────────────────────────────────────────────────────
+   Superfícies de /buscar e /perfil
+
+   Essas telas foram desenhadas só no escuro: fundos em hex fixo
+   (#0f172a, #1e293b) com bordas e textos brancos translúcidos. Esse
+   desenho não sobrevive a um `dark:` mecânico — `border-white/[.08]`
+   sobre fundo claro simplesmente desaparece.
+
+   Então o par claro/escuro de cada superfície fica definido aqui, uma
+   vez só, e as telas passam a referenciar o papel ("card", "borda")
+   em vez da cor. Trocar a paleta depois é mexer neste bloco.
+───────────────────────────────────────────────────────── */
+@layer components {
+  /* Fundos. No escuro são os hex originais e os véus de branco; no claro,
+     a mesma escada de elevação feita com slate. */
+  .sup-base    { @apply bg-white dark:bg-[#0f172a]; }
+  .sup-card    { @apply bg-slate-50 dark:bg-[#1e293b]; }
+  .sup-tenue   { @apply bg-slate-50 dark:bg-white/[.03]; }
+  .sup-fraca   { @apply bg-slate-100 dark:bg-white/[.06]; }
+  .sup-media   { @apply bg-slate-200 dark:bg-white/10; }
+
+  .borda       { @apply border-slate-200 dark:border-white/[.08]; }
+  .borda-forte { @apply border-slate-300 dark:border-white/20; }
+
+  /* Quatro níveis de ênfase, do título ao detalhe decorativo. */
+  .txt-forte   { @apply text-slate-900 dark:text-white; }
+  .txt-medio   { @apply text-slate-700 dark:text-slate-300; }
+  .txt-fraco   { @apply text-slate-500 dark:text-slate-400; }
+  .txt-tenue   { @apply text-slate-400 dark:text-slate-600; }
+}
+
+/* ─────────────────────────────────────────────────────────
    Leaflet — dark map theme
 ───────────────────────────────────────────────────────── */
 
 /* Fundo dos tiles enquanto carregam */
-.leaflet-tile-pane { background: #0f172a; }
+.leaflet-tile-pane { background: #e2e8f0; }
+.dark .leaflet-tile-pane { background: #0f172a; }
 
 /* O basemap da Esri vem num cinza médio neutro (terreno ~rgb(63,63,65)).
    Aqui ele é escurecido e tingido com o azul da paleta: o resultado no terreno
@@ -40,7 +72,11 @@ html, body {
 
    Aplicado só na base — a camada de rótulos fica intacta e legível.
    Para clarear/escurecer, mexa apenas no brightness:
-     0.5 → rgb(25,32,51)   0.6 → rgb(30,40,63)   0.7 → rgb(37,48,76) */
+     0.5 → rgb(25,32,51)   0.6 → rgb(30,40,63)   0.7 → rgb(37,48,76)
+
+   No tema claro esta classe não é aplicada: o MapClient troca os tiles pela
+   variante Light da própria Esri, o que dá um resultado melhor do que tentar
+   clarear por filtro. */
 .basemap-dark {
   filter: brightness(0.6) contrast(1.05) sepia(1) hue-rotate(185deg) saturate(2.5);
 }
@@ -48,14 +84,17 @@ html, body {
 /* Zoom controls — glass */
 .leaflet-control-zoom {
   border: none !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18) !important;
+}
+.dark .leaflet-control-zoom {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55) !important;
 }
 .leaflet-control-zoom a {
-  background-color: rgba(30, 41, 59, 0.85) !important;
+  background-color: rgba(255, 255, 255, 0.9) !important;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  color: #e2e8f0 !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #334155 !important;
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
   width: 36px !important;
   height: 36px !important;
   line-height: 34px !important;
@@ -63,7 +102,16 @@ html, body {
   font-weight: 500 !important;
   transition: background-color 0.15s, color 0.15s !important;
 }
+.dark .leaflet-control-zoom a {
+  background-color: rgba(30, 41, 59, 0.85) !important;
+  color: #e2e8f0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
 .leaflet-control-zoom a:hover {
+  background-color: rgba(59, 130, 246, 0.18) !important;
+  color: #1d4ed8 !important;
+}
+.dark .leaflet-control-zoom a:hover {
   background-color: rgba(59, 130, 246, 0.25) !important;
   color: #ffffff !important;
 }
@@ -72,16 +120,22 @@ html, body {
 
 /* Attribution */
 .leaflet-control-attribution {
-  background: rgba(15, 23, 42, 0.85) !important;
-  color: rgba(148, 163, 184, 0.9) !important;
+  background: rgba(255, 255, 255, 0.85) !important;
+  color: rgba(71, 85, 105, 0.9) !important;
   font-size: 10px !important;
   padding: 4px 10px !important;
   border-radius: 8px 0 0 0 !important;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
-.leaflet-control-attribution a { color: rgba(148, 163, 184, 0.9) !important; }
-.leaflet-control-attribution a:hover { color: #fff !important; }
+.leaflet-control-attribution a { color: rgba(71, 85, 105, 0.9) !important; }
+.leaflet-control-attribution a:hover { color: #0f172a !important; }
+.dark .leaflet-control-attribution {
+  background: rgba(15, 23, 42, 0.85) !important;
+  color: rgba(148, 163, 184, 0.9) !important;
+}
+.dark .leaflet-control-attribution a { color: rgba(148, 163, 184, 0.9) !important; }
+.dark .leaflet-control-attribution a:hover { color: #fff !important; }
 
 /* ─────────────────────────────────────────────────────────
    Pins de concessionária
@@ -128,19 +182,29 @@ html, body {
   height: 21px;
   padding: 0 5px;
   border-radius: 11px;
-  background: #0f172a;
-  border: 1.5px solid rgba(96, 165, 250, 0.6);
-  color: #93c5fd;
+  background: #ffffff;
+  border: 1.5px solid rgba(37, 99, 235, 0.55);
+  color: #1d4ed8;
   font-size: 10px;
   font-weight: 800;
   font-family: Inter, sans-serif;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.35);
   z-index: 2;
 }
+.dark .pin-badge {
+  background: #0f172a;
+  border-color: rgba(96, 165, 250, 0.6);
+  color: #93c5fd;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
+}
 .pin-badge--selected {
+  border-color: rgba(217, 119, 6, 0.75);
+  color: #b45309;
+}
+.dark .pin-badge--selected {
   border-color: rgba(251, 191, 36, 0.7);
   color: #fcd34d;
 }
@@ -170,19 +234,50 @@ html, body {
    Tooltip de hover nos pins
 ───────────────────────────────────────────────────────── */
 .leaflet-tooltip.pin-tooltip {
-  background: rgba(30, 41, 59, 0.92) !important;
+  background: rgba(255, 255, 255, 0.95) !important;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
   border-radius: 14px !important;
   padding: 11px 14px 10px !important;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.65) !important;
-  color: white !important;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.22) !important;
+  color: #0f172a !important;
   font-family: inherit !important;
   white-space: nowrap !important;
   pointer-events: none !important;
   overflow: hidden !important;
 }
+.dark .leaflet-tooltip.pin-tooltip {
+  background: rgba(30, 41, 59, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.65) !important;
+  color: white !important;
+}
+/* Conteúdo do tooltip. Vem como HTML cru do Leaflet (ver tooltipHtml no
+   MapClient), fora do alcance do Tailwind — por isso as cores moram aqui. */
+.tt-titulo { color: #0f172a; }
+.tt-sub    { color: #475569; }
+.tt-dim    { color: #64748b; }
+.tt-preco  { color: #1d4ed8; }
+.tt-sep    { border-top: 1px solid rgba(15, 23, 42, 0.1); }
+.tt-thumb  { background: rgba(15, 23, 42, 0.06); }
+.tt-chip {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(37, 99, 235, 0.18));
+  color: #1d4ed8;
+  border: 1px solid rgba(37, 99, 235, 0.25);
+}
+.dark .tt-titulo { color: #fff; }
+.dark .tt-sub    { color: #94a3b8; }
+.dark .tt-dim    { color: #64748b; }
+.dark .tt-preco  { color: #60a5fa; }
+.dark .tt-sep    { border-top-color: rgba(255, 255, 255, 0.08); }
+.dark .tt-thumb  { background: rgba(255, 255, 255, 0.08); }
+.dark .tt-chip {
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.25), rgba(37, 99, 235, 0.25));
+  color: #93c5fd;
+  border-color: rgba(96, 165, 250, 0.25);
+}
+
 /* Barra de acento no topo do tooltip */
 .pin-tooltip-accent {
   position: absolute;
@@ -195,8 +290,11 @@ html, body {
 }
 /* Seta inferior do tooltip (direção top) */
 .leaflet-tooltip.pin-tooltip.leaflet-tooltip-top::before {
-  border-top-color: rgba(255, 255, 255, 0.08) !important;
+  border-top-color: rgba(15, 23, 42, 0.12) !important;
   margin-bottom: -7px !important;
+}
+.dark .leaflet-tooltip.pin-tooltip.leaflet-tooltip-top::before {
+  border-top-color: rgba(255, 255, 255, 0.08) !important;
 }
 
 /* ─────────────────────────────────────────────────────────
@@ -293,20 +391,34 @@ html, body {
   background: transparent;
 }
 .overflow-y-auto::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.18);
+  background: rgba(100, 116, 139, 0.3);
   border-radius: 8px;
+  border: 2px solid #ffffff;
+}
+.dark .overflow-y-auto::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.18);
   border: 2px solid #0f172a;
 }
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.5);
+}
+.dark .overflow-y-auto::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.35);
 }
 
-/* Vignette nas bordas do mapa — profundidade sem bloquear cliques */
+/* Vignette nas bordas do mapa — profundidade sem bloquear cliques.
+   No claro precisa ser bem mais discreta: a mesma opacidade do escuro
+   sujaria o mapa claro com uma moldura cinza evidente. */
 .map-vignette {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 800;
+  box-shadow:
+    inset 0 0 90px 25px rgba(15, 23, 42, 0.1),
+    inset 0 0 24px 6px rgba(15, 23, 42, 0.06);
+}
+.dark .map-vignette {
   box-shadow:
     inset 0 0 90px 25px rgba(2, 6, 23, 0.55),
     inset 0 0 24px 6px rgba(2, 6, 23, 0.35);
@@ -325,15 +437,26 @@ html, body {
   background:
     linear-gradient(100deg,
       transparent 30%,
+      rgba(59, 130, 246, 0.08) 45%,
+      rgba(255, 255, 255, 0.6) 50%,
+      rgba(59, 130, 246, 0.08) 55%,
+      transparent 70%),
+    #e2e8f0;
+  background-size: 200% 100%, auto;
+  animation: map-shimmer-sweep 1.6s linear infinite;
+  opacity: 1;
+  transition: opacity 0.6s ease;
+}
+.dark .map-shimmer {
+  background:
+    linear-gradient(100deg,
+      transparent 30%,
       rgba(59, 130, 246, 0.06) 45%,
       rgba(148, 163, 184, 0.08) 50%,
       rgba(59, 130, 246, 0.06) 55%,
       transparent 70%),
     #0f172a;
   background-size: 200% 100%, auto;
-  animation: map-shimmer-sweep 1.6s linear infinite;
-  opacity: 1;
-  transition: opacity 0.6s ease;
 }
 .map-shimmer--done {
   opacity: 0;

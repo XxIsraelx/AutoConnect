@@ -65,6 +65,29 @@ export function useTema() {
   return { tema, trocar, pronto };
 }
 
+/**
+ * Tema já resolvido ('system' virou claro ou escuro), para quem precisa
+ * decidir em JS e não com classes — o mapa troca a URL dos tiles, por exemplo.
+ *
+ * Observa a classe no <html> em vez do localStorage porque assim cobre toda
+ * origem de troca: o script inicial, o seletor e o sistema operacional.
+ */
+export function useTemaResolvido(): 'light' | 'dark' {
+  // Começa em 'dark' para bater com o padrão do script inline e não piscar.
+  const [efetivo, setEfetivo] = useState<'light' | 'dark'>('dark');
+
+  useEffect(() => {
+    const ler = () =>
+      setEfetivo(document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+    ler();
+    const obs = new MutationObserver(ler);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => obs.disconnect();
+  }, []);
+
+  return efetivo;
+}
+
 const OPCOES: { valor: Tema; label: string; Icon: typeof Sun }[] = [
   { valor: 'light',  label: 'Claro',    Icon: Sun     },
   { valor: 'dark',   label: 'Escuro',   Icon: Moon    },
