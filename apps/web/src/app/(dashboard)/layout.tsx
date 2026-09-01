@@ -287,7 +287,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Tema */}
         <div className="px-3 pb-2">
-          <ThemeToggle compacto />
+          <ThemeToggle compacto preencher />
         </div>
 
         {/* Notificações do navegador */}

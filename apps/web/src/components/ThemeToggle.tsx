@@ -20,12 +20,15 @@ export function aplicarTema(tema: Tema) {
   document.documentElement.style.colorScheme = efetivo;
 }
 
+/** Escuro por padrão — precisa casar com o script inline do layout raiz. */
+const PADRAO: Tema = 'dark';
+
 export function useTema() {
-  const [tema, setTema] = useState<Tema>('system');
+  const [tema, setTema] = useState<Tema>(PADRAO);
   const [pronto, setPronto] = useState(false);
 
   useEffect(() => {
-    const salvo = (localStorage.getItem(CHAVE) as Tema | null) ?? 'system';
+    const salvo = (localStorage.getItem(CHAVE) as Tema | null) ?? PADRAO;
     setTema(salvo);
     aplicarTema(salvo);
     setPronto(true);
@@ -55,7 +58,15 @@ const OPCOES: { valor: Tema; label: string; Icon: typeof Sun }[] = [
   { valor: 'system', label: 'Sistema',  Icon: Monitor },
 ];
 
-export default function ThemeToggle({ compacto = false }: { compacto?: boolean }) {
+export default function ThemeToggle({
+  compacto = false,
+  preencher = false,
+}: {
+  /** Só ícones, sem rótulo — para cabeçalhos e espaços estreitos. */
+  compacto?: boolean;
+  /** Ocupa toda a largura disponível (usado na barra lateral). */
+  preencher?: boolean;
+}) {
   const { tema, trocar, pronto } = useTema();
 
   // Antes de ler o localStorage não sabemos o tema; renderizar um estado
@@ -79,7 +90,7 @@ export default function ThemeToggle({ compacto = false }: { compacto?: boolean }
             title={label}
             className={[
               'flex items-center justify-center gap-1.5 rounded-md transition',
-              compacto ? 'flex-1 py-1.5' : 'px-2.5 py-1.5',
+              preencher ? 'flex-1 py-1.5' : 'px-2.5 py-1.5',
               ativo
                 ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white'
                 : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300',

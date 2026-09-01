@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import ThemeToggle from '@/components/ThemeToggle';
 import {
   Car,
   MessageSquare,
@@ -25,6 +26,7 @@ export default function HomePage() {
             <Link href="#planos" className="text-sm text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hidden sm:block">
               Planos
             </Link>
+            <ThemeToggle compacto />
             <Link href="/login" className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">
               Entrar
             </Link>

@@ -21,7 +21,9 @@ export const viewport = {
 const SCRIPT_TEMA = `
 (function() {
   try {
-    var t = localStorage.getItem('autoconnect-tema') || 'system';
+    // Padrão é ESCURO — a identidade do produto é dark. Só vira claro se a
+    // pessoa escolher, ou se escolher 'system' e o SO estiver claro.
+    var t = localStorage.getItem('autoconnect-tema') || 'dark';
     var escuro = t === 'dark' ||
       (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
     document.documentElement.classList.toggle('dark', escuro);

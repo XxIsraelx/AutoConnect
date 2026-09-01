@@ -1,3 +1,5 @@
+import ThemeToggle from '@/components/ThemeToggle';
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 px-4">
@@ -9,6 +11,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           </p>
         </div>
         {children}
+        <div className="mt-6 flex justify-center">
+          <ThemeToggle compacto />
+        </div>
       </div>
     </div>
   );
