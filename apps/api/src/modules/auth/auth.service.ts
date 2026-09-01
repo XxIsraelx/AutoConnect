@@ -50,8 +50,24 @@ export class AuthService {
     try {
       const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${input.tenant.cnpj}`);
       if (res.ok) {
-        const data = await res.json() as { situacao_cadastral?: string };
-        if (data.situacao_cadastral && data.situacao_cadastral !== 'ATIVA') {
+        // A BrasilAPI devolve DOIS campos: `situacao_cadastral` é numérico
+        // (2 = ativa) e `descricao_situacao_cadastral` é o texto ("ATIVA").
+        // Comparar o numérico com a string rejeitava todo CNPJ válido.
+        const data = await res.json() as {
+          situacao_cadastral?: number | string;
+          descricao_situacao_cadastral?: string;
+        };
+
+        const descricao = data.descricao_situacao_cadastral?.trim().toUpperCase();
+        const codigo = Number(data.situacao_cadastral);
+        const ativa = descricao ? descricao === 'ATIVA' : codigo === 2;
+
+        // Só bloqueia quando a API respondeu algo conclusivo sobre a situação.
+        const conclusivo = Boolean(descricao) || Number.isFinite(codigo);
+
+        if (conclusivo && !ativa) {
+          const situacao = descricao ?? `código ${codigo}`;
+
           // Registra tentativa de cadastro com CNPJ inativo no audit log
           this.prisma.auditLog.create({
             data: {
@@ -59,14 +75,14 @@ export class AuthService {
               entityType: 'tenant',
               diff: {
                 cnpj: input.tenant.cnpj,
-                situacao: data.situacao_cadastral,
+                situacao,
                 email: input.admin.email,
               },
             },
           }).catch(() => null);
 
           throw new BadRequestException(
-            `CNPJ com situação "${data.situacao_cadastral}" na Receita Federal. Apenas CNPJs com situação ATIVA podem se cadastrar.`,
+            `CNPJ com situação "${situacao}" na Receita Federal. Apenas CNPJs com situação ATIVA podem se cadastrar.`,
           );
         }
       }
