@@ -53,7 +53,7 @@ export default function ProposalBubble({
 
   return (
     <div className={`w-64 rounded-2xl overflow-hidden border shadow-lg
-      ${mine ? 'border-blue-500/30 bg-blue-950/60' : 'border-white/[.1] bg-[#1e293b]'}`}>
+      ${mine ? 'border-blue-500/30 bg-blue-950/60' : 'borda sup-card'}`}>
 
       {/* Header */}
       <div className="flex items-center gap-2 px-3.5 pt-3 pb-2">
@@ -61,9 +61,9 @@ export default function ProposalBubble({
           <BadgeDollarSign size={14} className="text-amber-400" />
         </div>
         <div className="min-w-0">
-          <p className="text-xs font-bold text-white leading-tight">Proposta comercial</p>
+          <p className="text-xs font-bold txt-forte leading-tight">Proposta comercial</p>
           {proposal.vehicleLabel && (
-            <p className="text-[10px] text-slate-400 truncate">{proposal.vehicleLabel}</p>
+            <p className="text-[10px] txt-fraco truncate">{proposal.vehicleLabel}</p>
           )}
         </div>
       </div>
@@ -71,16 +71,16 @@ export default function ProposalBubble({
       {/* Valores */}
       <div className="px-3.5 pb-2.5 space-y-1">
         <div className="flex justify-between text-xs">
-          <span className="text-slate-400">Valor</span>
-          <span className="font-bold text-white">{brl(proposal.price)}</span>
+          <span className="txt-fraco">Valor</span>
+          <span className="font-bold txt-forte">{brl(proposal.price)}</span>
         </div>
         <div className="flex justify-between text-xs">
-          <span className="text-slate-400">Entrada</span>
-          <span className="font-semibold text-slate-200">{brl(proposal.downPayment)}</span>
+          <span className="txt-fraco">Entrada</span>
+          <span className="font-semibold txt-medio">{brl(proposal.downPayment)}</span>
         </div>
         <div className="flex justify-between text-xs">
-          <span className="text-slate-400">Parcelas</span>
-          <span className="font-semibold text-slate-200">
+          <span className="txt-fraco">Parcelas</span>
+          <span className="font-semibold txt-medio">
             {proposal.installments}× de {brl(proposal.installmentValue)}
           </span>
         </div>
@@ -104,7 +104,7 @@ export default function ProposalBubble({
               onClick={() => respond(false)}
               disabled={!!responding}
               className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg
-                         bg-white/[.06] hover:bg-rose-500/20 text-slate-300 hover:text-rose-300
+                         sup-fraca hover:bg-rose-500/20 txt-medio hover:text-rose-300
                          text-[11px] font-bold transition-colors disabled:opacity-50"
             >
               {responding === 'decline' ? <Loader2 size={11} className="animate-spin" /> : <X size={11} />}

@@ -55,7 +55,7 @@ export default function TradeInModal({ tenantId, dealerName, desired, onClose }:
   }
 
   const inputCls =
-    'w-full rounded-xl bg-[#0f172a] border border-white/[.08] text-sm text-white placeholder-slate-600 px-3 py-2.5 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all';
+    'w-full rounded-xl sup-base border borda text-sm txt-forte placeholder-slate-400 dark:placeholder-slate-600 px-3 py-2.5 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all';
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -113,10 +113,10 @@ export default function TradeInModal({ tenantId, dealerName, desired, onClose }:
           <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 flex items-center justify-center mx-auto mb-4">
             <Check size={28} className="text-emerald-400" />
           </div>
-          <h3 className="text-lg font-bold text-white mb-2">Proposta de troca enviada!</h3>
-          <p className="text-sm text-slate-400 leading-relaxed mb-1">
-            A <span className="text-white font-semibold">{dealerName}</span> vai avaliar o seu{' '}
-            <span className="text-white font-semibold">{f.brandName} {f.modelName}</span> e responder com um valor.
+          <h3 className="text-lg font-bold txt-forte mb-2">Proposta de troca enviada!</h3>
+          <p className="text-sm txt-fraco leading-relaxed mb-1">
+            A <span className="txt-forte font-semibold">{dealerName}</span> vai avaliar o seu{' '}
+            <span className="txt-forte font-semibold">{f.brandName} {f.modelName}</span> e responder com um valor.
           </p>
           <p className="text-xs text-slate-500 mb-6">Você receberá a avaliação por e-mail em {f.contactEmail}.</p>
           <button onClick={onClose}
@@ -131,17 +131,17 @@ export default function TradeInModal({ tenantId, dealerName, desired, onClose }:
   /* ── Formulário ── */
   return (
     <Shell onClose={onClose}>
-      <div className="flex items-center justify-between p-5 border-b border-white/[.06]">
+      <div className="flex items-center justify-between p-5 border-b borda">
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-emerald-500/15 flex items-center justify-center">
             <Repeat size={17} className="text-emerald-400" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-white">Oferecer meu carro na troca</h3>
+            <h3 className="text-base font-bold txt-forte">Oferecer meu carro na troca</h3>
             <p className="text-xs text-slate-500">{dealerName}</p>
           </div>
         </div>
-        <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/[.06] transition-all">
+        <button onClick={onClose} className="p-2 rounded-xl txt-fraco hover:txt-forte hover:sup-fraca transition-all">
           <X size={16} />
         </button>
       </div>
@@ -153,8 +153,8 @@ export default function TradeInModal({ tenantId, dealerName, desired, onClose }:
               <Car size={16} className="text-emerald-400" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs text-slate-400">Seu carro vai abater do valor de</p>
-              <p className="text-sm font-bold text-white truncate">
+              <p className="text-xs txt-fraco">Seu carro vai abater do valor de</p>
+              <p className="text-sm font-bold txt-forte truncate">
                 {desired.label}{desired.price != null ? ` · ${brl(desired.price)}` : ''}
               </p>
             </div>
@@ -185,7 +185,7 @@ export default function TradeInModal({ tenantId, dealerName, desired, onClose }:
           <input className={inputCls} placeholder="Cor" value={f.color} onChange={(e) => set('color', e.target.value)} />
           <input className={inputCls} placeholder="Placa (opcional)" value={f.plate} onChange={(e) => set('plate', e.target.value)} />
         </div>
-        <div className="flex flex-wrap gap-4 text-xs text-slate-300">
+        <div className="flex flex-wrap gap-4 text-xs txt-medio">
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={f.isFinanced} onChange={(e) => set('isFinanced', e.target.checked)} className="accent-emerald-500" />
             Está financiado
@@ -229,7 +229,7 @@ function Shell({ children, onClose }: { children: React.ReactNode; onClose: () =
     <>
       <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-        <div className="bg-[#1e293b] border border-white/[.1] rounded-2xl shadow-2xl max-w-md w-full max-h-[92vh] overflow-y-auto">
+        <div className="sup-card border borda rounded-2xl shadow-2xl max-w-md w-full max-h-[92vh] overflow-y-auto">
           {children}
         </div>
       </div>

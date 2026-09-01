@@ -46,7 +46,7 @@ function formatPhone(phone: string) {
 const condMap: Record<string, { label: string; cls: string }> = {
   new:      { label: '0 km',     cls: 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/30' },
   semi_new: { label: 'Seminovo', cls: 'bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/30' },
-  used:     { label: 'Usado',    cls: 'bg-white/10 text-slate-400 ring-1 ring-white/10' },
+  used:     { label: 'Usado',    cls: 'sup-media txt-fraco ring-1 ring-slate-200 dark:ring-white/10' },
   demo:     { label: 'Demo',     cls: 'bg-violet-500/20 text-violet-400 ring-1 ring-violet-500/30' },
 };
 
@@ -76,13 +76,13 @@ function calcPrice(pv: number, ratePerMonth: number, n: number) {
 
 function VehicleCardSkeleton() {
   return (
-    <div className="rounded-2xl bg-[#1e293b] border border-white/[.06] overflow-hidden animate-pulse">
-      <div className="aspect-[4/3] bg-white/10" />
+    <div className="rounded-2xl sup-card border borda overflow-hidden animate-pulse">
+      <div className="aspect-[4/3] sup-media" />
       <div className="p-4 space-y-2.5">
-        <div className="h-3 bg-white/10 rounded w-2/3" />
-        <div className="h-4 bg-white/10 rounded w-4/5" />
-        <div className="h-3 bg-white/10 rounded w-1/2" />
-        <div className="h-5 bg-white/10 rounded w-1/3 mt-1" />
+        <div className="h-3 sup-media rounded w-2/3" />
+        <div className="h-4 sup-media rounded w-4/5" />
+        <div className="h-3 sup-media rounded w-1/2" />
+        <div className="h-5 sup-media rounded w-1/3 mt-1" />
       </div>
     </div>
   );
@@ -111,19 +111,19 @@ function VehicleCard({
   const promo = !!v.promoPrice;
 
   return (
-    <div className="group relative rounded-2xl bg-[#1e293b] border border-white/[.07]
+    <div className="group relative rounded-2xl sup-card border borda
                     hover:border-blue-500/50 hover:shadow-[0_0_0_1px_rgba(59,130,246,.15),0_8px_32px_rgba(59,130,246,.08)]
                     overflow-hidden transition-all duration-200">
 
       {/* Foto — clicável */}
       <button onClick={onClick} className="block w-full text-left">
-        <div className="aspect-[4/3] bg-[#0f172a] overflow-hidden relative">
+        <div className="aspect-[4/3] sup-base overflow-hidden relative">
           {cover
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={cover} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
             : (
               <div className="w-full h-full flex items-center justify-center">
-                <Car size={40} className="text-white/10" />
+                <Car size={40} className="text-slate-300 dark:text-white/10" />
               </div>
             )
           }
@@ -165,7 +165,7 @@ function VehicleCard({
             ${isCompared
               ? 'bg-amber-500 text-white'
               : compareDisabled
-                ? 'bg-black/60 backdrop-blur-sm text-white/20 cursor-not-allowed'
+                ? 'bg-black/60 backdrop-blur-sm text-slate-300 dark:text-white/20 cursor-not-allowed'
                 : 'bg-black/60 backdrop-blur-sm text-white/70 hover:bg-amber-500 hover:text-white'}`}
         >
           <Scale size={13} />
@@ -177,20 +177,20 @@ function VehicleCard({
         <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide truncate">
           {v.brand.name} · {v.model.name}
         </p>
-        <p className="text-sm font-bold text-white truncate leading-snug mt-0.5 group-hover:text-blue-300 transition-colors">
+        <p className="text-sm font-bold txt-forte truncate leading-snug mt-0.5 group-hover:text-blue-300 transition-colors">
           {v.versionName ?? `${v.yearModel}`}
         </p>
         <div className="flex items-center gap-2 mt-1.5 text-xs text-slate-500">
           <span>{v.yearModel}</span>
           {v.mileageKm > 0 && (
             <>
-              <span className="text-slate-700">·</span>
+              <span className="txt-tenue">·</span>
               <span>{formatKm(v.mileageKm)}</span>
             </>
           )}
           {v.color && (
             <>
-              <span className="text-slate-700">·</span>
+              <span className="txt-tenue">·</span>
               <span className="truncate">{v.color}</span>
             </>
           )}
@@ -198,7 +198,7 @@ function VehicleCard({
         <p className={`text-base font-extrabold mt-2 ${promo ? 'text-rose-400' : 'text-blue-400'}`}>
           {formatPrice(price)}
           {promo && (
-            <span className="ml-1.5 text-xs font-normal text-slate-600 line-through">
+            <span className="ml-1.5 text-xs font-normal txt-tenue line-through">
               {formatPrice(v.price)}
             </span>
           )}
@@ -221,10 +221,10 @@ function FinancingCalc({ price }: { price: string | null }) {
   const total = pmt * parcelas;
 
   return (
-    <div className="rounded-2xl bg-white/[.04] border border-white/[.06] p-4">
+    <div className="rounded-2xl sup-tenue border borda p-4">
       <div className="flex items-center gap-2 mb-4">
         <Calculator size={15} className="text-blue-400" />
-        <h4 className="text-sm font-bold text-white">Simulação de financiamento</h4>
+        <h4 className="text-sm font-bold txt-forte">Simulação de financiamento</h4>
       </div>
 
       <div className="grid grid-cols-3 gap-3 mb-4">
@@ -241,7 +241,7 @@ function FinancingCalc({ price }: { price: string | null }) {
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border transition-all
                   ${entrada === p
                     ? 'border-blue-500/60 bg-blue-500/20 text-blue-300'
-                    : 'border-white/[.07] text-slate-500 hover:border-white/20'}`}
+                    : 'borda text-slate-500 hover:borda-forte'}`}
               >
                 {p}%
               </button>
@@ -262,7 +262,7 @@ function FinancingCalc({ price }: { price: string | null }) {
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border transition-all
                   ${parcelas === n
                     ? 'border-blue-500/60 bg-blue-500/20 text-blue-300'
-                    : 'border-white/[.07] text-slate-500 hover:border-white/20'}`}
+                    : 'borda text-slate-500 hover:borda-forte'}`}
               >
                 {n}x
               </button>
@@ -283,7 +283,7 @@ function FinancingCalc({ price }: { price: string | null }) {
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border transition-all
                   ${taxa === t
                     ? 'border-blue-500/60 bg-blue-500/20 text-blue-300'
-                    : 'border-white/[.07] text-slate-500 hover:border-white/20'}`}
+                    : 'borda text-slate-500 hover:borda-forte'}`}
               >
                 {t}%
               </button>
@@ -293,26 +293,26 @@ function FinancingCalc({ price }: { price: string | null }) {
       </div>
 
       {priceNum > 0 && (
-        <div className="grid grid-cols-3 gap-3 pt-3 border-t border-white/[.06]">
+        <div className="grid grid-cols-3 gap-3 pt-3 border-t borda">
           <div>
-            <p className="text-[10px] text-slate-600 uppercase tracking-wide">Entrada</p>
-            <p className="text-sm font-bold text-white">{formatPrice(priceNum * entrada / 100)}</p>
+            <p className="text-[10px] txt-tenue uppercase tracking-wide">Entrada</p>
+            <p className="text-sm font-bold txt-forte">{formatPrice(priceNum * entrada / 100)}</p>
           </div>
           <div>
-            <p className="text-[10px] text-slate-600 uppercase tracking-wide">Parcela (PRICE)</p>
+            <p className="text-[10px] txt-tenue uppercase tracking-wide">Parcela (PRICE)</p>
             <p className="text-lg font-extrabold text-blue-400">{formatPrice(pmt)}</p>
             <p className="text-[10px] text-slate-500">{parcelas}× de {formatPrice(pmt)}</p>
           </div>
           <div>
-            <p className="text-[10px] text-slate-600 uppercase tracking-wide">Total financiado</p>
-            <p className="text-sm font-bold text-white">{formatPrice(total)}</p>
+            <p className="text-[10px] txt-tenue uppercase tracking-wide">Total financiado</p>
+            <p className="text-sm font-bold txt-forte">{formatPrice(total)}</p>
             <p className="text-[10px] text-rose-500/70">
               +{formatPrice(total - priceNum * (1 - entrada / 100))} em juros
             </p>
           </div>
         </div>
       )}
-      <p className="text-[10px] text-slate-600 mt-2">
+      <p className="text-[10px] txt-tenue mt-2">
         * Simulação estimada. Sujeita a análise de crédito e condições da financeira.
       </p>
     </div>
@@ -344,12 +344,12 @@ function LeadModal({
       <>
         <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm" onClick={onClose} />
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="bg-[#1e293b] border border-white/[.1] rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center">
+          <div className="sup-card border borda rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center">
             <div className="w-14 h-14 rounded-2xl bg-blue-500/20 flex items-center justify-center mx-auto mb-4">
               <MessageCircle size={28} className="text-blue-400" />
             </div>
-            <h3 className="text-lg font-bold text-white mb-2">Faça login para continuar</h3>
-            <p className="text-sm text-slate-400 leading-relaxed mb-6">
+            <h3 className="text-lg font-bold txt-forte mb-2">Faça login para continuar</h3>
+            <p className="text-sm txt-fraco leading-relaxed mb-6">
               Você precisa ter uma conta de cliente para demonstrar interesse em veículos.
             </p>
             <div className="flex flex-col gap-2">
@@ -362,12 +362,12 @@ function LeadModal({
               </button>
               <button
                 onClick={() => router.push('/cadastrar')}
-                className="w-full border border-white/[.1] text-slate-300 font-semibold py-2.5 rounded-xl
-                           hover:bg-white/[.05] transition-colors text-sm"
+                className="w-full border borda txt-medio font-semibold py-2.5 rounded-xl
+                           hover:sup-fraca transition-colors text-sm"
               >
                 Criar conta grátis
               </button>
-              <button onClick={onClose} className="text-xs text-slate-500 hover:text-slate-400 transition-colors mt-1">
+              <button onClick={onClose} className="text-xs text-slate-500 hover:txt-fraco transition-colors mt-1">
                 Cancelar
               </button>
             </div>
@@ -382,12 +382,12 @@ function LeadModal({
       <>
         <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm" onClick={onClose} />
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="bg-[#1e293b] border border-white/[.1] rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center">
+          <div className="sup-card border borda rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center">
             <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 flex items-center justify-center mx-auto mb-4">
               <Check size={28} className="text-emerald-400" />
             </div>
-            <h3 className="text-lg font-bold text-white mb-2">Interesse enviado!</h3>
-            <p className="text-sm text-slate-400 leading-relaxed mb-6">
+            <h3 className="text-lg font-bold txt-forte mb-2">Interesse enviado!</h3>
+            <p className="text-sm txt-fraco leading-relaxed mb-6">
               A concessionária vai entrar em contato em breve pelo e-mail ou telefone cadastrado.
             </p>
             <button
@@ -433,14 +433,14 @@ function LeadModal({
     <>
       <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-        <div className="bg-[#1e293b] border border-white/[.1] rounded-2xl shadow-2xl max-w-md w-full">
+        <div className="sup-card border borda rounded-2xl shadow-2xl max-w-md w-full">
           {/* Header */}
-          <div className="flex items-center justify-between p-5 border-b border-white/[.06]">
+          <div className="flex items-center justify-between p-5 border-b borda">
             <div>
-              <h3 className="text-base font-bold text-white">Tenho interesse</h3>
+              <h3 className="text-base font-bold txt-forte">Tenho interesse</h3>
               <p className="text-xs text-slate-500 truncate max-w-[260px]">{label}</p>
             </div>
-            <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/[.06] transition-all">
+            <button onClick={onClose} className="p-2 rounded-xl txt-fraco hover:txt-forte hover:sup-fraca transition-all">
               <X size={16} />
             </button>
           </div>
@@ -448,24 +448,24 @@ function LeadModal({
           {/* Body */}
           <form onSubmit={handleSubmit} className="p-5 space-y-4">
             {/* Veículo selecionado */}
-            <div className="flex items-center justify-between rounded-xl bg-white/[.04] border border-white/[.06] p-3">
+            <div className="flex items-center justify-between rounded-xl sup-tenue border borda p-3">
               <div className="min-w-0">
                 <p className="text-xs text-slate-500 truncate">{vehicle.brand.name} · {vehicle.model.name}</p>
-                <p className="text-sm font-bold text-white truncate">{label}</p>
+                <p className="text-sm font-bold txt-forte truncate">{label}</p>
               </div>
               <p className="text-base font-extrabold text-blue-400 shrink-0 ml-3">{formatPrice(price)}</p>
             </div>
 
             {/* Contato pré-preenchido */}
-            <div className="rounded-xl bg-white/[.03] border border-white/[.06] p-3">
+            <div className="rounded-xl sup-tenue border borda p-3">
               <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Seus dados</p>
-              <p className="text-sm font-semibold text-white">{user.fullName}</p>
-              <p className="text-xs text-slate-400">{user.email}</p>
+              <p className="text-sm font-semibold txt-forte">{user.fullName}</p>
+              <p className="text-xs txt-fraco">{user.email}</p>
             </div>
 
             {/* Mensagem opcional */}
             <div>
-              <label className="text-[11px] font-semibold text-slate-400 block mb-1.5">
+              <label className="text-[11px] font-semibold txt-fraco block mb-1.5">
                 Mensagem (opcional)
               </label>
               <textarea
@@ -473,8 +473,8 @@ function LeadModal({
                 onChange={e => setMessage(e.target.value)}
                 placeholder="Ex: Tenho interesse em fazer um test drive…"
                 rows={3}
-                className="w-full rounded-xl bg-[#0f172a] border border-white/[.08] text-sm text-white
-                           placeholder-slate-600 px-3 py-2.5 resize-none
+                className="w-full rounded-xl sup-base border borda text-sm txt-forte
+                           placeholder-slate-400 dark:placeholder-slate-600 px-3 py-2.5 resize-none
                            outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
               />
             </div>
@@ -527,34 +527,34 @@ function CompareModal({
     <>
       <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm" onClick={onClose} />
       <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-        <div className="bg-[#0f172a] border border-white/[.1] rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="sup-base border borda rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-white/[.06] shrink-0">
+          <div className="flex items-center justify-between px-6 py-4 border-b borda shrink-0">
             <div className="flex items-center gap-2">
               <Scale size={16} className="text-amber-400" />
-              <h3 className="text-base font-bold text-white">Comparar veículos</h3>
+              <h3 className="text-base font-bold txt-forte">Comparar veículos</h3>
             </div>
-            <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/[.06] transition-all">
+            <button onClick={onClose} className="p-2 rounded-xl txt-fraco hover:txt-forte hover:sup-fraca transition-all">
               <X size={16} />
             </button>
           </div>
 
           <div className="flex-1 overflow-auto">
             {/* Fotos + nomes */}
-            <div className={`grid gap-0 border-b border-white/[.06]`}
+            <div className={`grid gap-0 border-b borda`}
                  style={{ gridTemplateColumns: `180px repeat(${vehicles.length}, 1fr)` }}>
-              <div className="p-4 bg-[#1e293b]/50" />
+              <div className="p-4 sup-card/50" />
               {vehicles.map(v => (
-                <div key={v.id} className="p-4 border-l border-white/[.04]">
-                  <div className="aspect-[4/3] rounded-xl overflow-hidden bg-[#1e293b] mb-3">
+                <div key={v.id} className="p-4 border-l borda">
+                  <div className="aspect-[4/3] rounded-xl overflow-hidden sup-card mb-3">
                     {v.images[0]
                       // eslint-disable-next-line @next/next/no-img-element
                       ? <img src={v.images[0].url} alt="" className="w-full h-full object-cover" />
-                      : <div className="w-full h-full flex items-center justify-center"><Car size={32} className="text-white/10" /></div>
+                      : <div className="w-full h-full flex items-center justify-center"><Car size={32} className="text-slate-300 dark:text-white/10" /></div>
                     }
                   </div>
                   <p className="text-[10px] text-slate-500 truncate">{v.brand.name} · {v.model.name}</p>
-                  <p className="text-sm font-bold text-white truncate leading-snug">{v.versionName ?? String(v.yearModel)}</p>
+                  <p className="text-sm font-bold txt-forte truncate leading-snug">{v.versionName ?? String(v.yearModel)}</p>
                 </div>
               ))}
             </div>
@@ -562,14 +562,14 @@ function CompareModal({
             {/* Specs rows */}
             {specs.map((spec, si) => (
               <div key={spec.label}
-                   className={`grid gap-0 border-b border-white/[.04] ${si % 2 === 0 ? '' : 'bg-white/[.02]'}`}
+                   className={`grid gap-0 border-b borda ${si % 2 === 0 ? '' : 'sup-tenue'}`}
                    style={{ gridTemplateColumns: `180px repeat(${vehicles.length}, 1fr)` }}>
-                <div className="px-4 py-3 bg-[#1e293b]/30">
+                <div className="px-4 py-3 sup-card/30">
                   <p className="text-[11px] font-semibold text-slate-500">{spec.label}</p>
                 </div>
                 {vehicles.map(v => (
-                  <div key={v.id} className="px-4 py-3 border-l border-white/[.04]">
-                    <p className="text-sm font-semibold text-white">{spec.key(v)}</p>
+                  <div key={v.id} className="px-4 py-3 border-l borda">
+                    <p className="text-sm font-semibold txt-forte">{spec.key(v)}</p>
                   </div>
                 ))}
               </div>
@@ -673,15 +673,15 @@ function VehicleDrawer({
 
       {/* Drawer */}
       <div className="fixed inset-y-0 right-0 z-50 w-full max-w-lg
-                      bg-[#0f172a] border-l border-white/[.08] shadow-2xl
+                      sup-base border-l borda shadow-2xl
                       flex flex-col overflow-hidden
                       animate-in slide-in-from-right duration-300">
 
         {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-white/[.06] shrink-0">
+        <div className="flex items-center gap-3 px-4 py-3 border-b borda shrink-0">
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/[.06] transition-all"
+            className="p-2 rounded-xl txt-fraco hover:txt-forte hover:sup-fraca transition-all"
           >
             <X size={18} />
           </button>
@@ -690,7 +690,7 @@ function VehicleDrawer({
               <p className="text-xs text-slate-500 uppercase tracking-wide truncate">
                 {vehicle.brand.name} · {vehicle.model.name}
               </p>
-              <p className="text-sm font-bold text-white truncate">
+              <p className="text-sm font-bold txt-forte truncate">
                 {vehicle.versionName ?? String(vehicle.yearModel)}
               </p>
             </div>
@@ -702,7 +702,7 @@ function VehicleDrawer({
               className={`p-2 rounded-xl transition-all ${
                 isFav
                   ? 'text-rose-400 bg-rose-500/10'
-                  : 'text-slate-400 hover:text-rose-400 hover:bg-rose-500/10'
+                  : 'txt-fraco hover:text-rose-400 hover:bg-rose-500/10'
               }`}
             >
               <Heart size={16} fill={isFav ? 'currentColor' : 'none'} />
@@ -719,7 +719,7 @@ function VehicleDrawer({
         {!loading && !vehicle && (
           <div className="flex-1 flex items-center justify-center p-8 text-center">
             <div>
-              <Car size={48} className="text-white/10 mx-auto mb-3" />
+              <Car size={48} className="text-slate-300 dark:text-white/10 mx-auto mb-3" />
               <p className="text-slate-500 text-sm">Veículo não encontrado</p>
             </div>
           </div>
@@ -728,7 +728,7 @@ function VehicleDrawer({
         {!loading && vehicle && (
           <div className="flex-1 overflow-y-auto">
             {/* Galeria de fotos */}
-            <div className="relative bg-[#0a1120] aspect-[16/10]">
+            <div className="relative sup-fundo aspect-[16/10]">
               {imgs.length > 0 ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -738,7 +738,7 @@ function VehicleDrawer({
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
-                  <Car size={64} className="text-white/10" />
+                  <Car size={64} className="text-slate-300 dark:text-white/10" />
                 </div>
               )}
 
@@ -800,7 +800,7 @@ function VehicleDrawer({
                       <p className="text-2xl font-extrabold text-rose-400">
                         {formatPrice(vehicle.promoPrice)}
                       </p>
-                      <p className="text-sm text-slate-600 line-through mt-0.5">
+                      <p className="text-sm txt-tenue line-through mt-0.5">
                         {formatPrice(vehicle.price)}
                       </p>
                     </>
@@ -865,8 +865,8 @@ function VehicleDrawer({
                   onClick={startChat}
                   disabled={startingChat}
                   className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl
-                             bg-white/[.05] border border-white/[.1] text-white font-bold text-sm
-                             hover:bg-white/[.1] transition-colors disabled:opacity-50"
+                             sup-fraca border borda txt-forte font-bold text-sm
+                             hover:sup-media transition-colors disabled:opacity-50"
                 >
                   {startingChat
                     ? <Loader2 size={15} className="animate-spin" />
@@ -898,7 +898,7 @@ function VehicleDrawer({
                            border text-xs font-semibold transition-all
                   ${showCalc
                     ? 'border-blue-500/50 bg-blue-500/10 text-blue-400'
-                    : 'border-white/[.07] text-slate-500 hover:border-white/20 hover:text-slate-300'}`}
+                    : 'borda text-slate-500 hover:borda-forte hover:txt-medio'}`}
               >
                 <Calculator size={13} />
                 {showCalc ? 'Fechar calculadora' : 'Simular financiamento'}
@@ -917,17 +917,17 @@ function VehicleDrawer({
               {[
                 { icon: <Car size={14}/>,       label: 'Ano',          value: `${vehicle.yearModel}/${vehicle.yearMake}` },
                 { icon: <Gauge size={14}/>,      label: 'Quilometragem',value: formatKm(vehicle.mileageKm) },
-                ...(vehicle.color ? [{ icon: <div className="w-3.5 h-3.5 rounded-full bg-white/30 border border-white/20 shrink-0"/>, label: 'Cor', value: vehicle.color }] : []),
+                ...(vehicle.color ? [{ icon: <div className="w-3.5 h-3.5 rounded-full bg-slate-300 dark:bg-white/30 border borda-forte shrink-0"/>, label: 'Cor', value: vehicle.color }] : []),
                 ...(vehicle.fuel ? [{ icon: <Fuel size={14}/>, label: 'Combustível', value: fuelLabels[vehicle.fuel] ?? vehicle.fuel }] : []),
                 ...(vehicle.transmission ? [{ icon: <Settings2 size={14}/>, label: 'Câmbio', value: transLabels[vehicle.transmission] ?? vehicle.transmission }] : []),
                 ...(vehicle.doors ? [{ icon: <DoorOpen size={14}/>, label: 'Portas', value: `${vehicle.doors}` }] : []),
                 ...(vehicle.engine ? [{ icon: <Settings2 size={14}/>, label: 'Motor', value: vehicle.engine }] : []),
               ].map(({ icon, label, value }) => (
-                <div key={label} className="flex items-center gap-2.5 p-3 rounded-xl bg-white/[.04] border border-white/[.05]">
+                <div key={label} className="flex items-center gap-2.5 p-3 rounded-xl sup-tenue border borda">
                   <span className="text-slate-500 shrink-0">{icon}</span>
                   <div className="min-w-0">
-                    <p className="text-[10px] text-slate-600 uppercase tracking-wide">{label}</p>
-                    <p className="text-sm font-semibold text-white truncate">{value}</p>
+                    <p className="text-[10px] txt-tenue uppercase tracking-wide">{label}</p>
+                    <p className="text-sm font-semibold txt-forte truncate">{value}</p>
                   </div>
                 </div>
               ))}
@@ -937,7 +937,7 @@ function VehicleDrawer({
             {vehicle.description && (
               <div className="px-5 py-3">
                 <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2">Descrição</h4>
-                <p className="text-sm text-slate-400 leading-relaxed whitespace-pre-line">
+                <p className="text-sm txt-fraco leading-relaxed whitespace-pre-line">
                   {vehicle.description}
                 </p>
               </div>
@@ -1184,31 +1184,31 @@ export default function CatalogoContent() {
   );
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-white">
+    <div className="min-h-screen sup-base txt-forte">
 
       {/* ── HEADER ───────────────────────────────────── */}
-      <header className="sticky top-0 z-30 bg-[#0f172a]/95 border-b border-white/[.06] backdrop-blur-md">
+      <header className="sticky top-0 z-30 sup-base/95 border-b borda backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-3">
           <Link
             href="/buscar"
-            className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-white
+            className="flex items-center gap-1.5 text-sm txt-fraco hover:txt-forte
                        transition-colors font-medium group"
           >
             <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
             <span className="hidden sm:block">Mapa</span>
           </Link>
 
-          <span className="text-slate-700 text-sm">/</span>
+          <span className="txt-tenue text-sm">/</span>
 
           {loadingDealer ? (
-            <div className="h-4 w-32 bg-white/10 rounded animate-pulse" />
+            <div className="h-4 w-32 sup-media rounded animate-pulse" />
           ) : (
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700
                               flex items-center justify-center shrink-0">
-                <span className="text-white text-[11px] font-extrabold">{initials}</span>
+                <span className="txt-forte text-[11px] font-extrabold">{initials}</span>
               </div>
-              <span className="font-bold text-white text-sm truncate">{dealer?.tradeName}</span>
+              <span className="font-bold txt-forte text-sm truncate">{dealer?.tradeName}</span>
               {branch && (
                 <span className="hidden md:block text-xs text-slate-500">
                   {[branch.city, branch.state].filter(Boolean).join(', ')}
@@ -1221,14 +1221,14 @@ export default function CatalogoContent() {
 
           {branch?.phone && (
             <a href={`tel:${branch.phone}`}
-               className="hidden sm:flex items-center gap-1.5 text-xs text-slate-400
-                          hover:text-white transition-colors font-medium">
+               className="hidden sm:flex items-center gap-1.5 text-xs txt-fraco
+                          hover:txt-forte transition-colors font-medium">
               <Phone size={13} /> {branch.phone}
             </a>
           )}
           {dealer?.websiteUrl && (
             <a href={dealer.websiteUrl} target="_blank" rel="noopener noreferrer"
-               className="hidden md:flex items-center gap-1 text-xs text-slate-400 hover:text-blue-400 transition-colors">
+               className="hidden md:flex items-center gap-1 text-xs txt-fraco hover:text-blue-400 transition-colors">
               <Globe size={13} /> Site
             </a>
           )}
@@ -1237,7 +1237,7 @@ export default function CatalogoContent() {
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl
-                       border border-white/[.08] bg-white/[.04] text-slate-400
+                       border borda sup-tenue txt-fraco
                        hover:border-blue-500/50 hover:text-blue-400 transition-all"
           >
             <Navigation size={12} /> Como chegar
@@ -1247,24 +1247,24 @@ export default function CatalogoContent() {
 
       {/* ── HERO DA CONCESSIONÁRIA ────────────────────── */}
       {!loadingDealer && dealer && (
-        <div className="bg-gradient-to-b from-[#1e293b] to-[#0f172a] border-b border-white/[.06]">
+        <div className="bg-gradient-to-b from-white dark:from-[#1e293b] to-slate-50 dark:to-[#0f172a] border-b borda">
           <div className="max-w-6xl mx-auto px-4 py-8 flex items-center gap-5">
             <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700
                             flex items-center justify-center shrink-0
                             shadow-xl shadow-blue-900/50">
-              <span className="text-white text-2xl font-extrabold tracking-tight">{initials}</span>
+              <span className="txt-forte text-2xl font-extrabold tracking-tight">{initials}</span>
             </div>
             <div className="min-w-0">
-              <h1 className="text-2xl font-extrabold text-white leading-tight">{dealer.tradeName}</h1>
+              <h1 className="text-2xl font-extrabold txt-forte leading-tight">{dealer.tradeName}</h1>
               {branch && (
-                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap text-sm text-slate-400">
+                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap text-sm txt-fraco">
                   <MapPin size={13} className="text-slate-500 shrink-0" />
                   <span>
                     {[branch.addressLine, branch.city, branch.state].filter(Boolean).join(', ')}
                   </span>
                   {branch.phone && (
                     <>
-                      <span className="text-slate-700">·</span>
+                      <span className="txt-tenue">·</span>
                       <a href={`tel:${branch.phone}`} className="hover:text-blue-400 transition-colors flex items-center gap-1">
                         <Phone size={12} />{branch.phone}
                       </a>
@@ -1272,7 +1272,7 @@ export default function CatalogoContent() {
                   )}
                   {dealer.websiteUrl && (
                     <>
-                      <span className="text-slate-700">·</span>
+                      <span className="txt-tenue">·</span>
                       <a href={dealer.websiteUrl} target="_blank" rel="noopener noreferrer"
                          className="hover:text-blue-400 transition-colors flex items-center gap-1">
                         <ExternalLink size={12} /> {dealer.websiteUrl.replace(/^https?:\/\//, '')}
@@ -1290,29 +1290,29 @@ export default function CatalogoContent() {
       )}
 
       {/* ── FILTROS ───────────────────────────────────── */}
-      <div className="sticky top-14 z-20 bg-[#0f172a]/95 backdrop-blur-md border-b border-white/[.06]">
+      <div className="sticky top-14 z-20 sup-base/95 backdrop-blur-md border-b borda">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-2 flex-wrap">
 
           <div className="relative flex-1 min-w-[180px] max-w-sm">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 txt-tenue" />
             <input
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Buscar modelo, versão…"
-              className="w-full pl-8 pr-8 py-2 rounded-xl bg-[#1e293b] border border-transparent
-                         text-sm text-white placeholder-slate-600
+              className="w-full pl-8 pr-8 py-2 rounded-xl sup-card border border-transparent
+                         text-sm txt-forte placeholder-slate-400 dark:placeholder-slate-600
                          outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
             />
             {search && (
               <button onClick={() => setSearch('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-400">
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 txt-tenue hover:txt-fraco">
                 <X size={13} />
               </button>
             )}
           </div>
 
-          <div className="flex gap-1 bg-white/[.04] rounded-xl p-0.5">
+          <div className="flex gap-1 sup-tenue rounded-xl p-0.5">
             {[
               { value: '',        label: 'Todos' },
               { value: 'new',     label: '0 km' },
@@ -1324,8 +1324,8 @@ export default function CatalogoContent() {
                 onClick={() => setCondition(opt.value)}
                 className={`text-xs font-semibold px-3 py-1.5 rounded-[10px] transition-all
                   ${condition === opt.value
-                    ? 'bg-white/[.08] text-white shadow-sm'
-                    : 'text-slate-500 hover:text-slate-300'}`}
+                    ? 'sup-media txt-forte shadow-sm'
+                    : 'text-slate-500 hover:txt-medio'}`}
               >
                 {opt.label}
               </button>
@@ -1338,13 +1338,13 @@ export default function CatalogoContent() {
                         text-xs font-semibold border transition-all
               ${filtersOpen || activeFilters > 0
                 ? 'border-blue-500/50 bg-blue-500/10 text-blue-400'
-                : 'border-white/[.07] bg-[#1e293b] text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
+                : 'borda sup-card txt-fraco hover:borda-forte hover:txt-medio'}`}
           >
             <SlidersHorizontal size={13} />
             Filtros
             {activeFilters > 0 && (
               <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-600
-                               text-white text-[10px] font-bold rounded-full
+                               txt-forte text-[10px] font-bold rounded-full
                                flex items-center justify-center">
                 {activeFilters}
               </span>
@@ -1354,7 +1354,7 @@ export default function CatalogoContent() {
           {(search || brandId || condition) && (
             <button
               onClick={() => { setSearch(''); setBrandId(''); setCondition(''); }}
-              className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300 transition-colors font-medium"
+              className="flex items-center gap-1 text-xs text-slate-500 hover:txt-medio transition-colors font-medium"
             >
               <X size={12} /> Limpar
             </button>
@@ -1362,7 +1362,7 @@ export default function CatalogoContent() {
         </div>
 
         {filtersOpen && brands.length > 0 && (
-          <div className="border-t border-white/[.06] px-4 py-3">
+          <div className="border-t borda px-4 py-3">
             <div className="max-w-6xl mx-auto">
               <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
                 Filtrar por marca
@@ -1373,7 +1373,7 @@ export default function CatalogoContent() {
                   className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-all
                     ${!brandId
                       ? 'border-blue-500/60 bg-blue-500/15 text-blue-300'
-                      : 'border-white/[.07] bg-[#1e293b] text-slate-400 hover:border-white/20'}`}
+                      : 'borda sup-card txt-fraco hover:borda-forte'}`}
                 >
                   Todas
                 </button>
@@ -1384,7 +1384,7 @@ export default function CatalogoContent() {
                     className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-all
                       ${b.id === brandId
                         ? 'border-blue-500/60 bg-blue-500/15 text-blue-300'
-                        : 'border-white/[.07] bg-[#1e293b] text-slate-400 hover:border-white/20'}`}
+                        : 'borda sup-card txt-fraco hover:borda-forte'}`}
                   >
                     {b.name}
                   </button>
@@ -1405,13 +1405,13 @@ export default function CatalogoContent() {
 
         {!loadingV && vehicles.length === 0 && (
           <div className="flex flex-col items-center py-24 text-center">
-            <div className="w-20 h-20 rounded-2xl bg-white/[.04] flex items-center justify-center mb-4">
-              <Car size={36} className="text-white/15" />
+            <div className="w-20 h-20 rounded-2xl sup-tenue flex items-center justify-center mb-4">
+              <Car size={36} className="text-slate-300 dark:text-white/15" />
             </div>
-            <p className="text-lg font-bold text-slate-400 mb-2">
+            <p className="text-lg font-bold txt-fraco mb-2">
               {search || brandId || condition ? 'Sem veículos com esses filtros' : 'Sem veículos publicados'}
             </p>
-            <p className="text-sm text-slate-600 leading-relaxed max-w-xs">
+            <p className="text-sm txt-tenue leading-relaxed max-w-xs">
               {search || brandId || condition
                 ? 'Tente remover alguns filtros para ver mais resultados.'
                 : 'Esta concessionária ainda não tem veículos no estoque.'}
@@ -1431,8 +1431,8 @@ export default function CatalogoContent() {
           <>
             <div className="flex items-center justify-between mb-4">
               <p className="text-sm text-slate-500">
-                <span className="font-semibold text-white">{vehicles.length}</span>
-                {total > vehicles.length && <span> de <span className="font-semibold text-white">{total}</span></span>}
+                <span className="font-semibold txt-forte">{vehicles.length}</span>
+                {total > vehicles.length && <span> de <span className="font-semibold txt-forte">{total}</span></span>}
                 {' '}veículo{total !== 1 ? 's' : ''}
               </p>
               {compareIds.size > 0 && (
@@ -1468,9 +1468,9 @@ export default function CatalogoContent() {
                 <button
                   onClick={loadMore}
                   className="flex items-center gap-2 px-8 py-3 rounded-2xl
-                             border border-white/[.08] bg-white/[.04]
-                             text-sm font-semibold text-slate-300
-                             hover:border-blue-500/50 hover:bg-blue-500/[.06] hover:text-white
+                             border borda sup-tenue
+                             text-sm font-semibold txt-medio
+                             hover:border-blue-500/50 hover:bg-blue-500/[.06] hover:txt-forte
                              transition-all duration-200"
                 >
                   Carregar mais
@@ -1485,19 +1485,19 @@ export default function CatalogoContent() {
       {/* ── BARRA FLUTUANTE DO COMPARADOR ──────────────── */}
       {compareIds.size >= 2 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[35]
-                        bg-[#1e293b] border border-white/[.1] rounded-2xl
+                        sup-card border borda rounded-2xl
                         shadow-2xl px-5 py-3 flex items-center gap-4
                         animate-in slide-in-from-bottom duration-300">
           <Scale size={16} className="text-amber-400 shrink-0" />
           <div className="flex items-center gap-2">
             {compareVehicles.map(v => (
-              <div key={v.id} className="flex items-center gap-1.5 text-sm font-semibold text-white">
+              <div key={v.id} className="flex items-center gap-1.5 text-sm font-semibold txt-forte">
                 <span className="text-xs text-slate-500 truncate max-w-[100px]">
                   {v.brand.name} {v.model.name}
                 </span>
                 <button
                   onClick={() => handleCompareToggle(v as unknown as PublicVehicle)}
-                  className="text-slate-600 hover:text-rose-400 transition-colors"
+                  className="txt-tenue hover:text-rose-400 transition-colors"
                 >
                   <X size={11} />
                 </button>
@@ -1513,7 +1513,7 @@ export default function CatalogoContent() {
           </button>
           <button
             onClick={() => { setCompareIds(new Set()); setCompareVehicles([]); }}
-            className="text-slate-600 hover:text-slate-400 transition-colors shrink-0"
+            className="txt-tenue hover:txt-fraco transition-colors shrink-0"
           >
             <X size={14} />
           </button>

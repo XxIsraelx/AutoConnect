@@ -38,6 +38,8 @@ html, body {
 @layer components {
   /* Fundos. No escuro são os hex originais e os véus de branco; no claro,
      a mesma escada de elevação feita com slate. */
+  /* Fundo da página (um degrau abaixo de sup-base), usado no catálogo. */
+  .sup-fundo   { @apply bg-slate-100 dark:bg-[#0a1120]; }
   .sup-base    { @apply bg-white dark:bg-[#0f172a]; }
   .sup-card    { @apply bg-slate-50 dark:bg-[#1e293b]; }
   .sup-tenue   { @apply bg-slate-50 dark:bg-white/[.03]; }
