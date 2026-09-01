@@ -48,7 +48,10 @@ export class AuthService {
 
     // 3. Verifica situação do CNPJ na Receita Federal via BrasilAPI (não bloqueia se API estiver fora)
     try {
-      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${input.tenant.cnpj}`);
+      // Sem timeout, uma BrasilAPI lenta segurava a requisição inteira.
+      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${input.tenant.cnpj}`, {
+        signal: AbortSignal.timeout(5000),
+      });
       if (res.ok) {
         // A BrasilAPI devolve DOIS campos: `situacao_cadastral` é numérico
         // (2 = ativa) e `descricao_situacao_cadastral` é o texto ("ATIVA").
@@ -142,6 +145,13 @@ export class AuthService {
       });
 
       return { tenant, user };
+    }, {
+      // A API roda em outra região do banco (sfo -> sa-east-1), então cada
+      // consulta paga a latência da travessia. Com os 5s padrão do Prisma a
+      // transação estourava e o cadastro caía em "Internal server error"
+      // com "Transaction not found ... old closed transaction".
+      maxWait: 15_000,
+      timeout: 30_000,
     });
 
     // 5. Marca convite como usado
