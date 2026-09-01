@@ -9,11 +9,10 @@ import {
   TrendingUp, Users, Car, Target, RefreshCw, Calendar,
   ArrowUpRight, ArrowDownRight, Minus,
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
-import { ErroAoCarregar, mensagemDeErro } from '@/components/ErroAoCarregar';
+import { ErroAoCarregar } from '@/components/ErroAoCarregar';
 
 /* ── Tipos ─────────────────────────────────────────────── */
 interface ReportsData {
@@ -68,30 +67,26 @@ function KpiCard({ label, value, sub, trend }: { label: string; value: string | 
 
 /* ── Componente principal ───────────────────────────────── */
 export default function RelatoriosPage() {
-  const router = useRouter();
   const { token } = useAuthStore();
   const [data,    setData]    = useState<ReportsData | null>(null);
   const [days,    setDays]    = useState(30);
   const [loading, setLoading] = useState(true);
-  const [erro,    setErro]    = useState('');
+  const [erro, setErro] = useState<unknown>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
-    setErro('');
+    setErro(null);
     try {
       const r = await api<ReportsData>(`/tenant/reports?days=${days}`, { token });
       setData(r);
     } catch (err) {
-      // Sessão expirada se resolve no login, não insistindo no botão.
-      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
-        router.replace('/login');
-        return;
-      }
-      setErro(mensagemDeErro(err));
+      // Guarda o erro cru: quem decide a ação (tentar de novo, entrar
+      // novamente ou falar com o administrador) é o ErroAoCarregar.
+      setErro(err);
     }
     finally { setLoading(false); }
-  }, [token, days, router]);
+  }, [token, days]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -139,7 +134,7 @@ export default function RelatoriosPage() {
           Carregando relatórios…
         </div>
       ) : erro ? (
-        <ErroAoCarregar mensagem={erro} onTentarNovamente={load} carregando={loading} />
+        <ErroAoCarregar erro={erro} onTentarNovamente={load} carregando={loading} contexto="os relatórios" />
       ) : data ? (
         <>
           {/* KPIs */}

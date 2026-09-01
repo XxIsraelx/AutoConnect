@@ -6,11 +6,10 @@ import {
   Target, TrendingUp, Users, DollarSign, CalendarCheck, Award,
   ChevronRight, Send, UserX, UserCheck, RefreshCw, Trophy,
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
-import { ErroAoCarregar, mensagemDeErro } from '@/components/ErroAoCarregar';
+import { ErroAoCarregar } from '@/components/ErroAoCarregar';
 
 /* ── Tipos ──────────────────────────────────────────────── */
 interface MemberStat {
@@ -102,8 +101,7 @@ export default function EquipePage() {
   const [data, setData]       = useState<Overview | null>(null);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
-  const [erro, setErro] = useState('');
+  const [erro, setErro] = useState<unknown>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const [showInvite, setShowInvite] = useState(false);
@@ -114,7 +112,7 @@ export default function EquipePage() {
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
-    setErro('');
+    setErro(null);
     try {
       const [ov, inv] = await Promise.all([
         api<Overview>(`/team/overview?period=${period}`, { token }),
@@ -122,14 +120,12 @@ export default function EquipePage() {
       ]);
       setData(ov); setInvitations(inv);
     } catch (err) {
-      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
-        router.replace('/login');
-        return;
-      }
-      setErro(mensagemDeErro(err));
+      // Guarda o erro cru: quem decide a ação (tentar de novo, entrar
+      // novamente ou falar com o administrador) é o ErroAoCarregar.
+      setErro(err);
     }
     finally { setLoading(false); }
-  }, [token, period, router]);
+  }, [token, period]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -183,7 +179,7 @@ export default function EquipePage() {
     return <div className="flex items-center justify-center h-64 text-slate-500"><Loader2 size={20} className="animate-spin mr-2" /> Carregando equipe…</div>;
   }
   if (erro && !data) {
-    return <ErroAoCarregar mensagem={erro} onTentarNovamente={load} carregando={loading} />;
+    return <ErroAoCarregar erro={erro} onTentarNovamente={load} carregando={loading} contexto="a equipe" />;
   }
 
   const team = data?.team;

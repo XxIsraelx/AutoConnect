@@ -6,11 +6,10 @@ import {
   ChevronLeft, ChevronRight, List, CalendarRange, Search, Phone, Mail,
   CalendarClock, UserCheck, CheckCircle2, XCircle, AlertCircle, CalendarPlus,
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
-import { ErroAoCarregar, mensagemDeErro } from '@/components/ErroAoCarregar';
+import { ErroAoCarregar } from '@/components/ErroAoCarregar';
 
 /* ── Tipos ─────────────────────────────────────────────── */
 interface Appointment {
@@ -64,9 +63,8 @@ export default function AgendamentosPage() {
   const { token } = useAuthStore();
   const [appts, setAppts]   = useState<Appointment[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
-  const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [erro, setErro] = useState('');
+  const [erro, setErro] = useState<unknown>(null);
 
   const [view, setView]       = useState<'list' | 'calendar'>('list');
   const [status, setStatus]   = useState('');
@@ -80,7 +78,7 @@ export default function AgendamentosPage() {
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
-    setErro('');
+    setErro(null);
     try {
       const [r, m] = await Promise.all([
         api<{ items: Appointment[] }>('/appointments?limit=500', { token }),
@@ -89,16 +87,12 @@ export default function AgendamentosPage() {
       setAppts(r.items ?? []);
       setMembers((m ?? []).filter((x) => x.role !== 'customer'));
     } catch (err) {
-      // Falha aqui é séria: a agenda vazia faz o vendedor achar que não há
-      // test drive marcado. Precisa ficar explícito que foi erro de carga.
-      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
-        router.replace('/login');
-        return;
-      }
-      setErro(mensagemDeErro(err));
+      // Guarda o erro cru: quem decide a ação (tentar de novo, entrar
+      // novamente ou falar com o administrador) é o ErroAoCarregar.
+      setErro(err);
     }
     finally { setLoading(false); }
-  }, [token, router]);
+  }, [token]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -240,7 +234,7 @@ export default function AgendamentosPage() {
       {loading && appts.length === 0 ? (
         <div className="flex items-center justify-center h-48 text-slate-500"><Loader2 size={20} className="animate-spin mr-2" /> Carregando…</div>
       ) : erro ? (
-        <ErroAoCarregar mensagem={erro} onTentarNovamente={load} carregando={loading} />
+        <ErroAoCarregar erro={erro} onTentarNovamente={load} carregando={loading} contexto="os agendamentos" />
       ) : view === 'list' ? (
         /* ── LISTA AGRUPADA ── */
         grouped.length === 0 ? <Empty /> : (

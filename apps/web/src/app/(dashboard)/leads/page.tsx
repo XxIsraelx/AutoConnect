@@ -11,7 +11,7 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { mensagemDeErro } from '@/components/ErroAoCarregar';
+import { textoDoErro } from '@/components/ErroAoCarregar';
 
 /* ── Tipos ───────────────────────────────────────────────── */
 
@@ -240,7 +240,7 @@ function HistoryModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
     } catch (err) {
       // Sem isto o botão simplesmente parava de responder, e o vendedor não
       // tinha como saber se a avaliação foi registrada.
-      setApprErro(mensagemDeErro(err));
+      setApprErro(textoDoErro(err));
     }
     finally { setApprSaving(false); }
   }
