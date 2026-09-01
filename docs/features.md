@@ -31,7 +31,7 @@ O sistema tem 5 níveis de acesso:
 ## Catálogo Público
 
 ### Busca de veículos (`/buscar`)
-Página pública com mapa interativo (Mapbox, tema dark) e sidebar de listagem. O cliente pode filtrar por marca, modelo, condição (novo/usado/seminovo/demo), combustível, câmbio, faixa de preço, ano e quilometragem. Os resultados são paginados. No mapa, pins animados representam as concessionárias — ao clicar, a sidebar filtra os veículos daquela loja.
+Página pública com mapa interativo (Leaflet com tiles Esri, tema dark) e sidebar de listagem. O cliente pode filtrar por marca, modelo, condição (novo/usado/seminovo/demo), combustível, câmbio, faixa de preço, ano e quilometragem. Os resultados são paginados. No mapa, pins animados representam as concessionárias — ao clicar, a sidebar filtra os veículos daquela loja.
 
 ### Detalhe do veículo (`/catalogo/[id]`)
 Página completa do veículo com galeria de imagens, ficha técnica (motor, câmbio, combustível, portas, cor, quilometragem), preço e preço promocional quando houver. Tem quatro ações disponíveis:
@@ -147,7 +147,7 @@ Botão "Importar" na listagem abre um modal que aceita arquivo `.csv`. Antes de 
 Validações incluídas: marca numérica, modelo inválido, condição desconhecida, ano fora do intervalo, fabricação posterior ao ano modelo, quilometragem negativa, veículo novo com km alto, preço zero ou suspeito, preço promocional maior que o preço base, câmbio/combustível inválido, número de portas fora do intervalo (2–6), e linhas duplicadas dentro do arquivo.
 
 ### Gerenciamento de imagens
-Na edição do veículo, é possível adicionar novas fotos, remover existentes e definir qual é a imagem capa. As imagens são armazenadas no Supabase Storage.
+Na edição do veículo, é possível adicionar novas fotos, remover existentes e definir qual é a imagem capa. As imagens são enviadas do navegador direto para a Cloudinary; o backend só guarda a URL.
 
 ### Status do veículo
 Cada veículo tem um dos 5 status: disponível, reservado, vendido, em manutenção ou arquivado. A listagem filtra por `available` por padrão.
@@ -251,7 +251,7 @@ Todo o banco de dados usa isolamento por `tenant_id`. O middleware extrai o tena
 Suporta dois provedores configuráveis via variáveis de ambiente: **Resend** (API key) ou **Gmail SMTP** (app password). Em ambiente de desenvolvimento, os emails são apenas logados no console sem envio real.
 
 ### Armazenamento de imagens
-Upload de imagens de veículos e logos vai direto para o **Supabase Storage** no bucket `vehicle-images`. As URLs são públicas e ficam salvas no banco vinculadas ao veículo.
+Upload de imagens de veículos e fotos de perfil vai do navegador direto para a **Cloudinary**, usando um upload preset *unsigned*. O backend não recebe o arquivo — apenas a URL resultante, que fica salva no banco vinculada ao veículo. Configurado por `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` e `NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET` em `apps/web/.env`.
 
 ### WebSocket
 O servidor NestJS expõe um gateway Socket.IO na mesma porta da API (4000). O frontend conecta ao iniciar o chat e mantém a conexão aberta enquanto a página está ativa.
