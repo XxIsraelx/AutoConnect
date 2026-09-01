@@ -6,9 +6,11 @@ import {
   Target, TrendingUp, Users, DollarSign, CalendarCheck, Award,
   ChevronRight, Send, UserX, UserCheck, RefreshCw, Trophy,
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
+import { ErroAoCarregar, mensagemDeErro } from '@/components/ErroAoCarregar';
 
 /* ── Tipos ──────────────────────────────────────────────── */
 interface MemberStat {
@@ -100,6 +102,8 @@ export default function EquipePage() {
   const [data, setData]       = useState<Overview | null>(null);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const [erro, setErro] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const [showInvite, setShowInvite] = useState(false);
@@ -110,15 +114,22 @@ export default function EquipePage() {
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
+    setErro('');
     try {
       const [ov, inv] = await Promise.all([
         api<Overview>(`/team/overview?period=${period}`, { token }),
         api<Invitation[]>('/invitations', { token }),
       ]);
       setData(ov); setInvitations(inv);
-    } catch { /* ignora */ }
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        router.replace('/login');
+        return;
+      }
+      setErro(mensagemDeErro(err));
+    }
     finally { setLoading(false); }
-  }, [token, period]);
+  }, [token, period, router]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -170,6 +181,9 @@ export default function EquipePage() {
 
   if (loading && !data) {
     return <div className="flex items-center justify-center h-64 text-slate-500"><Loader2 size={20} className="animate-spin mr-2" /> Carregando equipe…</div>;
+  }
+  if (erro && !data) {
+    return <ErroAoCarregar mensagem={erro} onTentarNovamente={load} carregando={loading} />;
   }
 
   const team = data?.team;

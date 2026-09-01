@@ -9,9 +9,11 @@ import {
   TrendingUp, Users, Car, Target, RefreshCw, Calendar,
   ArrowUpRight, ArrowDownRight, Minus,
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
+import { ErroAoCarregar, mensagemDeErro } from '@/components/ErroAoCarregar';
 
 /* ── Tipos ─────────────────────────────────────────────── */
 interface ReportsData {
@@ -66,20 +68,30 @@ function KpiCard({ label, value, sub, trend }: { label: string; value: string | 
 
 /* ── Componente principal ───────────────────────────────── */
 export default function RelatoriosPage() {
+  const router = useRouter();
   const { token } = useAuthStore();
   const [data,    setData]    = useState<ReportsData | null>(null);
   const [days,    setDays]    = useState(30);
   const [loading, setLoading] = useState(true);
+  const [erro,    setErro]    = useState('');
 
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
+    setErro('');
     try {
       const r = await api<ReportsData>(`/tenant/reports?days=${days}`, { token });
       setData(r);
-    } catch { /* ignora */ }
+    } catch (err) {
+      // Sessão expirada se resolve no login, não insistindo no botão.
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        router.replace('/login');
+        return;
+      }
+      setErro(mensagemDeErro(err));
+    }
     finally { setLoading(false); }
-  }, [token, days]);
+  }, [token, days, router]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -126,6 +138,8 @@ export default function RelatoriosPage() {
           <RefreshCw size={20} className="animate-spin mr-2" />
           Carregando relatórios…
         </div>
+      ) : erro ? (
+        <ErroAoCarregar mensagem={erro} onTentarNovamente={load} carregando={loading} />
       ) : data ? (
         <>
           {/* KPIs */}

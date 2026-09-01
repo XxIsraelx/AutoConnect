@@ -11,6 +11,7 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { mensagemDeErro } from '@/components/ErroAoCarregar';
 
 /* ── Tipos ───────────────────────────────────────────────── */
 
@@ -213,6 +214,7 @@ function HistoryModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
   const [apprValue, setApprValue] = useState('');
   const [apprNote, setApprNote]   = useState('');
   const [apprSaving, setApprSaving] = useState(false);
+  const [apprErro, setApprErro] = useState('');
 
   useEffect(() => {
     if (!token) return;
@@ -226,6 +228,7 @@ function HistoryModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
     if (!token) return;
     if (status === 'offered' && !apprValue) return;
     setApprSaving(true);
+    setApprErro('');
     try {
       await api(`/leads/${lead.id}/trade-in/appraisal`, {
         token, method: 'POST',
@@ -234,7 +237,11 @@ function HistoryModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
       const updated = await api<LeadHistory>(`/leads/${lead.id}/history`, { token });
       setHistory(updated);
       setApprValue(''); setApprNote('');
-    } catch { /* ignora */ }
+    } catch (err) {
+      // Sem isto o botão simplesmente parava de responder, e o vendedor não
+      // tinha como saber se a avaliação foi registrada.
+      setApprErro(mensagemDeErro(err));
+    }
     finally { setApprSaving(false); }
   }
 
@@ -354,6 +361,9 @@ function HistoryModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
                           Recusar
                         </button>
                       </div>
+                      {apprErro && (
+                        <p className="text-xs text-rose-600 dark:text-rose-400">{apprErro}</p>
+                      )}
                     </div>
                   )}
                 </div>
