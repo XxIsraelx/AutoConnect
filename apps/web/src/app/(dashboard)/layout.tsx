@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Car, Users, MessageSquare,
   CalendarDays, Settings, LogOut, ChevronRight,
   Info, AlertTriangle, OctagonAlert, X,
-  TrendingUp, UserSquare2,
+  TrendingUp, UserSquare2, Menu,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
@@ -167,11 +167,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const { token, user, clear } = useAuthStore();
   const [hydrated, setHydrated] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const { badge: leadsNew, apptBadge, chatBadge } = useLeadsBadge(token);
   const { ann, dismiss } = useAnnouncement();
 
   useEffect(() => { setHydrated(true); }, []);
+  // Fecha a gaveta ao navegar — senão ela continuaria cobrindo a tela nova.
+  useEffect(() => { setMenuOpen(false); }, [pathname]);
+  // Trava o scroll do fundo enquanto a gaveta está aberta.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const anterior = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = anterior; };
+  }, [menuOpen]);
   useEffect(() => {
     if (!hydrated) return;
     if (!token) { router.replace('/login'); return; }
@@ -189,16 +199,44 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
 
-      {/* ── Sidebar ─────────────────────────────────────────── */}
-      <aside className="w-60 flex flex-col shrink-0 border-r border-slate-200
-                        dark:border-slate-800 bg-white dark:bg-slate-900">
+      {/* Fundo escurecido atrás da gaveta — só existe no mobile com o menu aberto */}
+      {menuOpen && (
+        <div
+          onClick={() => setMenuOpen(false)}
+          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          aria-hidden
+        />
+      )}
+
+      {/* ── Sidebar ─────────────────────────────────────────────
+          No mobile vira gaveta sobreposta (fixed + translate); a partir de md
+          volta a ser coluna fixa no fluxo, como era. */}
+      <aside
+        className={cn(
+          'w-60 flex flex-col shrink-0 border-r border-slate-200',
+          'dark:border-slate-800 bg-white dark:bg-slate-900',
+          'fixed inset-y-0 left-0 z-40 transition-transform duration-200 md:transition-none',
+          menuOpen ? 'translate-x-0' : '-translate-x-full',
+          'md:static md:translate-x-0 md:z-auto',
+        )}
+      >
 
         {/* Logo */}
-        <div className="px-5 py-5 border-b border-slate-200 dark:border-slate-800">
+        <div className="px-5 py-5 border-b border-slate-200 dark:border-slate-800
+                        flex items-center justify-between gap-2">
           <Link href="/dashboard" className="text-lg font-bold tracking-tight
                                              hover:text-blue-600 transition-colors">
             AutoConnect
           </Link>
+          {/* Fechar a gaveta — no desktop a sidebar é fixa, então não aparece */}
+          <button
+            onClick={() => setMenuOpen(false)}
+            aria-label="Fechar menu"
+            className="md:hidden p-1.5 -mr-1.5 rounded-lg text-slate-500
+                       hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+          >
+            <X size={18} />
+          </button>
         </div>
 
         {/* Nav */}
@@ -277,7 +315,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </aside>
 
       {/* Main */}
-      <main className="flex-1 overflow-y-auto flex flex-col">
+      <main className="flex-1 overflow-y-auto flex flex-col min-w-0">
+        {/* Barra só do mobile: dá acesso ao menu, que aqui fica escondido */}
+        <div className="md:hidden sticky top-0 z-20 flex items-center gap-3 px-4 h-14
+                        border-b border-slate-200 dark:border-slate-800
+                        bg-white dark:bg-slate-900">
+          <button
+            onClick={() => setMenuOpen(true)}
+            aria-label="Abrir menu"
+            className="p-2 -ml-2 rounded-lg text-slate-600 dark:text-slate-400
+                       hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+          >
+            <Menu size={20} />
+          </button>
+          <Link href="/dashboard" className="font-bold tracking-tight">AutoConnect</Link>
+
+          {/* Total de pendências, já que os badges do menu ficam ocultos */}
+          {leadsNew + apptBadge + chatBadge > 0 && (
+            <span className="ml-auto flex items-center justify-center min-w-[20px] h-5 px-1.5
+                             text-[11px] font-bold rounded-full bg-blue-600 text-white">
+              {leadsNew + apptBadge + chatBadge > 99 ? '99+' : leadsNew + apptBadge + chatBadge}
+            </span>
+          )}
+        </div>
+
         {ann && <AnnouncementBanner ann={ann} onDismiss={dismiss} />}
         <div className="flex-1">{children}</div>
       </main>
