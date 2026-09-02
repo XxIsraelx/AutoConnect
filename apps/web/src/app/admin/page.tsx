@@ -51,7 +51,24 @@ interface AuditEntry {
 
 type Tab = 'overview' | 'invites' | 'tenants' | 'users' | 'announcements' | 'audit' | 'system';
 
-const WEB_URL = process.env.NEXT_PUBLIC_WEB_URL ?? 'http://localhost:3000';
+/**
+ * A própria origem do navegador — não uma variável de ambiente.
+ *
+ * Antes era `process.env.NEXT_PUBLIC_WEB_URL ?? 'http://localhost:3000'`, e
+ * como `NEXT_PUBLIC_*` é embutida no bundle durante o `next build`, bastava a
+ * variável não existir no serviço para produção carregar `localhost:3000`
+ * cravado. Era o que acontecia: o botão de impersonar mandava o super admin
+ * para a máquina dele, e o navegador respondia "não é possível acessar".
+ *
+ * Este arquivo é `'use client'`, então `window.location.origin` está sempre
+ * disponível na hora do clique e acerta em qualquer ambiente — local, preview
+ * ou produção — sem precisar configurar nada.
+ */
+function urlDoSite(): string {
+  return typeof window !== 'undefined'
+    ? window.location.origin
+    : (process.env.NEXT_PUBLIC_WEB_URL ?? 'http://localhost:3000');
+}
 const PLANS   = ['trial', 'starter', 'pro', 'enterprise'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -342,7 +359,7 @@ export default function AdminPage() {
   }
 
   function copyLink(token: string, id: string) {
-    navigator.clipboard.writeText(`${WEB_URL}/signup?invite=${token}`);
+    navigator.clipboard.writeText(`${urlDoSite()}/signup?invite=${token}`);
     setCopiedId(id); setTimeout(() => setCopiedId(null), 2000);
   }
 
@@ -372,7 +389,7 @@ export default function AdminPage() {
   async function impersonate(tenantId: string) {
     try {
       const data = await call<{ token: string; user: unknown }>(`/admin/impersonate/${tenantId}`, { method: 'POST' });
-      const url  = `${WEB_URL}/impersonate?token=${data.token}&user=${encodeURIComponent(JSON.stringify(data.user))}`;
+      const url  = `${urlDoSite()}/impersonate?token=${data.token}&user=${encodeURIComponent(JSON.stringify(data.user))}`;
       window.open(url, '_blank');
     } catch { showToast('Erro ao impersonar', 'error'); }
   }
