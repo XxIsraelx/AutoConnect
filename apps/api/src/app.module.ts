@@ -13,6 +13,7 @@ import { CatalogModule } from './modules/catalog/catalog.module';
 import { VehiclesModule } from './modules/vehicles/vehicles.module';
 import { MapModule } from './modules/map/map.module';
 import { LeadsModule } from './modules/leads/leads.module';
+import { DealsModule } from './modules/deals/deals.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { UsersModule } from './modules/users/users.module';
@@ -39,6 +40,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
     VehiclesModule,
     MapModule,
     LeadsModule,
+    DealsModule,
     AdminModule,
     AppointmentsModule,
     UsersModule,
