@@ -833,7 +833,11 @@ model SalesGoal {
   tenantId  String   @map("tenant_id") @db.Uuid
   userId    String?  @map("user_id") @db.Uuid // null = meta geral da equipe
   period    String // "YYYY-MM"
-  target    Int // meta de vendas (leads ganhos) no período
+  target    Int // meta de vendas (negócios fechados) no período
+  /// Meta em reais. Opcional para não quebrar as metas já cadastradas — a
+  /// loja pensa em faturamento, não em contagem, e quem só tem `target`
+  /// continua funcionando.
+  targetValue Decimal? @map("target_value") @db.Decimal(14, 2)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 

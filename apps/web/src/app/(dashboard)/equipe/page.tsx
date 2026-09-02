@@ -10,18 +10,20 @@ import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
 import { ErroAoCarregar } from '@/components/ErroAoCarregar';
+import { formatarBRL } from '@autoconnect/shared';
 
 /* ── Tipos ──────────────────────────────────────────────── */
 interface MemberStat {
   id: string; fullName: string; email: string; role: string;
   status: string; lastLoginAt: string | null; avatarUrl: string | null;
   goal: number | null; assigned: number; won: number; conversion: number;
-  valueSold: number; appointments: number;
-  commissionPct: number | null; commission: number | null;
+  /** Decimal do backend: chega como string. */
+  valueSold: string; appointments: number;
+  commissionPct: number | null; commission: string | null;
 }
 interface TeamStat {
   goal: number | null; won: number; assigned: number; conversion: number;
-  valueSold: number; vehiclesSold: number; vehiclesSoldValue: number; memberCount: number;
+  valueSold: string; vehiclesSold: number; vehiclesSoldValue: number; memberCount: number;
 }
 interface Overview { period: string; team: TeamStat; members: MemberStat[] }
 interface Invitation { id: string; email: string; role: string; expiresAt: string; createdAt: string; acceptUrl?: string }
@@ -150,7 +152,9 @@ export default function EquipePage() {
       await api(`/team/members/${id}/commission`, { token, method: 'PATCH', body: { commissionPct } });
       await load();
       setSelected((cur) => (cur && cur.id === id
-        ? { ...cur, commissionPct, commission: commissionPct != null ? (cur.valueSold * commissionPct) / 100 : null }
+        // Não se recalcula comissão aqui: a conta é do backend, em Decimal,
+        // e uma segunda fórmula na tela é como os dois números divergem.
+        ? { ...cur, commissionPct, commission: null }
         : cur));
     }
     catch (e) { alert(e instanceof Error ? e.message : 'Erro'); }
@@ -247,7 +251,7 @@ export default function EquipePage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Kpi Icon={Award} label="Vendas (leads ganhos)" value={String(team.won)} sub={`${team.assigned} leads atendidos`} accent="bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400" />
           <Kpi Icon={TrendingUp} label="Conversão" value={`${team.conversion}%`} sub="ganhos ÷ atendidos" accent="bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400" />
-          <Kpi Icon={DollarSign} label="Valor vendido" value={brl(team.valueSold)} sub="em leads ganhos" accent="bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400" />
+          <Kpi Icon={DollarSign} label="Valor vendido" value={formatarBRL(team.valueSold)} sub="em negócios faturados" accent="bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400" />
           <Kpi Icon={Users} label="Membros" value={String(team.memberCount)} sub="na equipe" accent="bg-purple-100 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400" />
         </div>
       )}
@@ -284,7 +288,7 @@ export default function EquipePage() {
               <div className="hidden md:flex items-center gap-5 text-center shrink-0">
                 <div><p className="text-sm font-bold">{m.assigned}</p><p className="text-[10px] text-slate-400">leads</p></div>
                 <div><p className="text-sm font-bold">{m.conversion}%</p><p className="text-[10px] text-slate-400">conv.</p></div>
-                <div><p className="text-sm font-bold">{brl(m.valueSold)}</p><p className="text-[10px] text-slate-400">vendido</p></div>
+                <div><p className="text-sm font-bold">{formatarBRL(m.valueSold)}</p><p className="text-[10px] text-slate-400">vendido</p></div>
               </div>
               <ChevronRight size={16} className="text-slate-300 shrink-0" />
             </button>
@@ -406,7 +410,7 @@ function MemberDrawer({ member, period, isAdmin, busy, onClose, onChangeRole, on
           </div>
           <div className="bg-white dark:bg-slate-900 rounded-xl p-4 border border-slate-200 dark:border-slate-800">
             <p className="text-xs text-slate-400">Valor vendido no período</p>
-            <p className="text-2xl font-extrabold text-amber-600 mt-1">{brl(member.valueSold)}</p>
+            <p className="text-2xl font-extrabold text-amber-600 mt-1">{formatarBRL(member.valueSold)}</p>
           </div>
 
           {/* Comissão */}
@@ -416,9 +420,9 @@ function MemberDrawer({ member, period, isAdmin, busy, onClose, onChangeRole, on
             </div>
             {member.commissionPct != null ? (
               <>
-                <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{brl(member.commission ?? 0)}</p>
+                <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{member.commission ? formatarBRL(member.commission) : '—'}</p>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  {member.commissionPct.toLocaleString('pt-BR')}% sobre {brl(member.valueSold)} vendidos
+                  {member.commissionPct.toLocaleString('pt-BR')}% sobre {formatarBRL(member.valueSold)} vendidos
                 </p>
               </>
             ) : (

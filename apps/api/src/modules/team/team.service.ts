@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@autoconnect/db';
+import { Prisma } from '@autoconnect/db';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 const MEMBER_ROLES: UserRole[] = [
@@ -23,7 +24,7 @@ export class TeamService {
 
     // Uma transação só, em vez de cinco idas ao banco: além do isolamento, é
     // ganho de latência — API e banco estão em regiões diferentes.
-    const { members, leads, appts, goals, soldVehicles } = await this.prisma.withTenant(
+    const { members, leads, appts, goals, soldVehicles, negocios } = await this.prisma.withTenant(
       tenantId,
       async (tx) => ({
         members: await tx.user.findMany({
@@ -61,6 +62,18 @@ export class TeamService {
         }),
         // metas do período
         goals: await tx.salesGoal.findMany({ where: { tenantId, period } }),
+        // Negócios faturados no período. É daqui que sai o valor vendido:
+        // antes ele vinha de `lead.vehicle.price`, o preço de **tabela**, e
+        // a comissão saía sobre um valor que o cliente nunca pagou — sempre
+        // acima do real, porque desconto é a regra e não a exceção.
+        negocios: await tx.deal.findMany({
+          where: {
+            tenantId,
+            status: { in: ['invoiced', 'documentation', 'delivered'] },
+            closedAt: { gte: start, lt: end },
+          },
+          select: { salespersonId: true, saleValue: true },
+        }),
         // veículos vendidos no período (loja)
         soldVehicles: await tx.vehicle.findMany({
           where: { tenantId, status: 'sold', soldAt: { gte: start, lt: end } },
@@ -70,6 +83,21 @@ export class TeamService {
     );
 
     const apptMap = new Map(appts.map((a) => [a.salespersonId, a._count._all]));
+
+    // Soma em Decimal, nunca com `Number`: um centavo de diferença numa
+    // comissão vira ligação do vendedor.
+    const vendidoPor = new Map<string, Prisma.Decimal>();
+    for (const n of negocios) {
+      if (!n.salespersonId) continue;
+      vendidoPor.set(
+        n.salespersonId,
+        (vendidoPor.get(n.salespersonId) ?? new Prisma.Decimal(0)).plus(n.saleValue),
+      );
+    }
+    const vendidoNaLoja = negocios.reduce(
+      (a, n) => a.plus(n.saleValue),
+      new Prisma.Decimal(0),
+    );
     const teamGoal = goals.find((g) => g.userId === null)?.target ?? null;
     const goalMap = new Map(goals.filter((g) => g.userId).map((g) => [g.userId, g.target]));
 
@@ -79,18 +107,24 @@ export class TeamService {
       const assigned = leads.filter((l) => l.assignedTo === mem.id && inPeriod(l.createdAt)).length;
       const wonLeads = leads.filter((l) => l.assignedTo === mem.id && l.status === 'won' && inPeriod(l.wonAt));
       const won = wonLeads.length;
-      const valueSold = wonLeads.reduce((s, l) => s + Number(l.vehicle?.price ?? 0), 0);
+      const vendido = vendidoPor.get(mem.id) ?? new Prisma.Decimal(0);
       const conversion = assigned > 0 ? Math.round((won / assigned) * 100) : 0;
       const commissionPct =
         mem.salespersonProfile?.commissionPct != null
           ? Number(mem.salespersonProfile.commissionPct)
           : null;
-      const commission = commissionPct != null ? (valueSold * commissionPct) / 100 : null;
+      const commission =
+        commissionPct != null
+          ? vendido.times(commissionPct).dividedBy(100).toFixed(2)
+          : null;
       return {
         id: mem.id, email: mem.email, fullName: mem.fullName, role: mem.role,
         status: mem.status, lastLoginAt: mem.lastLoginAt, avatarUrl: mem.avatarUrl,
         goal: goalMap.get(mem.id) ?? null,
-        assigned, won, conversion, valueSold,
+        assigned, won, conversion,
+        // string: é assim que Decimal atravessa o JSON, e o front formata sem
+        // fazer conta.
+        valueSold: vendido.toFixed(2),
         commissionPct, commission,
         appointments: apptMap.get(mem.id) ?? 0,
       };
@@ -98,7 +132,7 @@ export class TeamService {
 
     const teamWon = leads.filter((l) => l.status === 'won' && inPeriod(l.wonAt));
     const teamAssigned = leads.filter((l) => inPeriod(l.createdAt)).length;
-    const teamValue = teamWon.reduce((s, l) => s + Number(l.vehicle?.price ?? 0), 0);
+    const teamValue = vendidoNaLoja.toFixed(2);
 
     const team = {
       goal: teamGoal,

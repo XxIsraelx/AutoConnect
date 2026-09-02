@@ -29,6 +29,8 @@ describe('Negócios (e2e)', () => {
     http().post(`/api/v1${rota}`).set('Authorization', `Bearer ${t}`).send(corpo);
   const get = (rota: string, t: string) =>
     http().get(`/api/v1${rota}`).set('Authorization', `Bearer ${t}`);
+  const patch = (rota: string, t: string, corpo: object) =>
+    http().patch(`/api/v1${rota}`).set('Authorization', `Bearer ${t}`).send(corpo);
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -50,6 +52,9 @@ describe('Negócios (e2e)', () => {
       DELETE FROM vehicle_costs WHERE tenant_id IN (${f.a.id}::uuid, ${f.b.id}::uuid)`;
     await dono.$executeRaw`
       DELETE FROM vehicle_acquisitions WHERE tenant_id IN (${f.a.id}::uuid, ${f.b.id}::uuid)`;
+    await dono.$executeRaw`
+      UPDATE leads SET status = 'new', won_at = NULL
+       WHERE tenant_id IN (${f.a.id}::uuid, ${f.b.id}::uuid)`;
   });
 
   afterAll(async () => {
@@ -220,6 +225,38 @@ describe('Negócios (e2e)', () => {
       const res = await get('/deals', comoCliente);
 
       expect(res.status).toBe(403);
+    });
+  });
+
+
+  describe('lead ganho exige negócio', () => {
+    it('recusa marcar o lead como ganho sem negócio ligado a ele', async () => {
+      const res = await patch(`/leads/${f.a.leadId}`, comoAdmin, { status: 'won' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.message).toMatch(/abra o negócio correspondente/);
+    });
+
+    it('aceita depois que o negócio existe', async () => {
+      const criado = await post('/deals', comoVendedor, {
+        vehicleId: f.a.veiculoPublicoId,
+        leadId: f.a.leadId,
+        listPrice: '100000.00',
+        discount: '5000.00',
+        saleValue: '95000.00',
+      });
+      expect(criado.status).toBe(201);
+
+      const res = await patch(`/leads/${f.a.leadId}`, comoAdmin, { status: 'won' });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ status: 'won' });
+    });
+
+    it('outros status seguem livres — a regra é só do "ganho"', async () => {
+      const res = await patch(`/leads/${f.a.leadId}`, comoAdmin, { status: 'negotiating' });
+
+      expect(res.status).toBe(200);
     });
   });
 

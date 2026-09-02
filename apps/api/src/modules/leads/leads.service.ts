@@ -1,4 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable, NotFoundException, BadRequestException, ConflictException,
+} from '@nestjs/common';
 import { Prisma } from '@autoconnect/db';
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
@@ -158,6 +160,21 @@ export class LeadsService {
     return this.prisma.withTenant(tenantId, async (tx) => {
       const lead = await tx.lead.findFirst({ where: { id: leadId, tenantId } });
       if (!lead) throw new NotFoundException('Lead não encontrado');
+
+      // `won` deixou de ser o fim do lead e passou a significar "gerou
+      // negócio". Sem esta checagem o funil de leads e o de negócios divergem:
+      // a tela mostra a venda ganha e não há negócio nenhum por trás dela,
+      // nem margem, nem contrato. A regra vive aqui, e não só na tela, porque
+      // a rota é pública para o painel inteiro.
+      if (input.status === 'won') {
+        const negocios = await tx.deal.count({ where: { leadId, tenantId } });
+        if (negocios === 0) {
+          throw new ConflictException(
+            'Para marcar o lead como ganho, abra o negócio correspondente — ' +
+              'é ele que carrega valor, pagamento e margem.',
+          );
+        }
+      }
 
       return tx.lead.update({
         where: { id: leadId },
