@@ -5,6 +5,7 @@ import {
 import { Response } from 'express';
 import { LeadsService } from './leads.service';
 import { createLeadSchema, updateLeadStatusSchema } from '@autoconnect/shared';
+import { escopoDa } from '../../common/escopo';
 
 interface AuthRequest {
   user: { id: string; role: string; tenantId: string | null };
@@ -42,8 +43,7 @@ export class LeadsController {
     @Query('page')      page?: string,
     @Query('perPage')   perPage?: string,
   ): Promise<unknown> {
-    const tenantId = req.user.tenantId!;
-    return this.leads.findAll(tenantId, {
+    return this.leads.findAll(escopoDa(req.user), {
       status,
       vehicleId,
       page:    page    ? parseInt(page, 10)    : undefined,
@@ -57,7 +57,7 @@ export class LeadsController {
    */
   @Get('stats')
   getStats(@Req() req: AuthRequest): Promise<unknown> {
-    return this.leads.getStats(req.user.tenantId!);
+    return this.leads.getStats(escopoDa(req.user));
   }
 
   /**

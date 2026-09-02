@@ -13,11 +13,11 @@ export class AdminService {
   /**
    * Usa a conexão privilegiada de propósito: o painel do super admin consulta
    * todas as concessionárias por natureza, e `withTenant` não faria sentido
-   * aqui. A travessia fica declarada no tipo, não escondida num `this.prisma`
+   * aqui. A travessia fica declarada no tipo, não escondida num `this.privilegiado`
    * igual ao de todo mundo.
    */
   constructor(
-    private readonly prisma: PrivilegedPrismaService,
+    private readonly privilegiado: PrivilegedPrismaService,
     private readonly jwt:    JwtService,
     private readonly email:  EmailService,
   ) {}
@@ -34,17 +34,17 @@ export class AdminService {
       totalUsers, totalVehicles, totalLeads, totalLeadsNew,
       activeInvites,
     ] = await Promise.all([
-      this.prisma.tenant.count(),
-      this.prisma.tenant.count({ where: { isActive: true } }),
-      this.prisma.tenant.count({ where: { isActive: false } }),
-      this.prisma.tenantSubscription.count({ where: { plan: 'trial' } }),
-      this.prisma.tenantSubscription.count({ where: { plan: { not: 'trial' } } }),
-      this.prisma.tenant.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
-      this.prisma.user.count({ where: { role: { not: 'super_admin' } } }),
-      this.prisma.vehicle.count(),
-      this.prisma.lead.count(),
-      this.prisma.lead.count({ where: { status: 'new' } }),
-      this.prisma.tenantInvite.count({
+      this.privilegiado.tenant.count(),
+      this.privilegiado.tenant.count({ where: { isActive: true } }),
+      this.privilegiado.tenant.count({ where: { isActive: false } }),
+      this.privilegiado.tenantSubscription.count({ where: { plan: 'trial' } }),
+      this.privilegiado.tenantSubscription.count({ where: { plan: { not: 'trial' } } }),
+      this.privilegiado.tenant.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
+      this.privilegiado.user.count({ where: { role: { not: 'super_admin' } } }),
+      this.privilegiado.vehicle.count(),
+      this.privilegiado.lead.count(),
+      this.privilegiado.lead.count({ where: { status: 'new' } }),
+      this.privilegiado.tenantInvite.count({
         where: { usedAt: null, expiresAt: { gt: new Date() } },
       }),
     ]);
@@ -64,7 +64,7 @@ export class AdminService {
     const days      = data.expiresInDays ?? 7;
     const expiresAt = new Date(Date.now() + days * 86_400_000);
 
-    const invite = await this.prisma.tenantInvite.create({
+    const invite = await this.privilegiado.tenantInvite.create({
       data: { token, email: data.email ?? null, note: data.note ?? null, expiresAt },
     });
 
@@ -79,29 +79,29 @@ export class AdminService {
   }
 
   listInvites() {
-    return this.prisma.tenantInvite.findMany({ orderBy: { createdAt: 'desc' } });
+    return this.privilegiado.tenantInvite.findMany({ orderBy: { createdAt: 'desc' } });
   }
 
   async revokeInvite(id: string) {
-    const invite = await this.prisma.tenantInvite.findUnique({ where: { id } });
+    const invite = await this.privilegiado.tenantInvite.findUnique({ where: { id } });
     if (!invite) throw new NotFoundException('Convite não encontrado');
-    return this.prisma.tenantInvite.update({ where: { id }, data: { usedAt: new Date() } });
+    return this.privilegiado.tenantInvite.update({ where: { id }, data: { usedAt: new Date() } });
   }
 
   async deleteInvite(id: string) {
-    const invite = await this.prisma.tenantInvite.findUnique({ where: { id } });
+    const invite = await this.privilegiado.tenantInvite.findUnique({ where: { id } });
     if (!invite) throw new NotFoundException('Convite não encontrado');
-    await this.prisma.tenantInvite.delete({ where: { id } });
+    await this.privilegiado.tenantInvite.delete({ where: { id } });
     return { deleted: true };
   }
 
   /** Validação de convite usada pelo AuthService */
   async validateAndConsumeInvite(token: string, tenantId: string) {
-    const invite = await this.prisma.tenantInvite.findUnique({ where: { token } });
+    const invite = await this.privilegiado.tenantInvite.findUnique({ where: { token } });
     if (!invite)                   throw new BadRequestException('Convite inválido');
     if (invite.usedAt)             throw new BadRequestException('Este convite já foi utilizado');
     if (invite.expiresAt < new Date()) throw new BadRequestException('Convite expirado');
-    await this.prisma.tenantInvite.update({
+    await this.privilegiado.tenantInvite.update({
       where: { id: invite.id },
       data:  { usedAt: new Date(), usedBy: tenantId },
     });
@@ -110,14 +110,14 @@ export class AdminService {
   /* ── Tenants ───────────────────────────────────────────────────────── */
 
   listTenants(): Promise<unknown[]> {
-    return this.prisma.tenant.findMany({
+    return this.privilegiado.tenant.findMany({
       include: { subscription: true, branches: { take: 1 } },
       orderBy: { createdAt: 'desc' },
     }) as Promise<unknown[]>;
   }
 
   async getTenantDetail(tenantId: string): Promise<unknown> {
-    const tenant = await this.prisma.tenant.findUnique({
+    const tenant = await this.privilegiado.tenant.findUnique({
       where: { id: tenantId },
       include: {
         subscription: true,
@@ -134,19 +134,19 @@ export class AdminService {
     if (!tenant) throw new NotFoundException('Concessionária não encontrada');
 
     const [vehicleCount, leadCount, leadNewCount] = await Promise.all([
-      this.prisma.vehicle.count({ where: { tenantId } }),
-      this.prisma.lead.count({ where: { tenantId } }),
-      this.prisma.lead.count({ where: { tenantId, status: 'new' } }),
+      this.privilegiado.vehicle.count({ where: { tenantId } }),
+      this.privilegiado.lead.count({ where: { tenantId } }),
+      this.privilegiado.lead.count({ where: { tenantId, status: 'new' } }),
     ]);
 
     return { ...tenant, vehicleCount, leadCount, leadNewCount };
   }
 
   async changePlan(tenantId: string, plan: string): Promise<unknown> {
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    const tenant = await this.privilegiado.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) throw new NotFoundException('Concessionária não encontrada');
 
-    const sub = await this.prisma.tenantSubscription.upsert({
+    const sub = await this.privilegiado.tenantSubscription.upsert({
       where:  { tenantId },
       update: { plan: plan as never, status: 'active' },
       create: { tenantId, plan: plan as never, status: 'active' },
@@ -163,7 +163,7 @@ export class AdminService {
   }
 
   async extendTrial(tenantId: string, days: number): Promise<unknown> {
-    const sub = await this.prisma.tenantSubscription.findUnique({ where: { tenantId } });
+    const sub = await this.privilegiado.tenantSubscription.findUnique({ where: { tenantId } });
     if (!sub) throw new NotFoundException('Assinatura não encontrada');
 
     const current = sub.trialEndsAt ?? new Date();
@@ -176,17 +176,17 @@ export class AdminService {
       diff: { days, newTrialEndsAt: newEnd },
     });
 
-    return this.prisma.tenantSubscription.update({
+    return this.privilegiado.tenantSubscription.update({
       where: { tenantId },
       data:  { trialEndsAt: newEnd },
     });
   }
 
   async toggleTenantActive(tenantId: string): Promise<unknown> {
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    const tenant = await this.privilegiado.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) throw new NotFoundException('Concessionária não encontrada');
 
-    const updated = await this.prisma.tenant.update({
+    const updated = await this.privilegiado.tenant.update({
       where: { id: tenantId },
       data:  { isActive: !tenant.isActive },
     });
@@ -202,10 +202,10 @@ export class AdminService {
 
   /** Gera token temporário para impersonar o admin de um tenant */
   async impersonate(tenantId: string): Promise<{ token: string; user: unknown }> {
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    const tenant = await this.privilegiado.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) throw new NotFoundException('Concessionária não encontrada');
 
-    const user = await this.prisma.user.findFirst({
+    const user = await this.privilegiado.user.findFirst({
       where: { tenantId, role: 'tenant_admin', status: 'active' },
     });
     if (!user) throw new BadRequestException('Nenhum admin ativo nesta concessionária');
@@ -240,7 +240,7 @@ export class AdminService {
     const take  = 30;
     const skip  = (page - 1) * take;
 
-    return this.prisma.user.findMany({
+    return this.privilegiado.user.findMany({
       where: {
         role: opts.role ? (opts.role as never) : { not: 'super_admin' },
         ...(opts.search ? {
@@ -262,7 +262,7 @@ export class AdminService {
   }
 
   async toggleUserSuspend(userId: string): Promise<unknown> {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.privilegiado.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('Usuário não encontrado');
     if (user.role === 'super_admin') throw new BadRequestException('Não é possível suspender super_admin');
 
@@ -274,14 +274,14 @@ export class AdminService {
       entityId: userId,
     });
 
-    return this.prisma.user.update({
+    return this.privilegiado.user.update({
       where: { id: userId },
       data:  { status: newStatus },
     });
   }
 
   async sendPasswordReset(userId: string): Promise<{ message: string }> {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.privilegiado.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('Usuário não encontrado');
 
     const token = this.jwt.sign(
@@ -308,12 +308,12 @@ export class AdminService {
     expiresAt?: string | null;
   }): Promise<unknown> {
     // Desativa avisos anteriores do mesmo tipo
-    await this.prisma.announcement.updateMany({
+    await this.privilegiado.announcement.updateMany({
       where: { isActive: true },
       data:  { isActive: false },
     });
 
-    return this.prisma.announcement.create({
+    return this.privilegiado.announcement.create({
       data: {
         message:   data.message,
         type:      data.type ?? 'info',
@@ -324,7 +324,7 @@ export class AdminService {
   }
 
   listAnnouncements(): Promise<unknown[]> {
-    return this.prisma.announcement.findMany({
+    return this.privilegiado.announcement.findMany({
       orderBy: { createdAt: 'desc' },
       take: 20,
     }) as Promise<unknown[]>;
@@ -332,7 +332,7 @@ export class AdminService {
 
   /** Endpoint público — chamado pelo dashboard de todos os tenants */
   async getActiveAnnouncement(): Promise<unknown | null> {
-    return this.prisma.announcement.findFirst({
+    return this.privilegiado.announcement.findFirst({
       where: {
         isActive: true,
         OR: [
@@ -345,9 +345,9 @@ export class AdminService {
   }
 
   async deactivateAnnouncement(id: string): Promise<unknown> {
-    const ann = await this.prisma.announcement.findUnique({ where: { id } });
+    const ann = await this.privilegiado.announcement.findUnique({ where: { id } });
     if (!ann) throw new NotFoundException('Aviso não encontrado');
-    return this.prisma.announcement.update({ where: { id }, data: { isActive: false } });
+    return this.privilegiado.announcement.update({ where: { id }, data: { isActive: false } });
   }
 
   /* ── Auditoria ─────────────────────────────────────────────────────── */
@@ -360,13 +360,13 @@ export class AdminService {
     const where = opts.action ? { action: { contains: opts.action } } : {};
 
     const [entries, total] = await Promise.all([
-      this.prisma.auditLog.findMany({
+      this.privilegiado.auditLog.findMany({
         where,
         include: { actor: { select: { fullName: true, email: true } } },
         orderBy: { createdAt: 'desc' },
         take, skip,
       }),
-      this.prisma.auditLog.count({ where }),
+      this.privilegiado.auditLog.count({ where }),
     ]);
 
     return { entries, total, page, pages: Math.ceil(total / take) };
@@ -379,7 +379,7 @@ export class AdminService {
     actorUserId?: string;
     diff?: Record<string, unknown>;
   }): Promise<void> {
-    void this.prisma.auditLog.create({
+    void this.privilegiado.auditLog.create({
       data: {
         action:      data.action,
         entityType:  data.entityType,
@@ -398,7 +398,7 @@ export class AdminService {
     // Banco de dados
     try {
       const t0 = Date.now();
-      await this.prisma.$queryRaw`SELECT 1`;
+      await this.privilegiado.$queryRaw`SELECT 1`;
       results.database = { status: 'up', latencyMs: Date.now() - t0 };
     } catch {
       results.database = { status: 'down' };

@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@autoconnect/db';
-import { PrismaService } from '../../common/prisma/prisma.service';
+import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
+import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
+import { ehGlobal, type Escopo } from '../../common/escopo';
 import { EmailService } from '../../common/email/email.service';
 import type { CreateLeadInput, UpdateLeadStatusInput } from '@autoconnect/shared';
 
@@ -8,6 +10,8 @@ import type { CreateLeadInput, UpdateLeadStatusInput } from '@autoconnect/shared
 export class LeadsService {
   constructor(
     private readonly prisma: PrismaService,
+    /** Consolidado da plataforma para o super admin. */
+    private readonly privilegiado: PrivilegedPrismaService,
     private readonly email: EmailService,
   ) {}
 
@@ -95,7 +99,7 @@ export class LeadsService {
   }
 
   /** Lista leads da concessionária autenticada (dealer/admin) */
-  async findAll(tenantId: string, opts: {
+  async findAll(escopo: Escopo, opts: {
     status?: string;
     vehicleId?: string;
     page?: number;
@@ -105,12 +109,12 @@ export class LeadsService {
     const skip = (page - 1) * perPage;
 
     const where = {
-      tenantId,
+      ...(ehGlobal(escopo) ? {} : { tenantId: escopo.tenantId }),
       ...(status ? { status: status as 'new' | 'contacted' | 'qualified' | 'negotiating' | 'won' | 'lost' | 'archived' } : {}),
       ...(vehicleId ? { vehicleId } : {}),
     };
 
-    return this.prisma.withTenant(tenantId, async (tx) => {
+    const consultar = async (tx: ScopedClient) => {
       const [items, total] = await Promise.all([
         tx.lead.findMany({
         where,
@@ -138,7 +142,11 @@ export class LeadsService {
       ]);
 
       return { items, total, page, perPage };
-    });
+    };
+
+    return ehGlobal(escopo)
+      ? consultar(this.privilegiado)
+      : this.prisma.withTenant(escopo.tenantId, consultar);
   }
 
   /** Atualiza status de um lead (dealer/admin) */
@@ -159,14 +167,17 @@ export class LeadsService {
   }
 
   /** Conta leads por status para o dashboard (dealer/admin) */
-  async getStats(tenantId: string): Promise<unknown> {
-    const groups = await this.prisma.withTenant(tenantId, (tx) =>
+  async getStats(escopo: Escopo): Promise<unknown> {
+    const agrupar = (tx: ScopedClient) =>
       tx.lead.groupBy({
         by: ['status'],
-        where: { tenantId },
+        where: ehGlobal(escopo) ? {} : { tenantId: escopo.tenantId },
         _count: { _all: true },
-      }),
-    );
+      });
+
+    const groups = await (ehGlobal(escopo)
+      ? agrupar(this.privilegiado)
+      : this.prisma.withTenant(escopo.tenantId, agrupar));
 
     const stats: Record<string, number> = {};
     for (const g of groups) {

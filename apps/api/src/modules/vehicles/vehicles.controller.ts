@@ -11,6 +11,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { VehiclesService } from './vehicles.service';
+import { escopoDa } from '../../common/escopo';
 import { createVehicleSchema, updateVehicleSchema, vehicleQuerySchema } from '@autoconnect/shared';
 import { importVehiclesSchema } from './import.schema';
 
@@ -25,9 +26,8 @@ export class VehiclesController {
 
   @Get()
   findAll(@Req() req: AuthRequest, @Query() query: Record<string, string>): Promise<unknown> {
-    const tenantId = req.user.tenantId!;
     const parsed = vehicleQuerySchema.parse(query);
-    return this.vehicles.findAll(tenantId, parsed);
+    return this.vehicles.findAll(escopoDa(req.user), parsed);
   }
 
   @Get(':id')

@@ -97,6 +97,53 @@ describe('Vazamento entre concessionárias (e2e)', () => {
     expect(JSON.stringify(res.body)).not.toContain(f.b.leadId);
   });
 
+  describe('super admin sem concessionária selecionada', () => {
+    const comoSuperAdmin = (rota: string) =>
+      request(app.getHttpServer())
+        .get(rota)
+        .set(
+          'Authorization',
+          `Bearer ${app.get(JwtService).sign({ sub: f.a.usuarioId, role: 'super_admin', tenantId: null })}`,
+        );
+
+    it.each([
+      ['/api/v1/tenant/stats'],
+      ['/api/v1/leads'],
+      ['/api/v1/leads/stats'],
+      ['/api/v1/vehicles'],
+      ['/api/v1/appointments'],
+      ['/api/v1/conversations'],
+    ])('%s responde 200 em vez de 500', async (rota) => {
+      // Estas telas devolviam 500 para o super admin: consultavam "os dados da
+      // minha loja" sem loja nenhuma. Agora devolvem o consolidado.
+      const res = await comoSuperAdmin(rota);
+
+      expect(res.status).toBe(200);
+    });
+
+    it('a listagem de leads traz as duas concessionárias, não uma', async () => {
+      const res = await comoSuperAdmin('/api/v1/leads');
+      const corpo = JSON.stringify(res.body);
+
+      expect(corpo).toContain(f.a.leadId);
+      expect(corpo).toContain(f.b.leadId);
+    });
+
+    it('impersonando uma loja, volta a ver só a dela', async () => {
+      // A garantia que impede o escopo global de vazar para dentro da tela de
+      // uma concessionária: com tenantId no token, o consolidado some.
+      const token = app.get(JwtService).sign({
+        sub: f.a.usuarioId, role: 'super_admin', tenantId: f.a.id,
+      });
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/leads')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(JSON.stringify(res.body)).not.toContain(f.b.leadId);
+    });
+  });
+
   it('o catálogo público segue devolvendo veículos das duas, sem autenticação', async () => {
     const res = await request(app.getHttpServer()).get('/api/v1/catalog/vehicles?limit=100');
 

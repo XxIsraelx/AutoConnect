@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../common/prisma/prisma.service';
+import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
+import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
+import { ehGlobal, type Escopo } from '../../common/escopo';
 import { Prisma } from '@autoconnect/db';
 
 /* ── Haversine distance (km) ─────────────────────────────── */
@@ -140,7 +142,11 @@ const CITY_COORDS: Record<string, [number, number]> = {
 
 @Injectable()
 export class TenantsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    /** Consolidado da plataforma para o super admin — atravessa concessionárias. */
+    private readonly privilegiado: PrivilegedPrismaService,
+  ) {}
 
   findById(
     tenantId: string,
@@ -161,8 +167,12 @@ export class TenantsService {
   }
 
   /** Stats para o dashboard */
-  async getStats(tenantId: string): Promise<unknown> {
-    return this.prisma.withTenant(tenantId, async (tx) => {
+  async getStats(escopo: Escopo): Promise<unknown> {
+    // No escopo global não há `tenantId` para filtrar: o super admin vê o
+    // consolidado da plataforma, pela conexão privilegiada.
+    const filtro = ehGlobal(escopo) ? {} : { tenantId: escopo.tenantId };
+
+    const consultar = async (tx: ScopedClient) => {
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
 
@@ -177,40 +187,40 @@ export class TenantsService {
         openConversations,
       ] = await Promise.all([
         tx.vehicle.count({
-          where: { tenantId, status: 'available' },
+          where: { ...filtro, status: 'available' },
         }),
         tx.lead.count({
-          where: { tenantId, createdAt: { gte: todayStart } },
+          where: { ...filtro, createdAt: { gte: todayStart } },
         }),
         tx.lead.count({
-          where: { tenantId, status: 'new' },
+          where: { ...filtro, status: 'new' },
         }),
         tx.appointment.count({
           where: {
-            tenantId,
+            ...filtro,
             status: { in: ['scheduled', 'confirmed'] },
             scheduledStart: { gte: todayStart, lt: todayEnd },
           },
         }),
         tx.appointment.count({
           where: {
-            tenantId,
+            ...filtro,
             status: { in: ['scheduled', 'confirmed'] },
             scheduledStart: { gte: todayStart, lt: weekEnd },
           },
         }),
         tx.appointment.count({
-          where: { tenantId, status: 'scheduled', scheduledStart: { gte: todayStart } },
+          where: { ...filtro, status: 'scheduled', scheduledStart: { gte: todayStart } },
         }),
         tx.conversation.count({
-          where: { tenantId, status: 'open' },
+          where: { ...filtro, status: 'open' },
         }),
       ]);
 
       // Mensagens de clientes ainda não lidas pela equipe
       const unreadMessages = await tx.message.count({
         where: {
-          tenantId,
+          ...filtro,
           readAt: null,
           sender: { role: 'customer' },
         },
@@ -219,17 +229,20 @@ export class TenantsService {
       // Dados para o checklist de onboarding
       const [teamCount, firstBranch, tenant] = await Promise.all([
         tx.user.count({
-          where: { tenantId, role: { in: ['tenant_admin', 'manager', 'salesperson'] } },
+          where: { ...filtro, role: { in: ['tenant_admin', 'manager', 'salesperson'] } },
         }),
         tx.dealershipBranch.findFirst({
-          where: { tenantId },
+          where: { ...filtro },
           select: { businessHours: true },
           orderBy: { isHeadquarters: 'desc' },
         }),
-        tx.tenant.findUnique({
-          where: { id: tenantId },
-          select: { logoUrl: true, slug: true },
-        }),
+        // O checklist de onboarding é por loja; no consolidado não se aplica.
+        ehGlobal(escopo)
+          ? Promise.resolve(null)
+          : tx.tenant.findUnique({
+              where: { id: escopo.tenantId },
+              select: { logoUrl: true, slug: true },
+            }),
       ]);
 
       const bh = firstBranch?.businessHours;
@@ -247,7 +260,11 @@ export class TenantsService {
           slug:       tenant?.slug ?? null,
         },
       };
-    });
+    };
+
+    return ehGlobal(escopo)
+      ? consultar(this.privilegiado)
+      : this.prisma.withTenant(escopo.tenantId, consultar);
   }
 
   /** Atualiza dados do tenant */

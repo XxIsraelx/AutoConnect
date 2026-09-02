@@ -54,7 +54,11 @@ function arquivosTs(dir: string, acc: string[] = []): string[] {
   return acc;
 }
 
-/** `this.prisma.lead.findMany(` → acesso direto. `this.prisma.withTenant(` → não. */
+/**
+ * Casa só `this.prisma.<modelo>.` — o cliente comum. A conexão privilegiada é
+ * sempre `this.privilegiado.`, então a travessia entre concessionárias fica
+ * visível no próprio nome da chamada, e não some numa isenção de arquivo.
+ */
 const ACESSO_DIRETO = new RegExp(
   String.raw`this\.prisma\.(${[...MODELOS_DE_TENANT, ...MODELOS_DE_USUARIO].join('|')})\.`,
   'g',
@@ -67,11 +71,6 @@ describe('isolamento por tenant — regra de arquitetura', () => {
     for (const caminho of arquivosTs(RAIZ)) {
       const rel = relative(RAIZ, caminho);
       const fonte = readFileSync(caminho, 'utf8');
-
-      // Quem importa a conexão privilegiada está autorizado a atravessar
-      // concessionárias — e essa autorização fica visível no import, que é o
-      // ponto do desenho. Não precisa entrar na lista de pendências.
-      if (fonte.includes('PrivilegedPrismaService')) continue;
 
       const achados = fonte.match(ACESSO_DIRETO);
       if (achados) infratores.set(rel, [...new Set(achados)]);
@@ -113,11 +112,17 @@ describe('isolamento por tenant — regra de arquitetura', () => {
     expect(infratores.get(arquivo) ?? []).toEqual([]);
   });
 
-  it('o super admin usa a conexão privilegiada, não a comum', () => {
-    const admin = readFileSync(join(RAIZ, 'modules/admin/admin.service.ts'), 'utf8');
+  it.each([
+    'modules/admin/admin.service.ts',
+    'modules/auth/auth.service.ts',
+    'modules/tasks/tasks.service.ts',
+    'common/strategies/google.strategy.ts',
+  ])('%s atravessa concessionárias pela conexão privilegiada, e isso é visível', (arquivo) => {
+    const fonte = readFileSync(join(RAIZ, arquivo), 'utf8');
 
-    expect(admin).toContain('PrivilegedPrismaService');
-    expect(admin).not.toMatch(/import .*\bPrismaService\b.* from '\.\.\/\.\.\/common\/prisma\/prisma\.service'/);
+    expect(fonte).toContain('PrivilegedPrismaService');
+    // Nomeada `privilegiado`, nunca `prisma`: quem lê a chamada vê o privilégio.
+    expect(fonte).toContain('this.privilegiado.');
   });
 
   it('a conexão privilegiada não é global — a travessia tem que aparecer no import', () => {

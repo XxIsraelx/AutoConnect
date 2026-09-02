@@ -1,5 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
+import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
+import { ehGlobal, type Escopo } from '../../common/escopo';
 import { EmailService } from '../../common/email/email.service';
 
 const TYPE_LABELS: Record<string, string> = {
@@ -41,11 +43,13 @@ export class AppointmentsService {
 
   constructor(
     private readonly prisma: PrismaService,
+    /** Consolidado da plataforma para o super admin. */
+    private readonly privilegiado: PrivilegedPrismaService,
     private readonly email: EmailService,
   ) {}
 
   /** Lista agendamentos de uma concessionária */
-  async findAll(tenantId: string, opts: {
+  async findAll(escopo: Escopo, opts: {
     status?: string;
     from?: string;
     to?: string;
@@ -63,7 +67,7 @@ export class AppointmentsService {
     // linha de defesa e continua valendo enquanto o RLS não estiver sendo
     // aplicado (a aplicação ainda conecta como dona das tabelas).
     const where = {
-      tenantId,
+      ...(ehGlobal(escopo) ? {} : { tenantId: escopo.tenantId }),
       ...(status ? { status: status as never } : {}),
       ...(salespersonId ? { salespersonId } : {}),
       ...(type ? { type: type as never } : {}),
@@ -76,7 +80,7 @@ export class AppointmentsService {
       } : {}),
     };
 
-    return this.prisma.withTenant(tenantId, async (tx) => {
+    const consultar = async (tx: ScopedClient) => {
       const [items, total] = await Promise.all([
         tx.appointment.findMany({
           where,
@@ -94,7 +98,11 @@ export class AppointmentsService {
       ]);
 
       return { items, total, page, perPage: take };
-    });
+    };
+
+    return ehGlobal(escopo)
+      ? consultar(this.privilegiado)
+      : this.prisma.withTenant(escopo.tenantId, consultar);
   }
 
   /** Lista agendamentos do cliente logado */

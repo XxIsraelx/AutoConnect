@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../common/prisma/prisma.service';
+import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
+import { ehGlobal, type Escopo } from '../../common/escopo';
 import { EmailService } from '../../common/email/email.service';
 import { Prisma } from '@autoconnect/db';
 import type { CreateVehicleInput, UpdateVehicleInput, VehicleQuery } from '@autoconnect/shared';
@@ -21,12 +22,12 @@ export class VehiclesService {
     private readonly email: EmailService,
   ) {}
 
-  async findAll(tenantId: string, query: VehicleQuery): Promise<unknown> {
+  async findAll(escopo: Escopo, query: VehicleQuery): Promise<unknown> {
     const { q, brandId, modelId, minPrice, maxPrice, minYear, condition, status, page, perPage } = query;
     const skip = (page - 1) * perPage;
 
     const where = {
-      tenantId,
+      ...(ehGlobal(escopo) ? {} : { tenantId: escopo.tenantId }),
       ...(brandId && { brandId }),
       ...(modelId && { modelId }),
       ...(condition && { condition }),
@@ -47,7 +48,7 @@ export class VehiclesService {
         : {}),
     };
 
-    const [items, total] = await this.prisma.withTenant(tenantId, (tx) =>
+    const consultar = (tx: ScopedClient) =>
       Promise.all([
         tx.vehicle.findMany({
           where,
@@ -61,8 +62,11 @@ export class VehiclesService {
           },
         }),
         tx.vehicle.count({ where }),
-      ]),
-    );
+      ]);
+
+    const [items, total] = await (ehGlobal(escopo)
+      ? consultar(this.privilegiado)
+      : this.prisma.withTenant(escopo.tenantId, consultar));
 
     return {
       items,

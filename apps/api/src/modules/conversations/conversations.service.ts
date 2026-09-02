@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../../common/prisma/prisma.service';
+import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
+import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
+import { ehGlobal, type Escopo } from '../../common/escopo';
 
 /** Últimas mensagens e dados do veículo, iguais nas duas listagens. */
 const RESUMO = {
@@ -20,20 +22,24 @@ const RESUMO = {
 
 @Injectable()
 export class ConversationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    /** Consolidado da plataforma para o super admin. */
+    private readonly privilegiado: PrivilegedPrismaService,
+  ) {}
 
   /** Lista conversas de uma concessionária */
-  async findAllByTenant(tenantId: string, opts: { status?: string; page?: number }): Promise<unknown> {
+  async findAllByTenant(escopo: Escopo, opts: { status?: string; page?: number }): Promise<unknown> {
     const { status, page = 1 } = opts;
     const take = 20;
     const skip = (page - 1) * take;
 
     const where = {
-      tenantId,
+      ...(ehGlobal(escopo) ? {} : { tenantId: escopo.tenantId }),
       ...(status ? { status: status as never } : {}),
     };
 
-    return this.prisma.withTenant(tenantId, async (tx) => {
+    const consultar = async (tx: ScopedClient) => {
       const [items, total] = await Promise.all([
         tx.conversation.findMany({
           where,
@@ -51,7 +57,11 @@ export class ConversationsService {
       ]);
 
       return { items, total, page, perPage: take };
-    });
+    };
+
+    return ehGlobal(escopo)
+      ? consultar(this.privilegiado)
+      : this.prisma.withTenant(escopo.tenantId, consultar);
   }
 
   /** Lista conversas de um cliente (todas as lojas) */

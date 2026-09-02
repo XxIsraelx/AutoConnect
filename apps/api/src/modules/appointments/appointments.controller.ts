@@ -3,6 +3,7 @@ import {
   Patch, Post, Query, Req,
 } from '@nestjs/common';
 import { AppointmentsService } from './appointments.service';
+import { escopoDa } from '../../common/escopo';
 
 interface AuthRequest {
   user: { id: string; role: string; tenantId: string | null };
@@ -29,11 +30,11 @@ export class AppointmentsController {
     @Query('q')             q?: string,
     @Query('limit')         limit?: string,
   ): Promise<unknown> {
-    const { role, tenantId, id } = req.user;
+    const { role, id } = req.user;
     if (role === 'customer') {
       return this.svc.findByCustomer(id);
     }
-    return this.svc.findAll(tenantId!, {
+    return this.svc.findAll(escopoDa(req.user), {
       status, from, to,
       page: page ? parseInt(page, 10) : 1,
       salespersonId, type, q,

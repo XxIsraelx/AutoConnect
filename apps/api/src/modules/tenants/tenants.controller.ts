@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query, Req } from '
 import { Prisma } from '@autoconnect/db';
 import { TenantsService } from './tenants.service';
 import type { AuthenticatedRequest } from '../../common/middleware/tenant.middleware';
+import { escopoDa } from '../../common/escopo';
 
 @Controller('tenant')
 export class TenantsController {
@@ -18,7 +19,9 @@ export class TenantsController {
   /** GET /tenant/stats — veículos disponíveis, leads hoje, leads novos */
   @Get('stats')
   stats(@Req() req: AuthenticatedRequest): Promise<unknown> {
-    return this.tenants.getStats(req.tenantId!);
+    // Super admin sem concessionária selecionada recebe o consolidado da
+    // plataforma; qualquer outro papel sem tenant é recusado por escopoDa.
+    return this.tenants.getStats(escopoDa(req.user!));
   }
 
   /** GET /tenant/reports — relatórios de leads por período */

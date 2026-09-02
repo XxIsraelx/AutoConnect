@@ -36,7 +36,7 @@ export class TasksService {
 
   constructor(
     /** Privilegiada: o cron percorre todas as concessionárias — não há um tenant a que se restringir. */
-    private readonly prisma: PrivilegedPrismaService,
+    private readonly privilegiado: PrivilegedPrismaService,
     private readonly email: EmailService,
   ) {}
 
@@ -47,7 +47,7 @@ export class TasksService {
     const now = new Date();
     const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-    const appts = await this.prisma.appointment.findMany({
+    const appts = await this.privilegiado.appointment.findMany({
       where: {
         status: { in: ['scheduled', 'confirmed'] },
         reminderSentAt: null,
@@ -81,7 +81,7 @@ export class TasksService {
             when: appt.scheduledStart,
           });
         }
-        await this.prisma.appointment.update({
+        await this.privilegiado.appointment.update({
           where: { id: appt.id },
           data: { reminderSentAt: new Date() },
         });
@@ -101,7 +101,7 @@ export class TasksService {
     for (const [status, days] of Object.entries(this.COLD_DAYS)) {
       const cutoff = new Date(now - days * 24 * 60 * 60 * 1000);
 
-      const leads = await this.prisma.lead.findMany({
+      const leads = await this.privilegiado.lead.findMany({
         where: {
           status: status as never,
           assignedTo: { not: null },
@@ -116,7 +116,7 @@ export class TasksService {
 
       for (const lead of leads) {
         // Evita repetir o alerta do mesmo lead nos últimos 6 dias
-        const recent = await this.prisma.notification.findFirst({
+        const recent = await this.privilegiado.notification.findFirst({
           where: {
             userId: lead.assignedTo!,
             data: { path: ['leadId'], equals: lead.id },
@@ -131,7 +131,7 @@ export class TasksService {
         const veh = lead.vehicle ? ` (${lead.vehicle.brand.name} ${lead.vehicle.model.name})` : '';
 
         try {
-          await this.prisma.notification.create({
+          await this.privilegiado.notification.create({
             data: {
               tenantId: lead.tenantId,
               userId: lead.assignedTo!,

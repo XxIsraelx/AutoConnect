@@ -250,6 +250,24 @@ Três casos têm tratamento explícito:
 | **Cliente atravessa concessionárias** | Ele agenda na loja A e conversa com a B. Policy `acesso_cliente` em `appointments`, `conversations` e `messages`, por `app.user_id` |
 | **Cliente não pertence a loja nenhuma** | `users.tenant_id` é NULL para clientes, então a policy de tenant os tornaria invisíveis. `acesso_proprio` (ele mesmo) + `cliente_relacionado` (a loja vê quem tem lead, agendamento ou conversa com ela — **não** a base inteira) |
 
+### Escopo da requisição
+
+Controllers não passam `tenantId` para os services: passam um `Escopo`, criado
+por `escopoDa(req.user)` em `common/escopo.ts`.
+
+| Situação | Escopo | Consulta |
+|---|---|---|
+| Usuário com concessionária | `{ tipo: 'tenant' }` | `withTenant` |
+| **Super admin sem loja selecionada** | `{ tipo: 'global' }` | conexão privilegiada, sem filtro |
+| Qualquer outro papel sem loja | — | `ForbiddenException` |
+
+O tipo existe para que `null` **não** possa significar "vê tudo". Um `tenantId`
+perdido no meio do caminho vira erro alto, e não uma consulta sem filtro — que
+é como um bug comum viraria vazamento entre concessionárias.
+
+Super admin **impersonando** tem `tenantId` no token e portanto escopo de
+tenant: o consolidado não vaza para dentro da tela de uma loja só.
+
 ### A conexão privilegiada
 
 `PrivilegedPrismaService` existe para as operações que não têm tenant a que se

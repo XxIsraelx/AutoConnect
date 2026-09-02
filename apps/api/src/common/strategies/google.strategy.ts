@@ -11,7 +11,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   constructor(
     config: ConfigService,
     /** Privilegiada: o OAuth identifica por e-mail, também antes de existir tenant. */
-    private readonly prisma: PrivilegedPrismaService,
+    private readonly privilegiado: PrivilegedPrismaService,
   ) {
     const clientID = config.get<string>('GOOGLE_CLIENT_ID');
     const clientSecret = config.get<string>('GOOGLE_CLIENT_SECRET');
@@ -40,10 +40,10 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     const email = profile.emails?.[0]?.value;
     if (!email) throw new Error('Conta Google sem e-mail associado');
 
-    let user = await this.prisma.user.findUnique({ where: { email } });
+    let user = await this.privilegiado.user.findUnique({ where: { email } });
 
     if (!user) {
-      user = await this.prisma.user.create({
+      user = await this.privilegiado.user.create({
         data: {
           email,
           fullName: profile.displayName ?? email.split('@')[0],

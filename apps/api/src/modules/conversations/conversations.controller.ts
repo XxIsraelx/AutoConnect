@@ -3,6 +3,7 @@ import {
   Patch, Post, Query, Req,
 } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
+import { escopoDa } from '../../common/escopo';
 
 interface AuthRequest {
   user: { id: string; role: string; tenantId: string | null };
@@ -19,11 +20,11 @@ export class ConversationsController {
     @Query('status') status?: string,
     @Query('page')   page?: string,
   ): Promise<unknown> {
-    const { role, tenantId, id } = req.user;
+    const { role, id } = req.user;
     if (role === 'customer') {
       return this.svc.findAllByCustomer(id, { status, page: page ? parseInt(page, 10) : 1 });
     }
-    return this.svc.findAllByTenant(tenantId!, { status, page: page ? parseInt(page, 10) : 1 });
+    return this.svc.findAllByTenant(escopoDa(req.user), { status, page: page ? parseInt(page, 10) : 1 });
   }
 
   /** GET /conversations/:id/messages — mensagens */

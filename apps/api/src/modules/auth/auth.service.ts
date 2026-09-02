@@ -18,7 +18,7 @@ export class AuthService {
 
   constructor(
     /** Privilegiada: o login procura o usuário por e-mail antes de saber a que concessionária ele pertence, e o cadastro cria o próprio tenant. */
-    private readonly prisma: PrivilegedPrismaService,
+    private readonly privilegiado: PrivilegedPrismaService,
     private readonly jwt: JwtService,
     private readonly email: EmailService,
     private readonly adminSvc: AdminService,
@@ -26,7 +26,7 @@ export class AuthService {
 
   async signupTenant(input: SignupTenantInput) {
     // 1. Valida o convite antes de qualquer outra coisa
-    const invite = await this.prisma.tenantInvite.findUnique({
+    const invite = await this.privilegiado.tenantInvite.findUnique({
       where: { token: input.inviteToken },
     });
     if (!invite)                 throw new BadRequestException('Convite inválido');
@@ -38,13 +38,13 @@ export class AuthService {
     }
 
     // 2. Verifica duplicidade
-    const existsSlug = await this.prisma.tenant.findUnique({ where: { slug: input.tenant.slug } });
+    const existsSlug = await this.privilegiado.tenant.findUnique({ where: { slug: input.tenant.slug } });
     if (existsSlug) throw new ConflictException('slug já em uso');
 
-    const existsCNPJ = await this.prisma.tenant.findUnique({ where: { taxId: input.tenant.cnpj } });
+    const existsCNPJ = await this.privilegiado.tenant.findUnique({ where: { taxId: input.tenant.cnpj } });
     if (existsCNPJ) throw new ConflictException('CNPJ já cadastrado');
 
-    const existsEmail = await this.prisma.user.findUnique({ where: { email: input.admin.email } });
+    const existsEmail = await this.privilegiado.user.findUnique({ where: { email: input.admin.email } });
     if (existsEmail) throw new ConflictException('email já cadastrado');
 
     // 3. Verifica situação do CNPJ na Receita Federal via BrasilAPI (não bloqueia se API estiver fora)
@@ -73,7 +73,7 @@ export class AuthService {
           const situacao = descricao ?? `código ${codigo}`;
 
           // Registra tentativa de cadastro com CNPJ inativo no audit log
-          this.prisma.auditLog.create({
+          this.privilegiado.auditLog.create({
             data: {
               action: 'signup_cnpj_rejected',
               entityType: 'tenant',
@@ -99,7 +99,7 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(input.admin.password, 10);
 
     // 4. Cria tenant + usuário + filial em transação
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.privilegiado.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
         data: {
           slug:              input.tenant.slug,
@@ -162,7 +162,7 @@ export class AuthService {
   }
 
   async signupCustomer(input: SignupCustomerInput) {
-    const exists = await this.prisma.user.findUnique({ where: { email: input.email } });
+    const exists = await this.privilegiado.user.findUnique({ where: { email: input.email } });
     if (exists) throw new ConflictException('email já cadastrado');
 
     const passwordHash = await bcrypt.hash(input.password, 10);
@@ -170,7 +170,7 @@ export class AuthService {
     // Normaliza CPF removendo formatação para armazenar
     const cpfNormalized = input.cpf?.replace(/\D/g, '') ?? null;
 
-    const user = await this.prisma.$transaction(async (tx) => {
+    const user = await this.privilegiado.$transaction(async (tx) => {
       const created = await tx.user.create({
         data: {
           email: input.email,
@@ -219,7 +219,7 @@ export class AuthService {
   }
 
   async resendVerification(email: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.privilegiado.user.findUnique({ where: { email } });
     // Responde sempre com sucesso para não vazar se e-mail existe
     if (!user || user.emailVerifiedAt) return { message: 'Se o e-mail existir, um novo link foi enviado.' };
 
@@ -232,7 +232,7 @@ export class AuthService {
   }
 
   async forgotPassword(email: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.privilegiado.user.findUnique({ where: { email } });
     // Responde sempre com sucesso para não vazar se e-mail existe
     if (!user || !user.passwordHash) return { message: 'Se o e-mail existir, as instruções foram enviadas.' };
 
@@ -256,11 +256,11 @@ export class AuthService {
       throw new BadRequestException('Token inválido');
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    const user = await this.privilegiado.user.findUnique({ where: { id: payload.sub } });
     if (!user) throw new BadRequestException('Usuário não encontrado');
 
     const passwordHash = await bcrypt.hash(newPassword, 10);
-    await this.prisma.user.update({
+    await this.privilegiado.user.update({
       where: { id: user.id },
       data: { passwordHash },
     });
@@ -280,14 +280,14 @@ export class AuthService {
       throw new BadRequestException('Token inválido');
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    const user = await this.privilegiado.user.findUnique({ where: { id: payload.sub } });
     if (!user) throw new BadRequestException('Usuário não encontrado');
     if (user.emailVerifiedAt) {
       // Já verificado — retorna sessão normalmente
       return this.buildSession(user);
     }
 
-    const verified = await this.prisma.user.update({
+    const verified = await this.privilegiado.user.update({
       where: { id: user.id },
       data: { emailVerifiedAt: new Date() },
     });
@@ -296,7 +296,7 @@ export class AuthService {
   }
 
   async login(input: LoginInput) {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.privilegiado.user.findUnique({
       where: { email: input.email },
     });
     if (!user || !user.passwordHash) {
@@ -309,7 +309,7 @@ export class AuthService {
       throw new UnauthorizedException('Confirme seu e-mail antes de entrar');
     }
 
-    await this.prisma.user.update({
+    await this.privilegiado.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
