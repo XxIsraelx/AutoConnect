@@ -22,6 +22,11 @@ const MODELOS_DE_TENANT = [
   'notification', 'salesGoal', 'salespersonAvailability',
   'salespersonProfile', 'tenantSubscription', 'userInvitation',
   'user', 'vehicleHistory', 'vehicleImage', 'vehicleView', 'vehicle',
+  // Vendas: preço de compra, margem e proposta bancária. É o dado cujo
+  // vazamento entre concessionárias deixa de ser incidente de privacidade e
+  // vira concorrente vendo a margem do outro.
+  'deal', 'dealPayment', 'dealStatusEvent', 'tradeIn',
+  'vehicleAcquisition', 'vehicleCost',
 ];
 
 /**

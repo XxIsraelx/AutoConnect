@@ -3,10 +3,22 @@ import {
   LeadStatus,
   VehicleCondition,
   UserRole,
+  DealStatus,
+  PaymentKind,
+  PaymentStatus,
+  AcquisitionOrigin,
+  VehicleCostKind,
 } from '@autoconnect/db';
 import { LEAD_SOURCES, LEAD_STATUSES } from './lead';
 import { VEHICLE_CONDITIONS } from './vehicle';
 import { INVITABLE_ROLES } from './auth';
+import {
+  DEAL_STATUSES,
+  PAYMENT_KINDS,
+  PAYMENT_STATUSES,
+  ACQUISITION_ORIGINS,
+  VEHICLE_COST_KINDS,
+} from '../domain/deal';
 
 /**
  * Os schemas Zod repetem listas que também existem como enum no Prisma. A
@@ -35,6 +47,26 @@ describe('paridade entre os enums do Prisma e os schemas Zod', () => {
 
   it('VehicleCondition', () => {
     expect(conjunto(VEHICLE_CONDITIONS)).toEqual(conjunto(Object.values(VehicleCondition)));
+  });
+
+  it('DealStatus', () => {
+    expect(conjunto(DEAL_STATUSES)).toEqual(conjunto(Object.values(DealStatus)));
+  });
+
+  it('PaymentKind', () => {
+    expect(conjunto(PAYMENT_KINDS)).toEqual(conjunto(Object.values(PaymentKind)));
+  });
+
+  it('PaymentStatus', () => {
+    expect(conjunto(PAYMENT_STATUSES)).toEqual(conjunto(Object.values(PaymentStatus)));
+  });
+
+  it('AcquisitionOrigin', () => {
+    expect(conjunto(ACQUISITION_ORIGINS)).toEqual(conjunto(Object.values(AcquisitionOrigin)));
+  });
+
+  it('VehicleCostKind', () => {
+    expect(conjunto(VEHICLE_COST_KINDS)).toEqual(conjunto(Object.values(VehicleCostKind)));
   });
 
   it('os papéis conviáveis são um subconjunto de UserRole, não a lista inteira', () => {

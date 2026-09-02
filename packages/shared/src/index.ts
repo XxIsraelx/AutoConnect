@@ -2,3 +2,6 @@ export * from './schemas/auth';
 export * from './schemas/tenant';
 export * from './schemas/vehicle';
 export * from './schemas/lead';
+export * from './domain/deal';
+export * from './domain/dinheiro';
+export * from './schemas/deal';
