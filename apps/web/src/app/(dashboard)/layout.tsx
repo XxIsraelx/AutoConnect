@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Car, Users, MessageSquare,
   CalendarDays, Settings, LogOut, ChevronRight,
   Info, AlertTriangle, OctagonAlert, X,
-  TrendingUp, UserSquare2, Menu,
+  TrendingUp, UserSquare2, Menu, Handshake,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
@@ -154,6 +154,7 @@ const nav = [
   { href: '/dashboard',     label: 'Dashboard',     icon: LayoutDashboard },
   { href: '/veiculos',      label: 'Veículos',       icon: Car             },
   { href: '/leads',         label: 'Leads',          icon: Users,  badge: true },
+  { href: '/negocios',      label: 'Negócios',       icon: Handshake        },
   { href: '/relatorios',    label: 'Relatórios',     icon: TrendingUp       },
   { href: '/agendamentos',  label: 'Agendamentos',   icon: CalendarDays     },
   { href: '/chat',          label: 'Chat',           icon: MessageSquare    },

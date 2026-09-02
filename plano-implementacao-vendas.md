@@ -24,6 +24,15 @@ Nove achados. Os quatro primeiros afetam diretamente qualquer módulo novo que l
 | 8 | **`db:push` exposto na raiz.** O `CLAUDE.md` proíbe explicitamente, mas o script está a um `pnpm db:push` de distância — e já causou 5 colunas e 5 tabelas fora de migration. | `package.json` | médio |
 | 9 | **Rotas duplicadas no web.** `settings` + `configuracoes`, `team` + `equipe`, `login` + `entrar`, `signup` + `cadastrar`. Decidir o padrão antes de criar `/negocios`, senão dobra de novo. | `apps/web/src/app/` | baixo |
 
+> **Correção (verificado em 02/09/2026):** o achado nº 9 estava errado.
+> `login`/`entrar` e `signup`/`cadastrar` **não são duplicatas**: são quatro
+> fluxos vivos para dois públicos. `/login` (6 referências) leva ao painel da
+> concessionária e `/signup` ao `/dashboard`; `/entrar` (7 referências) leva o
+> cliente ao `/buscar` e `/cadastrar` à verificação de e-mail. Apagar qualquer
+> um quebraria navegação real — a inconsistência é de idioma no nome, não de
+> duplicação. `settings` e `team` eram os únicos resíduos de fato: diretórios
+> **vazios**, sem arquivo nem referência, removidos.
+
 ### Por que isso vem antes
 
 Hoje o dado sensível do sistema é telefone de lead. Depois desta implementação será **preço de compra do veículo, margem da loja, contrato assinado, CPF com comprovante de renda e proposta bancária**. Um vazamento entre concessionárias deixa de ser incidente de privacidade e vira concorrente vendo a margem do outro. O custo de arrumar o isolamento agora é uma migration; depois, é auditar 40 services.
