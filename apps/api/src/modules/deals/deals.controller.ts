@@ -107,6 +107,14 @@ export class VehicleCostController {
     );
   }
 
+  @Get('vehicles/:id/costs')
+  listCosts(
+    @Req() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<unknown> {
+    return this.deals.custoDoVeiculo(escopoDa(req.user), id);
+  }
+
   @Post('vehicles/:id/costs')
   cost(
     @Req() req: AuthRequest,
@@ -121,5 +129,10 @@ export class VehicleCostController {
   @Get('tenant/reports/inventory')
   inventory(@Req() req: AuthRequest): Promise<unknown> {
     return this.deals.relatorioEstoque(escopoDa(req.user));
+  }
+
+  @Get('tenant/reports/margin')
+  marginReport(@Req() req: AuthRequest): Promise<unknown> {
+    return this.deals.relatorioMargem(escopoDa(req.user));
   }
 }

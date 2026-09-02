@@ -413,6 +413,125 @@ export class DealsService {
     return this.prisma.withTenant(escopo.tenantId, ler);
   }
 
+
+  /** Aquisição, lançamentos e totais de um veículo — a aba de custo. */
+  async custoDoVeiculo(escopo: Escopo, vehicleId: string) {
+    const ler = async (tx: ScopedClient) => {
+      const tenantId = ehGlobal(escopo) ? undefined : escopo.tenantId;
+
+      const veiculo = await tx.vehicle.findFirst({
+        where: { id: vehicleId, ...(tenantId ? { tenantId } : {}) },
+        select: { id: true, createdAt: true, price: true, status: true },
+      });
+      if (!veiculo) throw new NotFoundException('Veículo não encontrado');
+
+      const [aquisicao, custos] = await Promise.all([
+        tx.vehicleAcquisition.findFirst({ where: { vehicleId, ...(tenantId ? { tenantId } : {}) } }),
+        tx.vehicleCost.findMany({
+          where: { vehicleId, ...(tenantId ? { tenantId } : {}) },
+          orderBy: { incurredAt: 'desc' },
+        }),
+      ]);
+
+      const compra = aquisicao?.purchaseValue ?? new Prisma.Decimal(0);
+      const preparo = custos.reduce((a, c) => a.plus(c.value), new Prisma.Decimal(0));
+      const inicio = aquisicao?.enteredAt ?? veiculo.createdAt;
+
+      return {
+        vehicleId,
+        acquisition: aquisicao
+          ? {
+              origin: aquisicao.origin,
+              supplierName: aquisicao.supplierName,
+              purchaseValue: aquisicao.purchaseValue.toFixed(2),
+              enteredAt: aquisicao.enteredAt,
+              notes: aquisicao.notes,
+            }
+          : null,
+        costs: custos.map((c) => ({
+          id: c.id,
+          kind: c.kind,
+          value: c.value.toFixed(2),
+          description: c.description,
+          supplierName: c.supplierName,
+          incurredAt: c.incurredAt,
+        })),
+        purchaseValue: compra.toFixed(2),
+        costsTotal: preparo.toFixed(2),
+        totalCost: compra.plus(preparo).toFixed(2),
+        listPrice: veiculo.price.toFixed(2),
+        daysInStock: Math.max(0, Math.floor((Date.now() - inicio.getTime()) / 86_400_000)),
+      };
+    };
+
+    if (ehGlobal(escopo)) return ler(this.privilegiado);
+    return this.prisma.withTenant(escopo.tenantId, ler);
+  }
+
+  /**
+   * Margem por mês, para o gráfico de `/relatorios`.
+   *
+   * Considera só negócios já faturados: antes disso a margem é estimativa, e
+   * misturar estimativa com realizado num gráfico de resultado é como a loja
+   * passa a acreditar num lucro que ainda não teve. Usa o valor **congelado**
+   * no faturamento, não o custo de hoje.
+   */
+  async relatorioMargem(escopo: Escopo, meses = 12) {
+    const desde = new Date();
+    desde.setMonth(desde.getMonth() - (meses - 1));
+    desde.setDate(1);
+    desde.setHours(0, 0, 0, 0);
+
+    const ler = async (tx: ScopedClient) => {
+      const negocios = await tx.deal.findMany({
+        where: {
+          ...(ehGlobal(escopo) ? {} : { tenantId: escopo.tenantId }),
+          status: { in: ['invoiced', 'documentation', 'delivered'] },
+          closedAt: { gte: desde },
+        },
+        select: {
+          closedAt: true, saleValue: true,
+          grossMargin: true, vehicleCostSnapshot: true,
+        },
+        orderBy: { closedAt: 'asc' },
+      });
+
+      const porMes = new Map<
+        string,
+        { negocios: number; venda: Prisma.Decimal; custo: Prisma.Decimal; margem: Prisma.Decimal }
+      >();
+
+      for (const n of negocios) {
+        if (!n.closedAt) continue;
+        const chave = `${n.closedAt.getFullYear()}-${String(n.closedAt.getMonth() + 1).padStart(2, '0')}`;
+        const atual = porMes.get(chave) ?? {
+          negocios: 0,
+          venda: new Prisma.Decimal(0),
+          custo: new Prisma.Decimal(0),
+          margem: new Prisma.Decimal(0),
+        };
+        atual.negocios += 1;
+        atual.venda = atual.venda.plus(n.saleValue);
+        atual.custo = atual.custo.plus(n.vehicleCostSnapshot ?? 0);
+        atual.margem = atual.margem.plus(n.grossMargin ?? 0);
+        porMes.set(chave, atual);
+      }
+
+      return [...porMes.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([periodo, v]) => ({
+          periodo,
+          negocios: v.negocios,
+          venda: v.venda.toFixed(2),
+          custo: v.custo.toFixed(2),
+          margem: v.margem.toFixed(2),
+        }));
+    };
+
+    if (ehGlobal(escopo)) return ler(this.privilegiado);
+    return this.prisma.withTenant(escopo.tenantId, ler);
+  }
+
   /** `listPrice − discount` tem de ser `saleValue`. */
   private conferirValores(lista: string, desconto: string, venda: string): void {
     const esperado = new Prisma.Decimal(lista).minus(desconto);

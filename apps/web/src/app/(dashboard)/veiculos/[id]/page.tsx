@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
+import CustoDoVeiculo from './CustoDoVeiculo';
 
 /* ── Tipos ───────────────────────────────────────────────── */
 
@@ -578,6 +579,8 @@ export default function EditVehiclePage() {
             </div>
           </div>
         </section>
+
+        <CustoDoVeiculo vehicleId={params.id} />
 
         <PriceHistory vehicleId={params.id} />
 

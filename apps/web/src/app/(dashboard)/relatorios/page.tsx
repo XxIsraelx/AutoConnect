@@ -13,6 +13,7 @@ import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
 import { ErroAoCarregar } from '@/components/ErroAoCarregar';
+import GraficosDeVenda from './GraficosDeVenda';
 
 /* ── Tipos ─────────────────────────────────────────────── */
 interface ReportsData {
@@ -183,6 +184,8 @@ export default function RelatoriosPage() {
               </div>
             </div>
           )}
+
+          <GraficosDeVenda />
 
           {/* Leads por dia */}
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5">
