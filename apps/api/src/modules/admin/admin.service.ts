@@ -5,13 +5,19 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { randomBytes } from 'crypto';
-import { PrismaService } from '../../common/prisma/prisma.service';
+import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
 import { EmailService } from '../../common/email/email.service';
 
 @Injectable()
 export class AdminService {
+  /**
+   * Usa a conexão privilegiada de propósito: o painel do super admin consulta
+   * todas as concessionárias por natureza, e `withTenant` não faria sentido
+   * aqui. A travessia fica declarada no tipo, não escondida num `this.prisma`
+   * igual ao de todo mundo.
+   */
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: PrivilegedPrismaService,
     private readonly jwt:    JwtService,
     private readonly email:  EmailService,
   ) {}

@@ -37,7 +37,8 @@ export class UsersService {
   }
 
   me(userId: string): Promise<unknown> {
-    return this.prisma.user.findUniqueOrThrow({
+    return this.prisma.withUser(userId, (tx) =>
+      tx.user.findUniqueOrThrow({
       where: { id: userId },
       select: {
         id: true,
@@ -58,7 +59,8 @@ export class UsersService {
           },
         },
       },
-    });
+      }),
+    );
   }
 
   /** Atualiza dados do próprio perfil */
@@ -80,7 +82,9 @@ export class UsersService {
     if (data.avatarUrl !== undefined) userData.avatarUrl = data.avatarUrl || null;
 
     if (Object.keys(userData).length) {
-      await this.prisma.user.update({ where: { id: userId }, data: userData });
+      await this.prisma.withUser(userId, (tx) =>
+        tx.user.update({ where: { id: userId }, data: userData }),
+      );
     }
 
     // upsert no CustomerProfile (cidade/estado/CPF/CEP)
@@ -95,11 +99,13 @@ export class UsersService {
         ...(data.state !== undefined          ? { state: data.state || null } : {}),
         ...(data.postalCode !== undefined     ? { postalCode: data.postalCode || null } : {}),
       };
-      await this.prisma.customerProfile.upsert({
-        where: { userId },
-        update: profile,
-        create: { userId, ...profile },
-      });
+      await this.prisma.withUser(userId, (tx) =>
+        tx.customerProfile.upsert({
+          where: { userId },
+          update: profile,
+          create: { userId, ...profile },
+        }),
+      );
     }
 
     return this.me(userId);
@@ -109,12 +115,14 @@ export class UsersService {
   async changeRole(tenantId: string, memberId: string, role: string): Promise<unknown> {
     const allowed = ['tenant_admin', 'manager', 'salesperson'];
     if (!allowed.includes(role)) throw new BadRequestException('Função inválida.');
-    const member = await this.prisma.user.findFirst({ where: { id: memberId, tenantId } });
-    if (!member) throw new BadRequestException('Membro não encontrado.');
-    return this.prisma.user.update({
-      where: { id: memberId },
-      data: { role: role as never },
-      select: { id: true, role: true, fullName: true },
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const member = await tx.user.findFirst({ where: { id: memberId, tenantId } });
+      if (!member) throw new BadRequestException('Membro não encontrado.');
+      return tx.user.update({
+        where: { id: memberId },
+        data: { role: role as never },
+        select: { id: true, role: true, fullName: true },
+      });
     });
   }
 
@@ -128,12 +136,14 @@ export class UsersService {
     if (memberId === actorId) {
       throw new BadRequestException('Você não pode desativar a própria conta.');
     }
-    const member = await this.prisma.user.findFirst({ where: { id: memberId, tenantId } });
-    if (!member) throw new BadRequestException('Membro não encontrado.');
-    return this.prisma.user.update({
-      where: { id: memberId },
-      data: { status: status as never },
-      select: { id: true, status: true, fullName: true },
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const member = await tx.user.findFirst({ where: { id: memberId, tenantId } });
+      if (!member) throw new BadRequestException('Membro não encontrado.');
+      return tx.user.update({
+        where: { id: memberId },
+        data: { status: status as never },
+        select: { id: true, status: true, fullName: true },
+      });
     });
   }
 
@@ -143,10 +153,12 @@ export class UsersService {
     currentPassword: string,
     newPassword: string,
   ): Promise<{ ok: true }> {
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: { passwordHash: true },
-    });
+    const user = await this.prisma.withUser(userId, (tx) =>
+      tx.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { passwordHash: true },
+      }),
+    );
 
     if (!user.passwordHash) {
       throw new BadRequestException(
@@ -160,7 +172,9 @@ export class UsersService {
     }
 
     const hash = await bcrypt.hash(newPassword, 10);
-    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash: hash } });
+    await this.prisma.withUser(userId, (tx) =>
+      tx.user.update({ where: { id: userId }, data: { passwordHash: hash } }),
+    );
     return { ok: true };
   }
 }

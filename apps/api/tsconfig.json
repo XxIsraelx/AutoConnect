@@ -11,5 +11,7 @@
     "declaration": true,
     "declarationMap": false
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "//": "Os testes ficam fora do build: o nest build usa este arquivo e emitiria os .spec em dist/. Quem os typecheca é o tsconfig.spec.json.",
+  "exclude": ["src/**/*.spec.ts"]
 }

@@ -8,7 +8,6 @@
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
     "deploy": "prisma migrate deploy",
-    "push": "prisma db push",
     "studio": "prisma studio",
     "format": "prisma format",
     "typecheck": "tsc --noEmit",

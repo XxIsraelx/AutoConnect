@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@autoconnect/db';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { EmailService } from '../../common/email/email.service';
@@ -17,15 +17,19 @@ export class LeadsService {
     tenantId: string,
     input: CreateLeadInput,
   ): Promise<unknown> {
+    const { lead, tenant, customer, vehicleInfo } = await this.prisma.withTenantAndUser(
+      tenantId,
+      userId,
+      async (tx) => {
     // Busca dados do cliente
-    const customer = await this.prisma.user.findUnique({
+    const customer = await tx.user.findUnique({
       where: { id: userId },
       select: { fullName: true, email: true, phone: true },
     });
     if (!customer) throw new NotFoundException('Usuário não encontrado');
 
     // Busca dados da concessionária (para o e-mail)
-    const tenant = await this.prisma.tenant.findUnique({
+    const tenant = await tx.tenant.findUnique({
       where: { id: tenantId },
       select: { tradeName: true, primaryPhone: true, branches: {
         where: { isActive: true },
@@ -39,7 +43,7 @@ export class LeadsService {
     // Info do veículo (se fornecido)
     let vehicleInfo = 'veículo';
     if (input.vehicleId) {
-      const vehicle = await this.prisma.vehicle.findUnique({
+      const vehicle = await tx.vehicle.findUnique({
         where: { id: input.vehicleId },
         select: {
           versionName: true,
@@ -53,7 +57,7 @@ export class LeadsService {
       }
     }
 
-    const lead = await this.prisma.lead.create({
+    const lead = await tx.lead.create({
       data: {
         tenantId,
         customerUserId: userId,
@@ -67,6 +71,10 @@ export class LeadsService {
         status: 'new',
       },
     });
+
+        return { lead, tenant, customer, vehicleInfo };
+      },
+    );
 
     // Dispara e-mail de notificação para a concessionária (não bloqueante)
     const dealerEmail = tenant.branches[0]?.email;
@@ -102,8 +110,9 @@ export class LeadsService {
       ...(vehicleId ? { vehicleId } : {}),
     };
 
-    const [items, total] = await this.prisma.$transaction([
-      this.prisma.lead.findMany({
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const [items, total] = await Promise.all([
+        tx.lead.findMany({
         where,
         skip,
         take: perPage,
@@ -125,10 +134,11 @@ export class LeadsService {
           },
         },
       }),
-      this.prisma.lead.count({ where }),
-    ]);
+        tx.lead.count({ where }),
+      ]);
 
-    return { items, total, page, perPage };
+      return { items, total, page, perPage };
+    });
   }
 
   /** Atualiza status de um lead (dealer/admin) */
@@ -137,22 +147,26 @@ export class LeadsService {
     leadId: string,
     input: UpdateLeadStatusInput,
   ): Promise<unknown> {
-    const lead = await this.prisma.lead.findFirst({ where: { id: leadId, tenantId } });
-    if (!lead) throw new NotFoundException('Lead não encontrado');
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const lead = await tx.lead.findFirst({ where: { id: leadId, tenantId } });
+      if (!lead) throw new NotFoundException('Lead não encontrado');
 
-    return this.prisma.lead.update({
-      where: { id: leadId },
-      data: { status: input.status },
+      return tx.lead.update({
+        where: { id: leadId },
+        data: { status: input.status },
+      });
     });
   }
 
   /** Conta leads por status para o dashboard (dealer/admin) */
   async getStats(tenantId: string): Promise<unknown> {
-    const groups = await this.prisma.lead.groupBy({
-      by: ['status'],
-      where: { tenantId },
-      _count: { _all: true },
-    });
+    const groups = await this.prisma.withTenant(tenantId, (tx) =>
+      tx.lead.groupBy({
+        by: ['status'],
+        where: { tenantId },
+        _count: { _all: true },
+      }),
+    );
 
     const stats: Record<string, number> = {};
     for (const g of groups) {
@@ -163,46 +177,51 @@ export class LeadsService {
 
   /** Deleta / arquiva um lead (dealer/admin) */
   async remove(tenantId: string, leadId: string): Promise<{ deleted: boolean }> {
-    const lead = await this.prisma.lead.findFirst({ where: { id: leadId, tenantId } });
-    if (!lead) throw new NotFoundException('Lead não encontrado');
-    await this.prisma.lead.delete({ where: { id: leadId } });
+    await this.prisma.withTenant(tenantId, async (tx) => {
+      const lead = await tx.lead.findFirst({ where: { id: leadId, tenantId } });
+      if (!lead) throw new NotFoundException('Lead não encontrado');
+      await tx.lead.delete({ where: { id: leadId } });
+    });
     return { deleted: true };
   }
 
   /** Atribui lead a um vendedor */
   async assign(tenantId: string, leadId: string, salesPersonId: string | null): Promise<unknown> {
-    const lead = await this.prisma.lead.findFirst({ where: { id: leadId, tenantId } });
-    if (!lead) throw new NotFoundException('Lead não encontrado');
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const lead = await tx.lead.findFirst({ where: { id: leadId, tenantId } });
+      if (!lead) throw new NotFoundException('Lead não encontrado');
 
-    if (salesPersonId) {
-      const sp = await this.prisma.user.findFirst({
-        where: { id: salesPersonId, tenantId, status: 'active' },
+      if (salesPersonId) {
+        const sp = await tx.user.findFirst({
+          where: { id: salesPersonId, tenantId, status: 'active' },
+        });
+        if (!sp) throw new NotFoundException('Vendedor não encontrado');
+      }
+
+      const updated = await tx.lead.update({
+        where: { id: leadId },
+        data: { assignedTo: salesPersonId },
+        include: { assignee: { select: { id: true, fullName: true, email: true } } },
       });
-      if (!sp) throw new NotFoundException('Vendedor não encontrado');
-    }
 
-    const updated = await this.prisma.lead.update({
-      where: { id: leadId },
-      data: { assignedTo: salesPersonId },
-      include: { assignee: { select: { id: true, fullName: true, email: true } } },
+      await tx.leadInteraction.create({
+        data: {
+          leadId,
+          tenantId,
+          kind: 'assignment',
+          content: salesPersonId ? `Lead atribuído` : 'Atribuição removida',
+          payload: { salesPersonId } as never,
+        },
+      });
+
+      return updated;
     });
-
-    await this.prisma.leadInteraction.create({
-      data: {
-        leadId,
-        tenantId,
-        kind: 'assignment',
-        content: salesPersonId ? `Lead atribuído` : 'Atribuição removida',
-        payload: { salesPersonId } as never,
-      },
-    });
-
-    return updated;
   }
 
   /** Histórico completo de um lead (timeline) */
   async getHistory(tenantId: string, leadId: string): Promise<unknown> {
-    const lead = await this.prisma.lead.findFirst({
+    const lead = await this.prisma.withTenant(tenantId, (tx) =>
+      tx.lead.findFirst({
       where: { id: leadId, tenantId },
       include: {
         vehicle: {
@@ -224,7 +243,8 @@ export class LeadsService {
           select: { id: true, scheduledStart: true, scheduledEnd: true, status: true, type: true, notes: true },
         },
       },
-    });
+      }),
+    );
     if (!lead) throw new NotFoundException('Lead não encontrado');
     return lead;
   }
@@ -237,22 +257,24 @@ export class LeadsService {
     kind: string,
     content: string,
   ): Promise<unknown> {
-    const lead = await this.prisma.lead.findFirst({ where: { id: leadId, tenantId } });
-    if (!lead) throw new NotFoundException('Lead não encontrado');
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const lead = await tx.lead.findFirst({ where: { id: leadId, tenantId } });
+      if (!lead) throw new NotFoundException('Lead não encontrado');
 
-    const interaction = await this.prisma.leadInteraction.create({
-      data: {
-        leadId, tenantId, actorUserId, kind, content,
-      },
+      const interaction = await tx.leadInteraction.create({
+        data: {
+          leadId, tenantId, actorUserId, kind, content,
+        },
+      });
+
+      // Atualiza lastActivityAt
+      await tx.lead.update({
+        where: { id: leadId },
+        data: { lastActivityAt: new Date() },
+      });
+
+      return interaction;
     });
-
-    // Atualiza lastActivityAt
-    await this.prisma.lead.update({
-      where: { id: leadId },
-      data: { lastActivityAt: new Date() },
-    });
-
-    return interaction;
   }
 
   /**
@@ -265,7 +287,8 @@ export class LeadsService {
     actorUserId: string,
     input: { value: number; note?: string; status?: 'offered' | 'rejected' },
   ): Promise<unknown> {
-    const lead = await this.prisma.lead.findFirst({
+    const { lead, updated, offered } = await this.prisma.withTenant(tenantId, async (tx) => {
+    const lead = await tx.lead.findFirst({
       where: { id: leadId, tenantId },
       include: {
         tenant:  { select: { tradeName: true } },
@@ -294,7 +317,7 @@ export class LeadsService {
     };
     const newMeta = { ...meta, tradeIn: { ...tradeIn, appraisal } };
 
-    const updated = await this.prisma.lead.update({
+    const updated = await tx.lead.update({
       where: { id: leadId },
       data: {
         metadata: newMeta as Prisma.InputJsonValue,
@@ -302,7 +325,7 @@ export class LeadsService {
       },
     });
 
-    await this.prisma.leadInteraction.create({
+    await tx.leadInteraction.create({
       data: {
         leadId, tenantId, actorUserId,
         kind: 'trade_in_appraisal',
@@ -311,6 +334,9 @@ export class LeadsService {
           : `Veículo avaliado em R$ ${input.value.toLocaleString('pt-BR')}`,
         payload: { value: input.value, status: appraisal.status } as never,
       },
+    });
+
+      return { lead, updated, offered };
     });
 
     // Avisa o cliente (e-mail de contato do lead)
@@ -347,7 +373,8 @@ export class LeadsService {
       } : {}),
     };
 
-    const leads = await this.prisma.lead.findMany({
+    const leads = await this.prisma.withTenant(tenantId, (tx) =>
+      tx.lead.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: {
@@ -356,7 +383,8 @@ export class LeadsService {
         assignee:  { select: { fullName: true } },
       },
       take: 5000,
-    });
+      }),
+    );
 
     const header = ['ID', 'Nome', 'E-mail', 'Telefone', 'Veículo', 'Preço', 'Fonte', 'Status', 'Vendedor', 'Mensagem', 'Criado em'];
     const rows = leads.map((l) => [

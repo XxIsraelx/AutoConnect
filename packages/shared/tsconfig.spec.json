@@ -1,0 +1,9 @@
+{
+  "//": "Inclui os *.spec.ts, que o tsconfig de build precisa ignorar para não emiti-los em dist/.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node", "jest"]
+  },
+  "include": ["src"]
+}

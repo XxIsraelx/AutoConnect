@@ -19,7 +19,17 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "outputs": ["coverage/**"]
+      "outputs": ["coverage/**"],
+      "env": ["DATABASE_URL", "DIRECT_URL", "JWT_SECRET"],
+      // Sem cache: os testes de integração dependem do estado de um Postgres
+      // externo, que o turbo não enxerga. Com cache ele devolveria verde com
+      // o banco fora do ar.
+      "cache": false
+    },
+    "test:e2e": {
+      "dependsOn": ["^build"],
+      "env": ["DATABASE_URL", "DIRECT_URL", "JWT_SECRET"],
+      "cache": false
     },
     "clean": {
       "cache": false

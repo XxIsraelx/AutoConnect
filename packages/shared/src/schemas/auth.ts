@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+/**
+ * Papéis que uma concessionária pode convidar. É um subconjunto deliberado de
+ * `UserRole`: não se convida um `super_admin` nem um `customer` por aqui.
+ */
+export const INVITABLE_ROLES = ['tenant_admin', 'manager', 'salesperson'] as const;
+
 // ─── Validadores ──────────────────────────────────────────────────────────────
 
 function validCNPJ(cnpj: string): boolean {
@@ -97,6 +103,6 @@ export type SignupCustomerInput = z.infer<typeof signupCustomerSchema>;
 
 export const inviteUserSchema = z.object({
   email: z.string().email(),
-  role:  z.enum(['tenant_admin', 'manager', 'salesperson']),
+  role:  z.enum(INVITABLE_ROLES),
 });
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;

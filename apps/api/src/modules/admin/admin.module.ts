@@ -4,10 +4,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AdminService } from './admin.service';
 import { AdminController } from './admin.controller';
 import { EmailModule } from '../../common/email/email.module';
+import { PrivilegedPrismaModule } from '../../common/prisma/privileged-prisma.module';
 
 @Module({
   imports: [
     EmailModule,
+    PrivilegedPrismaModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

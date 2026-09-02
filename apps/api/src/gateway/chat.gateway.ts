@@ -10,7 +10,7 @@ import {
 import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
-import { PrismaService } from '../common/prisma/prisma.service';
+import { PrismaService, type ScopedClient } from '../common/prisma/prisma.service';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -54,6 +54,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(`socket disconnected: ${client.id}`);
   }
 
+
+  /**
+   * O socket é de um vendedor (tem tenantId) ou de um cliente (não tem). Cada
+   * um entra pelo seu contexto de isolamento — as policies `tenant_isolation` e
+   * `acesso_cliente` de conversations/messages leem variáveis diferentes.
+   */
+  private noContexto<T>(
+    client: AuthenticatedSocket,
+    fn: (tx: ScopedClient) => Promise<T>,
+  ): Promise<T> {
+    return client.tenantId
+      ? this.prisma.withTenant(client.tenantId, fn)
+      : this.prisma.withUser(client.userId!, fn);
+  }
+
   @SubscribeMessage('conversation:join')
   async onJoin(
     @ConnectedSocket() client: AuthenticatedSocket,
@@ -61,16 +76,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     if (!client.userId) return { ok: false };
 
-    const conv = await this.prisma.conversation.findFirst({
-      where: {
-        id: data.conversationId,
-        OR: [
-          { customerUserId: client.userId },
-          { salespersonId:  client.userId },
-          ...(client.tenantId ? [{ tenantId: client.tenantId }] : []),
-        ],
-      },
-    });
+    const conv = await this.noContexto(client, (tx) =>
+      tx.conversation.findFirst({
+        where: {
+          id: data.conversationId,
+          OR: [
+            { customerUserId: client.userId },
+            { salespersonId:  client.userId },
+            ...(client.tenantId ? [{ tenantId: client.tenantId }] : []),
+          ],
+        },
+      }),
+    );
     if (!conv) return { ok: false, error: 'Sem acesso' };
 
     client.join(`conversation:${data.conversationId}`);
@@ -89,16 +106,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     if (!client.userId) return { ok: false };
 
-    const conv = await this.prisma.conversation.findFirst({
-      where: {
-        id: data.conversationId,
-        OR: [
-          { customerUserId: client.userId },
-          { salespersonId:  client.userId },
-          ...(client.tenantId ? [{ tenantId: client.tenantId }] : []),
-        ],
-      },
-    });
+    const conv = await this.noContexto(client, (tx) =>
+      tx.conversation.findFirst({
+        where: {
+          id: data.conversationId,
+          OR: [
+            { customerUserId: client.userId },
+            { salespersonId:  client.userId },
+            ...(client.tenantId ? [{ tenantId: client.tenantId }] : []),
+          ],
+        },
+      }),
+    );
     if (!conv) return { ok: false, error: 'Sem acesso' };
 
     // Propostas só podem ser enviadas pela equipe da concessionária
@@ -106,7 +125,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return { ok: false, error: 'Apenas a concessionária envia propostas' };
     }
 
-    const msg = await this.prisma.message.create({
+    const msg = await this.noContexto(client, (tx) => tx.message.create({
       data: {
         conversationId: data.conversationId,
         tenantId:       conv.tenantId,
@@ -118,12 +137,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       include: {
         sender: { select: { id: true, fullName: true, avatarUrl: true } },
       },
-    });
+    }));
 
-    await this.prisma.conversation.update({
-      where: { id: data.conversationId },
-      data:  { lastMessageAt: new Date() },
-    });
+    await this.noContexto(client, (tx) =>
+      tx.conversation.update({
+        where: { id: data.conversationId },
+        data:  { lastMessageAt: new Date() },
+      }),
+    );
 
     this.server.to(`conversation:${data.conversationId}`).emit('conversation:message', msg);
     return { ok: true, messageId: msg.id };
@@ -137,10 +158,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     if (!client.userId) return { ok: false };
 
-    const msg = await this.prisma.message.findFirst({
-      where: { id: data.messageId },
-      include: { conversation: { select: { id: true, customerUserId: true } } },
-    });
+    const msg = await this.noContexto(client, (tx) =>
+      tx.message.findFirst({
+        where: { id: data.messageId },
+        include: { conversation: { select: { id: true, customerUserId: true } } },
+      }),
+    );
     if (!msg || msg.conversation.customerUserId !== client.userId) {
       return { ok: false, error: 'Sem acesso' };
     }
@@ -150,7 +173,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (!proposal) return { ok: false, error: 'Mensagem não é uma proposta' };
     if (proposal.status !== 'pending') return { ok: false, error: 'Proposta já respondida' };
 
-    const updated = await this.prisma.message.update({
+    const updated = await this.noContexto(client, (tx) => tx.message.update({
       where: { id: msg.id },
       data: {
         metadata: {
@@ -163,7 +186,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         } as never,
       },
       include: { sender: { select: { id: true, fullName: true, avatarUrl: true } } },
-    });
+    }));
 
     this.server
       .to(`conversation:${msg.conversation.id}`)
@@ -188,10 +211,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: { conversationId: string },
   ) {
     if (!client.userId) return;
-    await this.prisma.message.updateMany({
-      where: { conversationId: data.conversationId, senderUserId: { not: client.userId }, readAt: null },
-      data:  { readAt: new Date() },
-    });
+    await this.noContexto(client, (tx) =>
+      tx.message.updateMany({
+        where: { conversationId: data.conversationId, senderUserId: { not: client.userId }, readAt: null },
+        data:  { readAt: new Date() },
+      }),
+    );
     client.to(`conversation:${data.conversationId}`).emit('conversation:read', { userId: client.userId });
     return { ok: true };
   }

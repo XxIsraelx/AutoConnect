@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
 import { EmailService } from '../../common/email/email.service';
 import { Prisma } from '@autoconnect/db';
 import type { CreateVehicleInput, UpdateVehicleInput, VehicleQuery } from '@autoconnect/shared';
@@ -11,6 +12,12 @@ export class VehiclesService {
 
   constructor(
     private readonly prisma: PrismaService,
+    /**
+     * Alerta de preço atravessa usuários: a loja baixa o preço e o sistema
+     * notifica todos os clientes que pediram aviso. Não existe um `app.user_id`
+     * único para essa varredura — é travessia declarada, não descuido.
+     */
+    private readonly privilegiado: PrivilegedPrismaService,
     private readonly email: EmailService,
   ) {}
 
@@ -211,7 +218,7 @@ export class VehiclesService {
   ): Promise<void> {
     const effective = vehicle.promoPrice != null ? Number(vehicle.promoPrice) : Number(vehicle.price);
 
-    const alerts = await this.prisma.priceAlert.findMany({
+    const alerts = await this.privilegiado.priceAlert.findMany({
       where: {
         vehicleId: vehicle.id,
         isActive: true,
@@ -235,7 +242,7 @@ export class VehiclesService {
           target: Number(alert.targetPrice),
           link,
         });
-        await this.prisma.priceAlert.update({
+        await this.privilegiado.priceAlert.update({
           where: { id: alert.id },
           data: { triggeredAt: new Date() },
         });
@@ -323,23 +330,24 @@ export class VehiclesService {
   ): Promise<unknown> {
     await this.findOne(tenantId, vehicleId);
 
+    return this.prisma.withTenant(tenantId, async (tx) => {
     // Se for capa, desmarca as anteriores
     if (data.isCover) {
-      await this.prisma.vehicleImage.updateMany({
+      await tx.vehicleImage.updateMany({
         where: { vehicleId, tenantId },
         data: { isCover: false },
       });
     }
 
     // Calcula próxima posição
-    const lastImg = await this.prisma.vehicleImage.findFirst({
+    const lastImg = await tx.vehicleImage.findFirst({
       where: { vehicleId, tenantId },
       orderBy: { position: 'desc' },
       select: { position: true },
     });
     const nextPosition = data.position ?? (lastImg ? lastImg.position + 1 : 0);
 
-    return this.prisma.vehicleImage.create({
+    return tx.vehicleImage.create({
       data: {
         vehicleId,
         tenantId,
@@ -349,30 +357,35 @@ export class VehiclesService {
         position: nextPosition,
       },
     });
+    });
   }
 
   async removeImage(tenantId: string, vehicleId: string, imageId: string): Promise<{ deleted: boolean }> {
-    const img = await this.prisma.vehicleImage.findFirst({
-      where: { id: imageId, vehicleId, tenantId },
+    await this.prisma.withTenant(tenantId, async (tx) => {
+      const img = await tx.vehicleImage.findFirst({
+        where: { id: imageId, vehicleId, tenantId },
+      });
+      if (!img) throw new NotFoundException('Imagem não encontrada');
+      await tx.vehicleImage.delete({ where: { id: imageId } });
     });
-    if (!img) throw new NotFoundException('Imagem não encontrada');
-    await this.prisma.vehicleImage.delete({ where: { id: imageId } });
     return { deleted: true };
   }
 
   async setCoverImage(tenantId: string, vehicleId: string, imageId: string): Promise<unknown> {
-    const img = await this.prisma.vehicleImage.findFirst({
-      where: { id: imageId, vehicleId, tenantId },
-    });
-    if (!img) throw new NotFoundException('Imagem não encontrada');
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const img = await tx.vehicleImage.findFirst({
+        where: { id: imageId, vehicleId, tenantId },
+      });
+      if (!img) throw new NotFoundException('Imagem não encontrada');
 
-    await this.prisma.vehicleImage.updateMany({
-      where: { vehicleId, tenantId },
-      data: { isCover: false },
-    });
-    return this.prisma.vehicleImage.update({
-      where: { id: imageId },
-      data: { isCover: true },
+      await tx.vehicleImage.updateMany({
+        where: { vehicleId, tenantId },
+        data: { isCover: false },
+      });
+      return tx.vehicleImage.update({
+        where: { id: imageId },
+        data: { isCover: true },
+      });
     });
   }
 }

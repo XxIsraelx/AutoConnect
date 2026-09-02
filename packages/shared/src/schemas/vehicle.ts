@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+/** Espelha `VehicleCondition` do Prisma — a paridade é verificada em vehicle.spec.ts. */
+export const VEHICLE_CONDITIONS = ['new', 'used', 'semi_new', 'demo'] as const;
+
 export const createVehicleSchema = z.object({
   branchId: z.string().uuid().optional(),
   brandId: z.string().uuid(),
@@ -19,7 +22,7 @@ export const createVehicleSchema = z.object({
   doors: z.number().int().min(2).max(6).optional(),
   vin: z.string().optional(),
   licensePlate: z.string().optional(),
-  condition: z.enum(['new', 'used', 'semi_new', 'demo']).default('used'),
+  condition: z.enum(VEHICLE_CONDITIONS).default('used'),
   price: z.number().positive(),
   promoPrice: z.number().positive().optional(),
   description: z.string().optional(),
@@ -41,7 +44,7 @@ export const vehicleQuerySchema = z.object({
   minPrice: z.coerce.number().optional(),
   maxPrice: z.coerce.number().optional(),
   minYear: z.coerce.number().optional(),
-  condition: z.enum(['new', 'used', 'semi_new', 'demo']).optional(),
+  condition: z.enum(VEHICLE_CONDITIONS).optional(),
   status: z
     .enum(['available', 'reserved', 'sold', 'in_maintenance', 'archived'])
     .default('available'),

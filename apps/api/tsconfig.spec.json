@@ -1,0 +1,12 @@
+{
+  "//": "Typecheck e lint dos testes. O tsconfig.json de build tem rootDir=src e não enxerga test/, então sem este arquivo os testes não seriam verificados por tipo e o eslint recusaria os arquivos por estarem fora do projeto.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "types": ["node", "jest"]
+  },
+  "include": ["src/**/*", "test/**/*"],
+  "//exclude": "Zera o exclude herdado do tsconfig.json, que tira os .spec do build — aqui eles são justamente o que precisa ser verificado.",
+  "exclude": []
+}

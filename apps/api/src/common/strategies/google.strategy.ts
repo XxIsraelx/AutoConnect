@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, Profile } from 'passport-google-oauth20';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrivilegedPrismaService } from '../prisma/privileged-prisma.service';
 
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
@@ -10,7 +10,8 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
 
   constructor(
     config: ConfigService,
-    private readonly prisma: PrismaService,
+    /** Privilegiada: o OAuth identifica por e-mail, também antes de existir tenant. */
+    private readonly prisma: PrivilegedPrismaService,
   ) {
     const clientID = config.get<string>('GOOGLE_CLIENT_ID');
     const clientSecret = config.get<string>('GOOGLE_CLIENT_SECRET');

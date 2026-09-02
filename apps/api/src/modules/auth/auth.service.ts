@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { PrismaService } from '../../common/prisma/prisma.service';
+import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
 import { EmailService } from '../../common/email/email.service';
 import { AdminService } from '../admin/admin.service';
 import type { LoginInput, SignupTenantInput, SignupCustomerInput } from '@autoconnect/shared';
@@ -17,7 +17,8 @@ export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    /** Privilegiada: o login procura o usuário por e-mail antes de saber a que concessionária ele pertence, e o cadastro cria o próprio tenant. */
+    private readonly prisma: PrivilegedPrismaService,
     private readonly jwt: JwtService,
     private readonly email: EmailService,
     private readonly adminSvc: AdminService,

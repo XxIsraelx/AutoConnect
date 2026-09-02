@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    name: typecheck · lint · test · drift
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # postgis e não postgres: a primeira migration cria a extensão e falha
+        # sem ela. citext, pg_trgm e pgcrypto vêm no contrib.
+        image: postgis/postgis:17-3.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: autoconnect_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/autoconnect_test
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/autoconnect_test
+      JWT_SECRET: segredo-de-ci-nao-usar-em-producao
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Client do Prisma
+        run: pnpm --filter @autoconnect/db exec prisma generate
+
+      # Banco vazio + migrate deploy: é o cenário do CI, do staging e de uma
+      # máquina nova. Se as migrations não descrevem o schema inteiro, é aqui
+      # que aparece.
+      - name: Aplicar migrations em banco limpo
+        run: pnpm --filter @autoconnect/db exec prisma migrate deploy
+
+      # O passo mais valioso do arquivo: falha quando o schema.prisma tem algo
+      # que nenhuma migration cria — exatamente o acidente do `db push`, que já
+      # custou 5 tabelas neste repositório. Deixa de depender de disciplina.
+      #
+      # Comparamos contra o banco recém-migrado (--from-url) em vez de
+      # --from-migrations: a segunda forma acusa falsamente as quatro extensões
+      # (citext, pg_trgm, pgcrypto, postgis) como ausentes, mesmo estando
+      # presentes no shadow após o replay. Um portão vermelho desde o primeiro
+      # dia é um portão que todo mundo aprende a ignorar. Esta forma também
+      # verifica mais: o resultado real de aplicar as migrations, não a leitura
+      # estática delas.
+      - name: Drift entre schema.prisma e migrations
+        run: |
+          pnpm --filter @autoconnect/db exec prisma migrate diff \
+            --from-url "$DATABASE_URL" \
+            --to-schema-datamodel ./prisma/schema.prisma \
+            --exit-code
+
+      - name: typecheck · lint · test
+        run: pnpm exec turbo run typecheck lint test
+
+      # O portão acima roda como dono das tabelas, que ignora RLS — é o modo em
+      # que a aplicação ainda opera. Este passo roda a mesma suíte como
+      # `autoconnect_app`, que é o modo em que ela vai operar depois da virada.
+      #
+      # Sem ele, uma consulta nova sem contexto passaria despercebida e só
+      # falharia em produção, no dia da troca. Aqui ela falha no PR.
+      - name: Senha do papel da aplicação (só neste banco efêmero)
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d autoconnect_test \
+            -c "ALTER ROLE autoconnect_app PASSWORD 'ci'"
+
+      - name: Integração com o RLS aplicado de verdade
+        env:
+          # A aplicação conecta pelo papel sem privilégio…
+          DATABASE_URL: postgresql://autoconnect_app:ci@localhost:5432/autoconnect_test
+          # …e só a conexão privilegiada segue como dona das tabelas.
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/autoconnect_test
+        run: pnpm --filter @autoconnect/api run test:e2e

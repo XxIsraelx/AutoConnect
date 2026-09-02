@@ -24,10 +24,10 @@ export class LeadsController {
     @Req() req: AuthRequest,
     @Body() body: unknown,
   ): Promise<unknown> {
+    // O tenantId diz para qual loja é o lead e agora vem do schema, validado
+    // como uuid — antes era lido do corpo cru com um cast.
     const parsed = createLeadSchema.parse(body);
-    // tenantId vem do body — o cliente envia para qual loja quer o lead
-    const tenantId = (body as Record<string, unknown>)['tenantId'] as string;
-    return this.leads.create(req.user.id, tenantId, parsed);
+    return this.leads.create(req.user.id, parsed.tenantId, parsed);
   }
 
   /**

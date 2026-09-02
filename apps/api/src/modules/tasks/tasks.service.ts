@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { PrismaService } from '../../common/prisma/prisma.service';
+import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
 import { EmailService } from '../../common/email/email.service';
 
 const TYPE_LABELS: Record<string, string> = {
@@ -35,7 +35,8 @@ export class TasksService {
   private readonly COLD_DAYS: Record<string, number> = { new: 3, contacted: 7 };
 
   constructor(
-    private readonly prisma: PrismaService,
+    /** Privilegiada: o cron percorre todas as concessionárias — não há um tenant a que se restringir. */
+    private readonly prisma: PrivilegedPrismaService,
     private readonly email: EmailService,
   ) {}
 

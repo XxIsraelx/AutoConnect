@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@autoconnect/db';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { EmailService } from '../../common/email/email.service';
@@ -102,7 +102,8 @@ export class CatalogService {
 
   /** Detalhe completo de um veículo público */
   findPublicVehicle(vehicleId: string): Promise<unknown> {
-    return this.prisma.vehicle.findFirst({
+    return this.prisma.withPublic((tx) =>
+      tx.vehicle.findFirst({
       where: { id: vehicleId, status: 'available' },
       select: {
         id: true,
@@ -127,7 +128,8 @@ export class CatalogService {
           select: { id: true, url: true, altText: true, isCover: true, position: true },
         },
       },
-    });
+      }),
+    );
   }
 
   /** Catálogo público paginado — usado na página /catalogo/[id] e na busca global */
@@ -215,10 +217,12 @@ export class CatalogService {
       },
     };
 
-    const [items, total] = await this.prisma.$transaction([
-      this.prisma.vehicle.findMany({ where, take: limit, skip, orderBy, select }),
-      this.prisma.vehicle.count({ where }),
-    ]);
+    const [items, total] = await this.prisma.withPublic((tx) =>
+      Promise.all([
+        tx.vehicle.findMany({ where, take: limit, skip, orderBy, select }),
+        tx.vehicle.count({ where }),
+      ]),
+    );
 
     return { items, total };
   }
@@ -257,17 +261,19 @@ export class CatalogService {
   }
 
   async listSavedSearches(userId: string): Promise<unknown> {
-    const searches = await this.prisma.savedSearch.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-    });
+    const searches = await this.prisma.withUser(userId, (tx) =>
+      tx.savedSearch.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
 
     return Promise.all(
       searches.map(async (s) => {
         const where = this.vehicleWhereFromFilters((s.filters ?? {}) as Record<string, unknown>);
-        const newCount = await this.prisma.vehicle.count({
-          where: { ...where, createdAt: { gt: s.lastViewedAt } },
-        });
+        const newCount = await this.prisma.withPublic((tx) =>
+          tx.vehicle.count({ where: { ...where, createdAt: { gt: s.lastViewedAt } } }),
+        );
         return {
           id: s.id,
           name: s.name,
@@ -281,39 +287,44 @@ export class CatalogService {
   }
 
   async createSavedSearch(userId: string, name: string, filters: Record<string, unknown>): Promise<unknown> {
-    return this.prisma.savedSearch.create({
-      data: { userId, name: name.trim() || 'Busca sem nome', filters: filters as never },
-    });
+    return this.prisma.withUser(userId, (tx) =>
+      tx.savedSearch.create({
+        data: { userId, name: name.trim() || 'Busca sem nome', filters: filters as never },
+      }),
+    );
   }
 
   async deleteSavedSearch(userId: string, id: string): Promise<{ deleted: boolean }> {
-    const s = await this.prisma.savedSearch.findFirst({ where: { id, userId } });
-    if (!s) throw new NotFoundException('Busca não encontrada');
-    await this.prisma.savedSearch.delete({ where: { id } });
+    await this.prisma.withUser(userId, async (tx) => {
+      const s = await tx.savedSearch.findFirst({ where: { id, userId } });
+      if (!s) throw new NotFoundException('Busca não encontrada');
+      await tx.savedSearch.delete({ where: { id } });
+    });
     return { deleted: true };
   }
 
   async markSavedSearchViewed(userId: string, id: string): Promise<unknown> {
-    const s = await this.prisma.savedSearch.findFirst({ where: { id, userId } });
-    if (!s) throw new NotFoundException('Busca não encontrada');
-    return this.prisma.savedSearch.update({ where: { id }, data: { lastViewedAt: new Date() } });
+    return this.prisma.withUser(userId, async (tx) => {
+      const s = await tx.savedSearch.findFirst({ where: { id, userId } });
+      if (!s) throw new NotFoundException('Busca não encontrada');
+      return tx.savedSearch.update({ where: { id }, data: { lastViewedAt: new Date() } });
+    });
   }
 
   /* ── Favoritos ───────────────────────────────────────────── */
 
   async getFavoriteIds(userId: string): Promise<unknown> {
-    const favs = await this.prisma.customerFavorite.findMany({
-      where: { userId },
-      select: { vehicleId: true },
-    });
+    const favs = await this.prisma.withUser(userId, (tx) =>
+      tx.customerFavorite.findMany({ where: { userId }, select: { vehicleId: true } }),
+    );
     return favs.map((f) => f.vehicleId);
   }
 
   async addFavorite(userId: string, vehicleId: string): Promise<unknown> {
     try {
-      return await this.prisma.customerFavorite.create({
-        data: { userId, vehicleId },
-      });
+      return await this.prisma.withUser(userId, (tx) =>
+        tx.customerFavorite.create({ data: { userId, vehicleId } }),
+      );
     } catch {
       // Ignora duplicate (já favoritado)
       return { userId, vehicleId };
@@ -321,15 +332,16 @@ export class CatalogService {
   }
 
   async removeFavorite(userId: string, vehicleId: string): Promise<{ deleted: boolean }> {
-    await this.prisma.customerFavorite.deleteMany({
-      where: { userId, vehicleId },
-    });
+    await this.prisma.withUser(userId, (tx) =>
+      tx.customerFavorite.deleteMany({ where: { userId, vehicleId } }),
+    );
     return { deleted: true };
   }
 
   /** Favoritos completos com dados do veículo (para /perfil) */
   async getFavorites(userId: string): Promise<unknown> {
-    return this.prisma.customerFavorite.findMany({
+    return this.prisma.withUser(userId, (tx) =>
+      tx.customerFavorite.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
       include: {
@@ -343,31 +355,37 @@ export class CatalogService {
           },
         },
       },
-    });
+      }),
+    );
   }
 
   /* ── Vistos recentemente ─────────────────────────────────── */
 
   /** Registra uma visualização de veículo por um usuário */
   async recordView(userId: string, vehicleId: string): Promise<{ ok: boolean }> {
-    const v = await this.prisma.vehicle.findUnique({
-      where: { id: vehicleId }, select: { tenantId: true },
-    });
+    const v = await this.prisma.withPublic((tx) =>
+      tx.vehicle.findUnique({ where: { id: vehicleId }, select: { tenantId: true } }),
+    );
     if (!v) return { ok: false };
-    await this.prisma.vehicleView.create({
-      data: { vehicleId, tenantId: v.tenantId, userId, source: 'web' },
-    });
+
+    // A visita pertence à loja do veículo e ao usuário que visitou: precisa dos
+    // dois contextos para satisfazer `tenant_isolation` e `acesso_cliente`.
+    await this.prisma.withTenantAndUser(v.tenantId, userId, (tx) =>
+      tx.vehicleView.create({ data: { vehicleId, tenantId: v.tenantId, userId, source: 'web' } }),
+    );
     return { ok: true };
   }
 
   /** Lista os veículos vistos recentemente (distintos, mais recentes primeiro) */
   async recentlyViewed(userId: string): Promise<unknown> {
-    const views = await this.prisma.vehicleView.findMany({
-      where: { userId },
-      orderBy: { viewedAt: 'desc' },
-      take: 60,
-      select: { vehicleId: true },
-    });
+    const views = await this.prisma.withUser(userId, (tx) =>
+      tx.vehicleView.findMany({
+        where: { userId },
+        orderBy: { viewedAt: 'desc' },
+        take: 60,
+        select: { vehicleId: true },
+      }),
+    );
     const seen = new Set<string>();
     const ids: string[] = [];
     for (const v of views) {
@@ -376,7 +394,8 @@ export class CatalogService {
     }
     if (ids.length === 0) return [];
 
-    const vehicles = await this.prisma.vehicle.findMany({
+    const vehicles = await this.prisma.withPublic((tx) =>
+      tx.vehicle.findMany({
       where: { id: { in: ids }, status: 'available' },
       select: {
         id: true, versionName: true, yearModel: true, price: true, promoPrice: true,
@@ -385,7 +404,8 @@ export class CatalogService {
         model: { select: { name: true } },
         images: { where: { isCover: true }, take: 1, select: { url: true } },
       },
-    });
+      }),
+    );
     // preserva a ordem de visualização
     return ids.map((id) => vehicles.find((v) => v.id === id)).filter(Boolean);
   }
@@ -421,7 +441,8 @@ export class CatalogService {
   /* ── Alertas de preço ──────────────────────────────────── */
 
   async getPriceAlerts(userId: string): Promise<unknown> {
-    return this.prisma.priceAlert.findMany({
+    return this.prisma.withUser(userId, (tx) =>
+      tx.priceAlert.findMany({
       where: { userId, isActive: true },
       include: {
         vehicle: {
@@ -434,22 +455,29 @@ export class CatalogService {
         },
       },
       orderBy: { createdAt: 'desc' },
-    });
+      }),
+    );
   }
 
   async createPriceAlert(userId: string, vehicleId: string, targetPrice: number): Promise<unknown> {
-    const vehicle = await this.prisma.vehicle.findUnique({ where: { id: vehicleId } });
+    const vehicle = await this.prisma.withPublic((tx) =>
+      tx.vehicle.findUnique({ where: { id: vehicleId } }),
+    );
     if (!vehicle) throw new NotFoundException('Veículo não encontrado');
 
-    return this.prisma.priceAlert.upsert({
-      where: { userId_vehicleId: { userId, vehicleId } },
-      update: { targetPrice, isActive: true, triggeredAt: null },
-      create: { userId, vehicleId, targetPrice },
-    });
+    return this.prisma.withUser(userId, (tx) =>
+      tx.priceAlert.upsert({
+        where: { userId_vehicleId: { userId, vehicleId } },
+        update: { targetPrice, isActive: true, triggeredAt: null },
+        create: { userId, vehicleId, targetPrice },
+      }),
+    );
   }
 
   async removePriceAlert(userId: string, vehicleId: string): Promise<{ deleted: boolean }> {
-    await this.prisma.priceAlert.deleteMany({ where: { userId, vehicleId } });
+    await this.prisma.withUser(userId, (tx) =>
+      tx.priceAlert.deleteMany({ where: { userId, vehicleId } }),
+    );
     return { deleted: true };
   }
 
@@ -498,14 +526,16 @@ export class CatalogService {
     // Veículo desejado (opcional) — para contextualizar o abatimento
     let desiredVehicleInfo: string | null = null;
     if (input.desiredVehicleId) {
-      const v = await this.prisma.vehicle.findUnique({
-        where: { id: input.desiredVehicleId },
-        select: {
-          versionName: true, yearModel: true,
-          brand: { select: { name: true } },
-          model: { select: { name: true } },
-        },
-      });
+      const v = await this.prisma.withPublic((tx) =>
+        tx.vehicle.findUnique({
+          where: { id: input.desiredVehicleId },
+          select: {
+            versionName: true, yearModel: true,
+            brand: { select: { name: true } },
+            model: { select: { name: true } },
+          },
+        }),
+      );
       if (v) {
         desiredVehicleInfo = `${v.brand.name} ${v.model.name} ${v.versionName ?? ''} ${v.yearModel}`.replace(/\s+/g, ' ').trim();
       }
@@ -518,7 +548,8 @@ export class CatalogService {
       appraisal: { status: 'pending' as const },
     };
 
-    await this.prisma.lead.create({
+    await this.prisma.withTenant(input.tenantId, (tx) =>
+      tx.lead.create({
       data: {
         tenantId: input.tenantId,
         vehicleId: input.desiredVehicleId ?? null,
@@ -530,7 +561,8 @@ export class CatalogService {
         message: input.message ?? null,
         metadata: { tradeIn: tradeInMeta } as Prisma.InputJsonValue,
       },
-    });
+      }),
+    );
 
     const offered = `${input.vehicle.brandName} ${input.vehicle.modelName} ${input.vehicle.versionName ?? ''} ${input.vehicle.yearModel}`.replace(/\s+/g, ' ').trim();
     const dealerEmail = tenant.branches[0]?.email;

@@ -162,90 +162,92 @@ export class TenantsService {
 
   /** Stats para o dashboard */
   async getStats(tenantId: string): Promise<unknown> {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
 
-    const todayEnd = new Date(todayStart);
-    todayEnd.setDate(todayEnd.getDate() + 1);
-    const weekEnd = new Date(todayStart);
-    weekEnd.setDate(weekEnd.getDate() + 7);
+      const todayEnd = new Date(todayStart);
+      todayEnd.setDate(todayEnd.getDate() + 1);
+      const weekEnd = new Date(todayStart);
+      weekEnd.setDate(weekEnd.getDate() + 7);
 
-    const [
-      vehiclesCount, leadsToday, leadsNew,
-      appointmentsToday, appointmentsWeek, appointmentsPending,
-      openConversations,
-    ] = await Promise.all([
-      this.prisma.vehicle.count({
-        where: { tenantId, status: 'available' },
-      }),
-      this.prisma.lead.count({
-        where: { tenantId, createdAt: { gte: todayStart } },
-      }),
-      this.prisma.lead.count({
-        where: { tenantId, status: 'new' },
-      }),
-      this.prisma.appointment.count({
+      const [
+        vehiclesCount, leadsToday, leadsNew,
+        appointmentsToday, appointmentsWeek, appointmentsPending,
+        openConversations,
+      ] = await Promise.all([
+        tx.vehicle.count({
+          where: { tenantId, status: 'available' },
+        }),
+        tx.lead.count({
+          where: { tenantId, createdAt: { gte: todayStart } },
+        }),
+        tx.lead.count({
+          where: { tenantId, status: 'new' },
+        }),
+        tx.appointment.count({
+          where: {
+            tenantId,
+            status: { in: ['scheduled', 'confirmed'] },
+            scheduledStart: { gte: todayStart, lt: todayEnd },
+          },
+        }),
+        tx.appointment.count({
+          where: {
+            tenantId,
+            status: { in: ['scheduled', 'confirmed'] },
+            scheduledStart: { gte: todayStart, lt: weekEnd },
+          },
+        }),
+        tx.appointment.count({
+          where: { tenantId, status: 'scheduled', scheduledStart: { gte: todayStart } },
+        }),
+        tx.conversation.count({
+          where: { tenantId, status: 'open' },
+        }),
+      ]);
+
+      // Mensagens de clientes ainda não lidas pela equipe
+      const unreadMessages = await tx.message.count({
         where: {
           tenantId,
-          status: { in: ['scheduled', 'confirmed'] },
-          scheduledStart: { gte: todayStart, lt: todayEnd },
+          readAt: null,
+          sender: { role: 'customer' },
         },
-      }),
-      this.prisma.appointment.count({
-        where: {
-          tenantId,
-          status: { in: ['scheduled', 'confirmed'] },
-          scheduledStart: { gte: todayStart, lt: weekEnd },
-        },
-      }),
-      this.prisma.appointment.count({
-        where: { tenantId, status: 'scheduled', scheduledStart: { gte: todayStart } },
-      }),
-      this.prisma.conversation.count({
-        where: { tenantId, status: 'open' },
-      }),
-    ]);
+      });
 
-    // Mensagens de clientes ainda não lidas pela equipe
-    const unreadMessages = await this.prisma.message.count({
-      where: {
-        tenantId,
-        readAt: null,
-        sender: { role: 'customer' },
-      },
+      // Dados para o checklist de onboarding
+      const [teamCount, firstBranch, tenant] = await Promise.all([
+        tx.user.count({
+          where: { tenantId, role: { in: ['tenant_admin', 'manager', 'salesperson'] } },
+        }),
+        tx.dealershipBranch.findFirst({
+          where: { tenantId },
+          select: { businessHours: true },
+          orderBy: { isHeadquarters: 'desc' },
+        }),
+        tx.tenant.findUnique({
+          where: { id: tenantId },
+          select: { logoUrl: true, slug: true },
+        }),
+      ]);
+
+      const bh = firstBranch?.businessHours;
+      const hasHours = !!bh && typeof bh === 'object' && Object.keys(bh as object).length > 0;
+
+      return {
+        vehiclesCount, leadsToday, leadsNew,
+        appointmentsToday, appointmentsWeek, appointmentsPending,
+        openConversations, unreadMessages,
+        onboarding: {
+          hasVehicle: vehiclesCount > 0,
+          hasTeam:    teamCount > 1,
+          hasHours,
+          hasLogo:    !!tenant?.logoUrl,
+          slug:       tenant?.slug ?? null,
+        },
+      };
     });
-
-    // Dados para o checklist de onboarding
-    const [teamCount, firstBranch, tenant] = await Promise.all([
-      this.prisma.user.count({
-        where: { tenantId, role: { in: ['tenant_admin', 'manager', 'salesperson'] } },
-      }),
-      this.prisma.dealershipBranch.findFirst({
-        where: { tenantId },
-        select: { businessHours: true },
-        orderBy: { isHeadquarters: 'desc' },
-      }),
-      this.prisma.tenant.findUnique({
-        where: { id: tenantId },
-        select: { logoUrl: true, slug: true },
-      }),
-    ]);
-
-    const bh = firstBranch?.businessHours;
-    const hasHours = !!bh && typeof bh === 'object' && Object.keys(bh as object).length > 0;
-
-    return {
-      vehiclesCount, leadsToday, leadsNew,
-      appointmentsToday, appointmentsWeek, appointmentsPending,
-      openConversations, unreadMessages,
-      onboarding: {
-        hasVehicle: vehiclesCount > 0,
-        hasTeam:    teamCount > 1,
-        hasHours,
-        hasLogo:    !!tenant?.logoUrl,
-        slug:       tenant?.slug ?? null,
-      },
-    };
   }
 
   /** Atualiza dados do tenant */
@@ -260,210 +262,216 @@ export class TenantsService {
       acceptsTradeIn?: boolean;
     },
   ): Promise<unknown> {
-    return this.prisma.tenant.update({
-      where: { id: tenantId },
-      data,
-      include: { subscription: true, branches: true },
-    });
+    return this.prisma.withTenant(tenantId, (tx) =>
+      tx.tenant.update({
+        where: { id: tenantId },
+        data,
+        include: { subscription: true, branches: true },
+      }),
+    );
   }
 
   /** Relatórios — leads por período, taxa de conversão, top veículos, origens */
   async getReports(tenantId: string, days = 30): Promise<unknown> {
-    const from = new Date(Date.now() - days * 86_400_000);
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const from = new Date(Date.now() - days * 86_400_000);
 
-    const [
-      leadsPerDay,
-      byStatus,
-      bySource,
-      topVehicles,
-      conversionStats,
-    ] = await Promise.all([
-      // Leads agrupados por dia
-      this.prisma.$queryRaw<Array<{ day: string; count: bigint }>>`
-        SELECT date_trunc('day', created_at AT TIME ZONE 'UTC')::date::text AS day,
-               COUNT(*)::bigint AS count
-        FROM leads
-        WHERE tenant_id = ${tenantId}::uuid
-          AND created_at >= ${from}
-        GROUP BY 1
-        ORDER BY 1
-      `,
-      // Por status
-      this.prisma.lead.groupBy({
+      const [
+        leadsPerDay,
+        byStatus,
+        bySource,
+        topVehicles,
+        conversionStats,
+      ] = await Promise.all([
+        // Leads agrupados por dia
+        this.prisma.$queryRaw<Array<{ day: string; count: bigint }>>`
+          SELECT date_trunc('day', created_at AT TIME ZONE 'UTC')::date::text AS day,
+                 COUNT(*)::bigint AS count
+          FROM leads
+          WHERE tenant_id = ${tenantId}::uuid
+            AND created_at >= ${from}
+          GROUP BY 1
+          ORDER BY 1
+        `,
+        // Por status
+        tx.lead.groupBy({
+          by: ['status'],
+          where: { tenantId, createdAt: { gte: from } },
+          _count: { _all: true },
+        }),
+        // Por fonte
+        tx.lead.groupBy({
+          by: ['source'],
+          where: { tenantId, createdAt: { gte: from } },
+          _count: { _all: true },
+        }),
+        // Top 10 veículos mais vistos
+        tx.vehicleView.groupBy({
+          by: ['vehicleId'],
+          where: { tenantId, viewedAt: { gte: from } },
+          _count: { _all: true },
+          orderBy: { _count: { vehicleId: 'desc' } },
+          take: 10,
+        }),
+        // Total leads / ganhos / perdidos para conversão
+        tx.lead.aggregate({
+          where: { tenantId, createdAt: { gte: from } },
+          _count: { _all: true },
+        }),
+      ]);
+
+      // Agendamentos do período (para o funil e o breakdown por status)
+      const apptByStatus = await tx.appointment.groupBy({
         by: ['status'],
         where: { tenantId, createdAt: { gte: from } },
         _count: { _all: true },
-      }),
-      // Por fonte
-      this.prisma.lead.groupBy({
-        by: ['source'],
-        where: { tenantId, createdAt: { gte: from } },
-        _count: { _all: true },
-      }),
-      // Top 10 veículos mais vistos
-      this.prisma.vehicleView.groupBy({
-        by: ['vehicleId'],
-        where: { tenantId, viewedAt: { gte: from } },
-        _count: { _all: true },
-        orderBy: { _count: { vehicleId: 'desc' } },
-        take: 10,
-      }),
-      // Total leads / ganhos / perdidos para conversão
-      this.prisma.lead.aggregate({
-        where: { tenantId, createdAt: { gte: from } },
-        _count: { _all: true },
-      }),
-    ]);
+      });
+      const apptCount = (s: string) =>
+        apptByStatus.find((a) => a.status === s)?._count._all ?? 0;
+      const totalAppointments = apptByStatus.reduce((acc, a) => acc + a._count._all, 0);
 
-    // Agendamentos do período (para o funil e o breakdown por status)
-    const apptByStatus = await this.prisma.appointment.groupBy({
-      by: ['status'],
-      where: { tenantId, createdAt: { gte: from } },
-      _count: { _all: true },
+      // Enriquece top veículos com nome
+      const vehicleIds = topVehicles.map((v) => v.vehicleId);
+      const vehicles = vehicleIds.length
+        ? await tx.vehicle.findMany({
+            where: { id: { in: vehicleIds } },
+            select: {
+              id: true,
+              versionName: true,
+              yearModel: true,
+              brand: { select: { name: true } },
+              model: { select: { name: true } },
+              images: { where: { isCover: true }, take: 1, select: { url: true } },
+            },
+          })
+        : [];
+
+      const vehicleMap = Object.fromEntries(vehicles.map((v) => [v.id, v]));
+      const topVehiclesEnriched = topVehicles.map((v) => ({
+        vehicleId: v.vehicleId,
+        views: Number(v._count._all),
+        vehicle: vehicleMap[v.vehicleId],
+      }));
+
+      const wonCount  = byStatus.find((s) => s.status === 'won')?._count._all  ?? 0;
+      const lostCount = byStatus.find((s) => s.status === 'lost')?._count._all ?? 0;
+      const total     = conversionStats._count._all;
+
+      return {
+        period:  { days, from },
+        leadsPerDay: leadsPerDay.map((r) => ({ day: r.day, count: Number(r.count) })),
+        byStatus:    byStatus.map((s) => ({ status: s.status, count: s._count._all })),
+        bySource:    bySource.map((s) => ({ source: s.source, count: s._count._all })),
+        topVehicles: topVehiclesEnriched,
+        conversion:  {
+          total, won: wonCount, lost: lostCount,
+          rate: total > 0 ? Math.round((wonCount / total) * 100) : 0,
+        },
+        appointments: {
+          total:     totalAppointments,
+          byStatus:  apptByStatus.map((a) => ({ status: a.status, count: a._count._all })),
+          completed: apptCount('completed'),
+          noShow:    apptCount('no_show'),
+          showRate:  apptCount('completed') + apptCount('no_show') > 0
+            ? Math.round((apptCount('completed') / (apptCount('completed') + apptCount('no_show'))) * 100)
+            : null,
+        },
+        funnel: [
+          { stage: 'Leads',        count: total },
+          { stage: 'Agendamentos', count: totalAppointments },
+          { stage: 'Concluídos',   count: apptCount('completed') },
+          { stage: 'Vendas',       count: wonCount },
+        ],
+      };
     });
-    const apptCount = (s: string) =>
-      apptByStatus.find((a) => a.status === s)?._count._all ?? 0;
-    const totalAppointments = apptByStatus.reduce((acc, a) => acc + a._count._all, 0);
-
-    // Enriquece top veículos com nome
-    const vehicleIds = topVehicles.map((v) => v.vehicleId);
-    const vehicles = vehicleIds.length
-      ? await this.prisma.vehicle.findMany({
-          where: { id: { in: vehicleIds } },
-          select: {
-            id: true,
-            versionName: true,
-            yearModel: true,
-            brand: { select: { name: true } },
-            model: { select: { name: true } },
-            images: { where: { isCover: true }, take: 1, select: { url: true } },
-          },
-        })
-      : [];
-
-    const vehicleMap = Object.fromEntries(vehicles.map((v) => [v.id, v]));
-    const topVehiclesEnriched = topVehicles.map((v) => ({
-      vehicleId: v.vehicleId,
-      views: Number(v._count._all),
-      vehicle: vehicleMap[v.vehicleId],
-    }));
-
-    const wonCount  = byStatus.find((s) => s.status === 'won')?._count._all  ?? 0;
-    const lostCount = byStatus.find((s) => s.status === 'lost')?._count._all ?? 0;
-    const total     = conversionStats._count._all;
-
-    return {
-      period:  { days, from },
-      leadsPerDay: leadsPerDay.map((r) => ({ day: r.day, count: Number(r.count) })),
-      byStatus:    byStatus.map((s) => ({ status: s.status, count: s._count._all })),
-      bySource:    bySource.map((s) => ({ source: s.source, count: s._count._all })),
-      topVehicles: topVehiclesEnriched,
-      conversion:  {
-        total, won: wonCount, lost: lostCount,
-        rate: total > 0 ? Math.round((wonCount / total) * 100) : 0,
-      },
-      appointments: {
-        total:     totalAppointments,
-        byStatus:  apptByStatus.map((a) => ({ status: a.status, count: a._count._all })),
-        completed: apptCount('completed'),
-        noShow:    apptCount('no_show'),
-        showRate:  apptCount('completed') + apptCount('no_show') > 0
-          ? Math.round((apptCount('completed') / (apptCount('completed') + apptCount('no_show'))) * 100)
-          : null,
-      },
-      funnel: [
-        { stage: 'Leads',        count: total },
-        { stage: 'Agendamentos', count: totalAppointments },
-        { stage: 'Concluídos',   count: apptCount('completed') },
-        { stage: 'Vendas',       count: wonCount },
-      ],
-    };
   }
 
   /** Proximidade de usuários em relação à concessionária */
   async getUsersProximity(tenantId: string): Promise<unknown> {
-    const branch = await this.prisma.dealershipBranch.findFirst({
-      where: { tenantId },
-      select: { latitude: true, longitude: true, city: true, state: true },
-      orderBy: { isHeadquarters: 'desc' },
-    });
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const branch = await tx.dealershipBranch.findFirst({
+        where: { tenantId },
+        select: { latitude: true, longitude: true, city: true, state: true },
+        orderBy: { isHeadquarters: 'desc' },
+      });
 
-    type CustomerLike = {
-      id: string;
-      fullName: string;
-      customerProfile: { city: string | null; state: string | null } | null;
-    };
+      type CustomerLike = {
+        id: string;
+        fullName: string;
+        customerProfile: { city: string | null; state: string | null } | null;
+      };
 
-    // mapeia um cliente → ponto do galaxy map (com distância calculada)
-    const toGalaxy = (c: CustomerLike) => {
-      const profile = c.customerProfile;
-      let distance: number | null = null;
+      // mapeia um cliente → ponto do galaxy map (com distância calculada)
+      const toGalaxy = (c: CustomerLike) => {
+        const profile = c.customerProfile;
+        let distance: number | null = null;
 
-      if (
-        branch?.latitude &&
-        branch?.longitude &&
-        profile?.city &&
-        profile?.state
-      ) {
-        const coords = CITY_COORDS[`${profile.city}_${profile.state}`];
-        if (coords) {
-          distance = haversine(
-            branch.latitude,
-            branch.longitude,
-            coords[0],
-            coords[1],
-          );
+        if (
+          branch?.latitude &&
+          branch?.longitude &&
+          profile?.city &&
+          profile?.state
+        ) {
+          const coords = CITY_COORDS[`${profile.city}_${profile.state}`];
+          if (coords) {
+            distance = haversine(
+              branch.latitude,
+              branch.longitude,
+              coords[0],
+              coords[1],
+            );
+          }
         }
-      }
 
-      const nameParts = c.fullName.split(' ');
-      const initials = nameParts
-        .slice(0, 2)
-        .map((part: string) => part[0])
-        .join('')
-        .toUpperCase();
+        const nameParts = c.fullName.split(' ');
+        const initials = nameParts
+          .slice(0, 2)
+          .map((part: string) => part[0])
+          .join('')
+          .toUpperCase();
+
+        return {
+          id: c.id,
+          firstName: nameParts[0],
+          initials,
+          distance: distance !== null ? Math.round(distance) : null,
+        };
+      };
+
+      const customerSelect = {
+        id: true,
+        fullName: true,
+        customerProfile: { select: { city: true, state: true } },
+      } as const;
+
+      const [leads, registeredUsers] = await Promise.all([
+        // Clientes que demonstraram interesse (lead nesta concessionária)
+        tx.lead.findMany({
+          where: { tenantId, customerUserId: { not: null } },
+          select: { customer: { select: customerSelect } },
+          distinct: ['customerUserId'],
+        }),
+        // Todos os clientes cadastrados na plataforma
+        tx.user.findMany({
+          where: { role: 'customer' },
+          select: customerSelect,
+        }),
+      ]);
+
+      const interested = leads
+        .map((l) => l.customer)
+        .filter((c): c is NonNullable<typeof c> => c !== null)
+        .map(toGalaxy);
+
+      const registered = registeredUsers.map(toGalaxy);
 
       return {
-        id: c.id,
-        firstName: nameParts[0],
-        initials,
-        distance: distance !== null ? Math.round(distance) : null,
+        interested,
+        registered,
+        dealerCity: branch?.city ?? null,
+        dealerState: branch?.state ?? null,
       };
-    };
-
-    const customerSelect = {
-      id: true,
-      fullName: true,
-      customerProfile: { select: { city: true, state: true } },
-    } as const;
-
-    const [leads, registeredUsers] = await Promise.all([
-      // Clientes que demonstraram interesse (lead nesta concessionária)
-      this.prisma.lead.findMany({
-        where: { tenantId, customerUserId: { not: null } },
-        select: { customer: { select: customerSelect } },
-        distinct: ['customerUserId'],
-      }),
-      // Todos os clientes cadastrados na plataforma
-      this.prisma.user.findMany({
-        where: { role: 'customer' },
-        select: customerSelect,
-      }),
-    ]);
-
-    const interested = leads
-      .map((l) => l.customer)
-      .filter((c): c is NonNullable<typeof c> => c !== null)
-      .map(toGalaxy);
-
-    const registered = registeredUsers.map(toGalaxy);
-
-    return {
-      interested,
-      registered,
-      dealerCity: branch?.city ?? null,
-      dealerState: branch?.state ?? null,
-    };
+    });
   }
 
   /** Atualiza dados de uma filial */
@@ -484,14 +492,16 @@ export class TenantsService {
       businessHours?: Prisma.InputJsonValue;
     },
   ): Promise<unknown> {
-    const branch = await this.prisma.dealershipBranch.findFirst({
-      where: { id: branchId, tenantId },
-    });
-    if (!branch) throw new NotFoundException('Filial não encontrada');
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const branch = await tx.dealershipBranch.findFirst({
+        where: { id: branchId, tenantId },
+      });
+      if (!branch) throw new NotFoundException('Filial não encontrada');
 
-    return this.prisma.dealershipBranch.update({
-      where: { id: branchId },
-      data,
+      return tx.dealershipBranch.update({
+        where: { id: branchId },
+        data,
+      });
     });
   }
 }

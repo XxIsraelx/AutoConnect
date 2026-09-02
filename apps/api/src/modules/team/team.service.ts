@@ -21,7 +21,12 @@ export class TeamService {
   async overview(tenantId: string, period: string): Promise<unknown> {
     const { start, end } = this.periodRange(period);
 
-    const members = await this.prisma.user.findMany({
+    // Uma transação só, em vez de cinco idas ao banco: além do isolamento, é
+    // ganho de latência — API e banco estão em regiões diferentes.
+    const { members, leads, appts, goals, soldVehicles } = await this.prisma.withTenant(
+      tenantId,
+      async (tx) => ({
+        members: await tx.user.findMany({
       where: {
         tenantId,
         status: { not: 'deleted' },
@@ -32,11 +37,10 @@ export class TeamService {
         status: true, lastLoginAt: true, avatarUrl: true, createdAt: true,
         salespersonProfile: { select: { commissionPct: true } },
       },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    // leads atribuídos no período OU ganhos no período
-    const leads = await this.prisma.lead.findMany({
+          orderBy: { createdAt: 'asc' },
+        }),
+        // leads atribuídos no período OU ganhos no período
+        leads: await tx.lead.findMany({
       where: {
         tenantId,
         OR: [
@@ -46,28 +50,28 @@ export class TeamService {
       },
       select: {
         assignedTo: true, status: true, wonAt: true, createdAt: true,
-        vehicle: { select: { price: true } },
-      },
-    });
-
-    // agendamentos por vendedor no período
-    const appts = await this.prisma.appointment.groupBy({
+            vehicle: { select: { price: true } },
+          },
+        }),
+        // agendamentos por vendedor no período
+        appts: await tx.appointment.groupBy({
       by: ['salespersonId'],
       where: { tenantId, scheduledStart: { gte: start, lt: end } },
-      _count: { _all: true },
-    });
-    const apptMap = new Map(appts.map((a) => [a.salespersonId, a._count._all]));
+          _count: { _all: true },
+        }),
+        // metas do período
+        goals: await tx.salesGoal.findMany({ where: { tenantId, period } }),
+        // veículos vendidos no período (loja)
+        soldVehicles: await tx.vehicle.findMany({
+          where: { tenantId, status: 'sold', soldAt: { gte: start, lt: end } },
+          select: { price: true },
+        }),
+      }),
+    );
 
-    // metas do período
-    const goals = await this.prisma.salesGoal.findMany({ where: { tenantId, period } });
+    const apptMap = new Map(appts.map((a) => [a.salespersonId, a._count._all]));
     const teamGoal = goals.find((g) => g.userId === null)?.target ?? null;
     const goalMap = new Map(goals.filter((g) => g.userId).map((g) => [g.userId, g.target]));
-
-    // veículos vendidos no período (loja)
-    const soldVehicles = await this.prisma.vehicle.findMany({
-      where: { tenantId, status: 'sold', soldAt: { gte: start, lt: end } },
-      select: { price: true },
-    });
 
     const inPeriod = (d: Date | null) => !!d && d >= start && d < end;
 
@@ -112,31 +116,35 @@ export class TeamService {
 
   /** Define/atualiza uma meta (userId null = meta da equipe) */
   async setGoal(tenantId: string, userId: string | null, period: string, target: number): Promise<unknown> {
-    const existing = await this.prisma.salesGoal.findFirst({
-      where: { tenantId, userId: userId ?? null, period },
-    });
-    if (existing) {
-      return this.prisma.salesGoal.update({ where: { id: existing.id }, data: { target } });
-    }
-    return this.prisma.salesGoal.create({
-      data: { tenantId, userId: userId ?? null, period, target },
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const existing = await tx.salesGoal.findFirst({
+        where: { tenantId, userId: userId ?? null, period },
+      });
+      if (existing) {
+        return tx.salesGoal.update({ where: { id: existing.id }, data: { target } });
+      }
+      return tx.salesGoal.create({
+        data: { tenantId, userId: userId ?? null, period, target },
+      });
     });
   }
 
   /** Define o percentual de comissão de um vendedor (cria o perfil se faltar) */
   async setCommission(tenantId: string, userId: string, pct: number | null): Promise<unknown> {
-    // Garante que o usuário pertence ao tenant
-    const user = await this.prisma.user.findFirst({
-      where: { id: userId, tenantId },
-      select: { id: true },
-    });
-    if (!user) throw new NotFoundException('Membro não encontrado');
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      // Garante que o usuário pertence ao tenant
+      const user = await tx.user.findFirst({
+        where: { id: userId, tenantId },
+        select: { id: true },
+      });
+      if (!user) throw new NotFoundException('Membro não encontrado');
 
-    return this.prisma.salespersonProfile.upsert({
-      where: { userId },
-      update: { commissionPct: pct },
-      create: { userId, tenantId, commissionPct: pct },
-      select: { userId: true, commissionPct: true },
+      return tx.salespersonProfile.upsert({
+        where: { userId },
+        update: { commissionPct: pct },
+        create: { userId, tenantId, commissionPct: pct },
+        select: { userId: true, commissionPct: true },
+      });
     });
   }
 }

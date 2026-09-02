@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { PrivilegedPrismaModule } from '../../common/prisma/privileged-prisma.module';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -11,6 +12,7 @@ import { AdminModule } from '../admin/admin.module';
 
 @Module({
   imports: [
+    PrivilegedPrismaModule,
     PassportModule,
     EmailModule,
     AdminModule,

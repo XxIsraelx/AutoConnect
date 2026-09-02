@@ -1,0 +1,38 @@
+# Postgres para os testes de integração.
+#
+#   docker compose --env-file /dev/null -f docker-compose.test.yml up -d
+#   DATABASE_URL=postgresql://postgres:postgres@localhost:55432/autoconnect_test \
+#   DIRECT_URL=$DATABASE_URL pnpm --filter @autoconnect/db exec prisma migrate deploy
+#   pnpm exec turbo run test
+#
+# O `--env-file /dev/null` é necessário: o Compose lê o .env da raiz sozinho e
+# é mais estrito que o dotenv do Node — uma linha sem `=` aborta o comando.
+# Este arquivo não usa nenhuma variável, então ignorá-lo não perde nada.
+#
+# A imagem é postgis porque o schema depende da extensão: `migrate deploy`
+# falha logo na primeira migration sem ela. citext, pg_trgm e pgcrypto vêm
+# no contrib da imagem oficial.
+#
+# A porta é 55432, e não 5432, para não colidir com um Postgres já instalado
+# na máquina — e para que um erro de configuração aponte para o banco errado
+# em vez de silenciosamente acertar o de trabalho.
+
+services:
+  postgres-test:
+    image: postgis/postgis:17-3.4
+    container_name: autoconnect-postgres-test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: autoconnect_test
+    ports:
+      - '55432:5432'
+    # tmpfs: o banco vive na memória e morre com o contêiner. Testes não devem
+    # herdar estado de execuções anteriores.
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d autoconnect_test']
+      interval: 5s
+      timeout: 5s
+      retries: 10

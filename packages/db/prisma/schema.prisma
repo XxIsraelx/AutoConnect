@@ -594,6 +594,8 @@ model Lead {
   @@index([tenantId, status])
   @@index([assignedTo])
   @@index([vehicleId])
+  // Sustenta a policy `cliente_relacionado` de users (ver migration 20260902150000).
+  @@index([tenantId, customerUserId], map: "leads_tenant_customer_idx")
   @@map("leads")
 }
 
@@ -648,6 +650,7 @@ model Appointment {
   @@index([salespersonId, scheduledStart])
   @@index([customerUserId])
   @@index([tenantId, status])
+  @@index([tenantId, customerUserId], map: "appointments_tenant_customer_idx")
   @@map("appointments")
 }
 
@@ -692,6 +695,7 @@ model Conversation {
   @@index([customerUserId])
   @@index([salespersonId])
   @@index([tenantId, lastMessageAt(sort: Desc)])
+  @@index([tenantId, customerUserId], map: "conversations_tenant_customer_idx")
   @@map("conversations")
 }
 

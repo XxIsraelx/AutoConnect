@@ -47,7 +47,7 @@ autoconnect/
 │   │       │   ├── filters/    # ZodFilter
 │   │       │   ├── guards/     # JwtAuthGuard, RolesGuard
 │   │       │   ├── middleware/ # TenantMiddleware
-│   │       │   ├── prisma/     # PrismaService
+│   │       │   ├── prisma/     # PrismaService + PrivilegedPrismaService
 │   │       │   └── strategies/ # jwt.strategy, google.strategy
 │   │       ├── gateway/
 │   │       │   └── chat.gateway.ts   # WebSocket Socket.IO
@@ -100,7 +100,7 @@ autoconnect/
 │   │   ├── .env                # ← tem precedência sobre o .env da raiz
 │   │   └── prisma/
 │   │       ├── schema.prisma   # fonte de verdade do banco
-│   │       ├── migrations/     # 4 migrations (ver abaixo)
+│   │       ├── migrations/     # 7 migrations (ver abaixo)
 │   │       └── seed.ts
 │   └── shared/                 # tipos e validações Zod compartilhados
 │                               # ⚠ compila para dist/ (gitignored) — precisa
@@ -212,6 +212,192 @@ pnpm exec turbo run build --filter=@autoconnect/web
 
 ---
 
+## Isolamento por tenant
+
+### A regra
+
+**Todo acesso a tabela com `tenant_id` passa por `withTenant`.** Todo acesso a
+tabela do consumidor final (`customer_favorites`, `customer_profiles`,
+`price_alerts`, `saved_searches`, `user_sessions`) passa por `withUser`.
+
+```ts
+// certo
+return this.prisma.withTenant(tenantId, (tx) => tx.lead.findMany());
+
+// errado — roda sem contexto; quando a aplicação conectar como
+// autoconnect_app, não enxerga linha nenhuma
+return this.prisma.lead.findMany({ where: { tenantId } });
+```
+
+Os dois métodos abrem transação e definem `app.tenant_id` / `app.user_id` via
+`set_config(..., true)`, que é a forma **parametrizável** — a versão anterior
+interpolava o id na string SQL.
+
+### Como as policies funcionam
+
+Cada tabela com `tenant_id` tem `tenant_isolation`, comparando a coluna com
+`current_setting('app.tenant_id', true)`. Quando a variável não foi definida, a
+função devolve `NULL`, a comparação vira `NULL` e a policy trata como falso:
+**esquecer de setar o tenant fecha tudo, não abre tudo.**
+
+Três casos têm tratamento explícito:
+
+| Caso | Solução |
+|---|---|
+| Rotas públicas (catálogo, `/c/[slug]`, mapa) | Policy `leitura_publica` em `vehicles`, `vehicle_images`, `dealership_branches` e `tenants`, liberando só o que já está na vitrine — o filtro é `status = 'available'`, o mesmo que o `catalog.service` usa |
+| Super admin | `PrivilegedPrismaService` — conexão pela `DIRECT_URL`, dona das tabelas, que ignora RLS. Também é o caminho de `tenant_invites` e do login, que buscam antes de existir tenant |
+| Tabelas sem `tenant_id` | Catálogo global (`vehicle_brands`, `vehicle_models`, …) é leitura para todos e escrita só pelo dono; as do cliente isolam por `user_id` |
+| **Cliente atravessa concessionárias** | Ele agenda na loja A e conversa com a B. Policy `acesso_cliente` em `appointments`, `conversations` e `messages`, por `app.user_id` |
+| **Cliente não pertence a loja nenhuma** | `users.tenant_id` é NULL para clientes, então a policy de tenant os tornaria invisíveis. `acesso_proprio` (ele mesmo) + `cliente_relacionado` (a loja vê quem tem lead, agendamento ou conversa com ela — **não** a base inteira) |
+
+### A conexão privilegiada
+
+`PrivilegedPrismaService` existe para as operações que não têm tenant a que se
+restringir: super admin, login (busca por e-mail antes de saber a loja) e
+convite por token. Ele **não** é `@Global`, ao contrário do `PrismaModule` —
+quem precisa atravessar concessionárias declara `PrivilegedPrismaModule` nos
+imports, e isso aparece no diff do PR.
+
+Não use para acesso comum a dado de concessionária.
+
+### O que garante que a regra continue valendo
+
+`common/prisma/isolamento.spec.ts` varre o código e falha se um arquivo novo
+acessar tabela de tenant fora de `withTenant`. Os módulos ainda não migrados
+estão numa lista de pendências explícita, com o motivo de cada um — a lista só
+pode encolher, e o teste também falha se alguém deixar nela um módulo já
+migrado.
+
+### Os quatro acessos
+
+| Método | Quando | Define |
+|---|---|---|
+| `withTenant(tenantId, fn)` | dado da concessionária | `app.tenant_id` |
+| `withUser(userId, fn)` | dado do consumidor final | `app.user_id` |
+| `withTenantAndUser(t, u, fn)` | cliente agindo dentro de uma loja (captura de lead, registro de visita) | ambos |
+| `withPublic(fn)` | catálogo, mapa, `/c/[slug]` | **nada**, de propósito |
+
+`withPublic` roda sem contexto: sobra apenas a policy `leitura_publica`. Existe
+para que "esta consulta é pública" seja uma decisão escrita, não a ausência de
+uma decisão.
+
+### Ligar a fiscalização em produção
+
+Todo o código já opera sob RLS — o CI prova isso rodando a suíte de integração
+conectada como `autoconnect_app`. Falta só a troca de configuração:
+
+1. `ALTER ROLE autoconnect_app PASSWORD '<senha>'` (a senha **não** está na
+   migration: segredo não entra em arquivo versionado). Evite os caracteres
+   `@ # / : ? & %`, que quebram a URL.
+2. No Railway, apontar **`DATABASE_URL`** para `autoconnect_app` e manter
+   **`DIRECT_URL`** como o dono (`postgres`), que é a conexão privilegiada.
+
+Reverter é trocar a `DATABASE_URL` de volta.
+
+Enquanto isso não acontece, a aplicação conecta como dona das tabelas e o RLS
+fica inerte — nada quebra, e o isolamento continua sendo o `where: { tenantId }`
+de sempre, mantido de propósito como primeira linha de defesa.
+
+Também **não** usamos `FORCE ROW LEVEL SECURITY` — com ele o próprio dono
+passaria a ser filtrado, e migrations, seed e a conexão privilegiada parariam
+de enxergar dados.
+
+---
+
+## Testes e CI
+
+O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde:**
+
+```bash
+pnpm exec turbo run typecheck lint test
+```
+
+### Rodar os testes localmente
+
+Os testes de integração sobem o Nest inteiro contra um Postgres real — sem
+SQLite e sem mock do Prisma, porque RLS, constraints e `Decimal` só existem no
+Postgres de verdade.
+
+```bash
+# 1. Postgres de teste (porta 55432, dados em tmpfs — morre com o contêiner)
+docker compose --env-file /dev/null -f docker-compose.test.yml up -d
+
+# 2. Migrations no banco limpo
+export DATABASE_URL="postgresql://postgres:postgres@localhost:55432/autoconnect_test"
+export DIRECT_URL="$DATABASE_URL"
+pnpm --filter @autoconnect/db exec prisma migrate deploy
+
+# 3. Portão completo
+pnpm exec turbo run typecheck lint test
+```
+
+O `--env-file /dev/null` é obrigatório: o Compose lê o `.env` da raiz sozinho e
+é mais estrito que o dotenv do Node — uma linha sem `=` aborta o comando.
+
+### Enums: Prisma e Zod
+
+Os schemas Zod do `@autoconnect/shared` **repetem** as listas dos enums do
+Prisma, em constantes exportadas (`LEAD_SOURCES`, `VEHICLE_CONDITIONS`, …).
+
+A repetição é deliberada: `@autoconnect/db` é `export * from '@prisma/client'` e
+o `@autoconnect/shared` é dependência do `apps/web` — importar um do outro
+arrastaria o Prisma e seus binários nativos para o bundle do navegador.
+
+O preço é a chance de divergirem, e `paridade-enums.spec.ts` é o que a elimina:
+compara cada lista com o enum real e quebra o CI. Ao adicionar valor a um enum
+no `schema.prisma`, atualize a constante correspondente no shared.
+
+> `INVITABLE_ROLES` é a exceção: um **subconjunto** deliberado de `UserRole`,
+> porque convidar `super_admin` ou `customer` pela tela da equipe seria
+> escalada de privilégio. O teste dele afirma subconjunto, não igualdade.
+
+### Onde cada teste mora
+
+| Caminho | Tipo | Roda com |
+|---|---|---|
+| `apps/api/src/**/*.spec.ts` | unitário, sem banco | `jest.config.js` (project `api:unit`) |
+| `apps/api/test/*.e2e-spec.ts` | integração, Postgres real | `test/jest-e2e.config.js` |
+| `packages/shared/src/**/*.spec.ts` | domínio puro | `packages/shared/jest.config.js` |
+
+Os testes de isolamento usam `test/helpers/tenant-fixture.ts`, que cria duas
+concessionárias completas. O helper `comoApp()` roda a consulta com
+`SET LOCAL ROLE autoconnect_app` — a conexão dona ignora RLS e passaria verde
+sem provar nada.
+
+| Arquivo | O que fixa |
+|---|---|
+| `rls-policies.e2e-spec.ts` | Cobertura: toda tabela com `tenant_id` tem policy. **Tabela nova sem policy quebra o CI sozinha** |
+| `rls-isolation.e2e-spec.ts` | O isolamento no banco, incluindo falhar fechado sem contexto |
+| `tenant-leak.e2e-spec.ts` | O contrato HTTP: **404, não 403** — 403 confirmaria que o recurso existe |
+
+O `jest.config.js` da API roda os dois *projects*, para que um único `test`
+cubra unitário e integração — teste fora do comando do portão não é rodado por
+ninguém.
+
+### Trava contra rodar em produção
+
+`apps/api/test/setup-e2e.ts` **recusa** iniciar se a `DATABASE_URL` não for um
+host local com banco terminado em `_test`. Sem isso, um teste que escreve
+rodaria contra o Supabase de produção, que é justamente o que o `.env` da raiz
+aponta. A trava não é opcional — não a remova para "testar contra dados reais".
+
+### CI
+
+`.github/workflows/ci.yml` roda em todo push na `main` e em todo PR: instala,
+gera o client do Prisma, aplica as migrations em banco limpo, **checa drift** e
+roda o portão.
+
+O passo de drift compara o banco recém-migrado com o `schema.prisma` e falha se
+divergirem — é a rede contra o acidente do `prisma db push`, que já custou 5
+colunas e 5 tabelas aqui. Usa `--from-url` e não `--from-migrations`: a segunda
+forma acusa falsamente as quatro extensões (`citext`, `pg_trgm`, `pgcrypto`,
+`postgis`) como ausentes.
+
+> Os scripts `db:push` (raiz) e `push` (`packages/db`) **foram removidos**. Para
+> alterar o schema, sempre `prisma migrate dev`.
+
+---
+
 ## Padrões do projeto
 
 ### API
@@ -239,15 +425,17 @@ pnpm exec turbo run build --filter=@autoconnect/web
 - Schema único (shared schema), isolamento por `tenant_id`
 - Campos geográficos (PostGIS) e `tsvector` gerenciados via SQL puro, marcados como `Unsupported` no Prisma
 - Enums principais: `UserRole`, `VehicleStatus`, `LeadStatus`, `AppointmentStatus`, `ConversationStatus`
-- **RLS ativado sem policies** em todas as tabelas da aplicação. Bloqueia a API
-  REST pública do Supabase (papéis `anon`/`authenticated`); a aplicação não é
-  afetada porque o Prisma conecta como dono das tabelas, que ignora RLS.
+- **RLS com policies, criado por migration** (`20260902120000_rls_tenant_isolation`).
+  Ver *Isolamento por tenant* abaixo.
 - ⚠ **Nunca use `prisma db push`.** Foi assim que 5 colunas e 5 tabelas inteiras
   ficaram sem migration e só existiam na máquina de quem rodou — um banco novo
-  não as teria. Sempre `prisma migrate dev`.
+  não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
+  foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
+  migrations (ver *Testes e CI*).
 - Migrations atuais: `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
-  `add_announcements_invites_alerts_searches_goals`.
+  `add_announcements_invites_alerts_searches_goals`,
+  `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`.
 
 ---
 
@@ -321,3 +509,4 @@ consulta custa ~0,6s de ida e volta. Por isso a transação do cadastro usa
 2. **Concluir o Google OAuth** no Console
 3. **Revisar responsividade** das páginas internas do dashboard
 4. **Testes e2e** — cobrir fluxo principal: lead → agendamento → chat
+   (a fundação já existe: ver *Testes e CI*)

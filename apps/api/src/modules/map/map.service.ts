@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
 
 export interface DealershipPin {
   id: string;
@@ -24,10 +25,19 @@ export interface DealershipPin {
 export class MapService {
   private readonly logger = new Logger(MapService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    /**
+     * O cache de geocodificação grava em `dealership_branches` de qualquer
+     * concessionária, a partir de uma rota pública — a policy `leitura_publica`
+     * é só de SELECT, e é assim que deve ser. A escrita é declarada aqui.
+     */
+    private readonly privilegiado: PrivilegedPrismaService,
+  ) {}
 
   async getDealerships(): Promise<DealershipPin[]> {
-    const branches = await this.prisma.dealershipBranch.findMany({
+    const branches = await this.prisma.withPublic((tx) =>
+      tx.dealershipBranch.findMany({
       where: { isActive: true, tenant: { isActive: true } },
       select: {
         id: true,
@@ -51,7 +61,8 @@ export class MapService {
         },
       },
       orderBy: { createdAt: 'asc' },
-    });
+      }),
+    );
 
     const result: DealershipPin[] = [];
 
@@ -66,7 +77,7 @@ export class MapService {
           lat = coords.lat;
           lng = coords.lng;
           // Persiste para não geocodificar toda vez
-          await this.prisma.dealershipBranch.update({
+          await this.privilegiado.dealershipBranch.update({
             where: { id: branch.id },
             data: { latitude: lat, longitude: lng },
           }).catch(() => {});
