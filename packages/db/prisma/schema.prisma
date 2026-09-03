@@ -198,6 +198,7 @@ model Tenant {
   contractSignatures  ContractSignature[]
   dealWarranties      DealWarranty[]
   vehicleQueries      VehicleQuery[]
+  dealBuyers          DealBuyer[]
 
   @@map("tenants")
 }
@@ -953,6 +954,7 @@ model Deal {
   tradeIn      TradeIn?
   contracts    DealContract[]
   warranty     DealWarranty?
+  buyer        DealBuyer?
 
   @@index([tenantId, status])
   @@index([tenantId, createdAt(sort: Desc)])
@@ -1280,4 +1282,43 @@ model VehicleQuery {
   @@index([tenantId, queriedAt(sort: Desc)])
   @@index([vehicleId, kind])
   @@map("vehicle_queries")
+}
+
+/// Identificação do comprador para o contrato.
+///
+/// Mora no negócio, e não no perfil do cliente, por dois motivos: a
+/// concessionária não escreve em `customer_profiles`, que é isolado por
+/// `app.user_id`; e o contrato precisa do dado como estava na emissão — se o
+/// cliente mudar o endereço depois, o contrato assinado não muda junto.
+model DealBuyer {
+  dealId   String @id @map("deal_id") @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  /// Nome como consta no documento, que pode diferir do nome de cadastro.
+  fullName String  @map("full_name")
+  cpf      String
+  rg       String?
+  rgIssuer String? @map("rg_issuer")
+
+  /// Nacionalidade, estado civil e profissão são praxe na qualificação das
+  /// partes em contrato de compra e venda.
+  nationality   String? @default("brasileiro(a)")
+  maritalStatus String? @map("marital_status")
+  occupation    String?
+
+  addressLine   String? @map("address_line")
+  addressNumber String? @map("address_number")
+  neighborhood  String?
+  city          String?
+  state         String? @db.Char(2)
+  postalCode    String? @map("postal_code")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("deal_buyers")
 }

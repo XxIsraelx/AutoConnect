@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { cpfValido } from './auth';
 import {
   DEAL_STATUSES,
   PAYMENT_KINDS,
@@ -110,3 +111,69 @@ export type CreateDealPaymentInput = z.infer<typeof createDealPaymentSchema>;
 export type ListDealsInput = z.infer<typeof listDealsSchema>;
 export type CreateAcquisitionInput = z.infer<typeof createAcquisitionSchema>;
 export type CreateVehicleCostInput = z.infer<typeof createVehicleCostSchema>;
+
+/**
+ * Identificação do comprador para o contrato.
+ *
+ * CPF é obrigatório e validado pelos dígitos verificadores. Um contrato de
+ * compra e venda que diz "portador(a) do documento ____" não identifica a
+ * parte — é pior que não emitir, porque parece um documento e não serve como
+ * um. Os demais campos são opcionais porque a praxe varia entre lojas, mas o
+ * endereço entra na qualificação sempre que existir.
+ */
+export const dadosDoCompradorSchema = z.object({
+  fullName: z.string().min(3).max(160),
+  cpf: z
+    .string()
+    .transform((v) => v.replace(/\D/g, ''))
+    .refine(cpfValido, 'CPF inválido — confira os dígitos.'),
+  rg: z.string().max(20).optional(),
+  rgIssuer: z.string().max(20).optional(),
+  nationality: z.string().max(40).optional(),
+  maritalStatus: z.string().max(40).optional(),
+  occupation: z.string().max(60).optional(),
+  addressLine: z.string().max(160).optional(),
+  addressNumber: z.string().max(20).optional(),
+  neighborhood: z.string().max(80).optional(),
+  city: z.string().max(80).optional(),
+  state: z.string().length(2).optional(),
+  postalCode: z.string().max(9).optional(),
+});
+
+export type DadosDoCompradorInput = z.infer<typeof dadosDoCompradorSchema>;
+
+/** CPF formatado para o contrato: `123.456.789-00`. */
+export function formatarCpf(cpf: string): string {
+  const d = cpf.replace(/\D/g, '');
+  return d.length === 11
+    ? `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`
+    : cpf;
+}
+
+/**
+ * Qualificação da parte, na ordem em que aparece no contrato.
+ * Campos ausentes somem em vez de virar vírgula solta.
+ */
+export function qualificarComprador(c: {
+  fullName: string; cpf: string; rg?: string | null; rgIssuer?: string | null;
+  nationality?: string | null; maritalStatus?: string | null; occupation?: string | null;
+  addressLine?: string | null; addressNumber?: string | null; neighborhood?: string | null;
+  city?: string | null; state?: string | null; postalCode?: string | null;
+}): string {
+  const endereco = [
+    [c.addressLine, c.addressNumber].filter(Boolean).join(', '),
+    c.neighborhood,
+    [c.city, c.state].filter(Boolean).join('/'),
+    c.postalCode ? `CEP ${c.postalCode}` : null,
+  ].filter(Boolean).join(' — ');
+
+  return [
+    c.fullName,
+    c.nationality,
+    c.maritalStatus,
+    c.occupation,
+    `inscrito(a) no CPF sob o nº ${formatarCpf(c.cpf)}`,
+    c.rg ? `portador(a) do RG nº ${c.rg}${c.rgIssuer ? ` ${c.rgIssuer}` : ''}` : null,
+    endereco ? `residente e domiciliado(a) em ${endereco}` : null,
+  ].filter(Boolean).join(', ');
+}

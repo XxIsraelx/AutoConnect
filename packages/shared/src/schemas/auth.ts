@@ -20,7 +20,8 @@ function validCNPJ(cnpj: string): boolean {
   return calc(c, 12) === +c[12] && calc(c, 13) === +c[13];
 }
 
-function validCPF(cpf: string): boolean {
+/** Dígitos verificadores do CPF. Exportado para o contrato reaproveitar. */
+export function cpfValido(cpf: string): boolean {
   const c = cpf.replace(/\D/g, '');
   if (c.length !== 11) return false;
   if (/^(\d)\1+$/.test(c)) return false;
@@ -66,7 +67,7 @@ export const signupTenantSchema = z.object({
     cpf: z
       .string()
       .transform((v) => v.replace(/\D/g, ''))
-      .pipe(z.string().length(11, 'CPF deve ter 11 dígitos').refine(validCPF, 'CPF inválido')),
+      .pipe(z.string().length(11, 'CPF deve ter 11 dígitos').refine(cpfValido, 'CPF inválido')),
     jobTitle: z.string().min(2).max(100),
     phone:    z.string().min(10).max(20),
   }),

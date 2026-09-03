@@ -35,6 +35,11 @@ describe('Contrato (e2e)', () => {
     await dono.$executeRaw`
       INSERT INTO deal_payments (tenant_id, deal_id, kind, value, updated_at)
       VALUES (${f.a.id}::uuid, ${d.id}::uuid, 'cash', 95000, now())`;
+    await dono.$executeRaw`
+      INSERT INTO deal_buyers (deal_id, tenant_id, full_name, cpf, rg, rg_issuer,
+                               address_line, address_number, city, state, updated_at)
+      VALUES (${d.id}::uuid, ${f.a.id}::uuid, 'Maria Silva', '52998224725', '12.345.678', 'SSP/SP',
+              'Rua das Flores', '100', 'São Paulo', 'SP', now())`;
     return d.id;
   };
 
@@ -103,6 +108,54 @@ describe('Contrato (e2e)', () => {
 
       expect(res.status).toBe(409);
       expect(res.body.message).toMatch(/CDC art\. 51, I/);
+    }, 30_000);
+  });
+
+
+  describe('qualificação do comprador', () => {
+    it('recusa emitir sem comprador identificado', async () => {
+      const dealId = await criarNegocio();
+      await dono.$executeRaw`DELETE FROM deal_buyers WHERE deal_id = ${dealId}::uuid`;
+
+      const res = await post(`/deals/${dealId}/contract`, comoVendedor);
+
+      // Um contrato que diz "portador(a) do documento ____" parece documento e
+      // não identifica a parte.
+      expect(res.status).toBe(409);
+      expect(res.body.message).toMatch(/qualificação do comprador/i);
+    }, 30_000);
+
+    it('o snapshot traz CPF formatado e a qualificação completa', async () => {
+      const dealId = await criarNegocio();
+      const { body } = await post(`/deals/${dealId}/contract`, comoVendedor);
+
+      expect(body.snapshot.cliente.documento).toBe('529.982.247-25');
+      expect(body.snapshot.cliente.qualificacao).toMatch(/CPF sob o nº 529\.982\.247-25/);
+      expect(body.snapshot.cliente.qualificacao).toMatch(/RG nº 12\.345\.678 SSP\/SP/);
+      expect(body.snapshot.cliente.qualificacao).toMatch(/Rua das Flores, 100/);
+    }, 30_000);
+
+    it('CPF inválido é recusado na borda', async () => {
+      const dealId = await criarNegocio();
+
+      const res = await http().put(`/api/v1/deals/${dealId}/buyer`)
+        .set('Authorization', `Bearer ${comoVendedor}`)
+        .set('User-Agent', 'jest-e2e/1.0')
+        .send({ fullName: 'Fulano de Tal', cpf: '111.111.111-11' });
+
+      expect(res.status).toBe(400);
+    }, 30_000);
+
+    it('aceita CPF com pontuação e guarda só os dígitos', async () => {
+      const dealId = await criarNegocio();
+
+      const res = await http().put(`/api/v1/deals/${dealId}/buyer`)
+        .set('Authorization', `Bearer ${comoVendedor}`)
+        .set('User-Agent', 'jest-e2e/1.0')
+        .send({ fullName: 'Maria Silva', cpf: '529.982.247-25' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.cpf).toBe('52998224725');
     }, 30_000);
   });
 

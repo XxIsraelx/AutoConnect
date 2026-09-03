@@ -35,6 +35,12 @@ export interface DealResumo {
     id: string; kind: PaymentKindValue; status: string; value: string;
     institution: string | null; installments: number | null;
   }[];
+  buyer: {
+    fullName: string; cpf: string; rg: string | null; rgIssuer: string | null;
+    nationality: string | null; maritalStatus: string | null; occupation: string | null;
+    addressLine: string | null; addressNumber: string | null; neighborhood: string | null;
+    city: string | null; state: string | null; postalCode: string | null;
+  } | null;
   statusEvents: {
     id: string; fromStatus: DealStatusValue; toStatus: DealStatusValue;
     reason: string | null; occurredAt: string;
@@ -273,6 +279,39 @@ export function useVincularCliente(dealId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['negocio', dealId] });
       qc.invalidateQueries({ queryKey: ['negocios'] });
+    },
+  });
+}
+
+/* ── Qualificação do comprador ────────────────────────────── */
+
+export interface Comprador {
+  fullName: string;
+  cpf: string;
+  rg?: string | null;
+  rgIssuer?: string | null;
+  nationality?: string | null;
+  maritalStatus?: string | null;
+  occupation?: string | null;
+  addressLine?: string | null;
+  addressNumber?: string | null;
+  neighborhood?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+}
+
+export function useSalvarComprador(dealId: string) {
+  const token = useToken();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (dados: Comprador) =>
+      api(`/deals/${dealId}/buyer`, { method: 'PUT', token, body: dados }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['negocio', dealId] });
+      // O contrato só sai com a qualificação preenchida.
+      qc.invalidateQueries({ queryKey: ['contratos', dealId] });
     },
   });
 }

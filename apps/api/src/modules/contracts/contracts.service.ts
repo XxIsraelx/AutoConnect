@@ -2,7 +2,9 @@ import {
   BadRequestException, ConflictException, Injectable, NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@autoconnect/db';
-import { validarGarantia, GARANTIA_LEGAL_DIAS } from '@autoconnect/shared';
+import {
+  validarGarantia, GARANTIA_LEGAL_DIAS, formatarCpf, qualificarComprador,
+} from '@autoconnect/shared';
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
 import { ehGlobal, type Escopo } from '../../common/escopo';
@@ -66,12 +68,23 @@ export class ContractsService {
           payments: { where: { status: { in: ['pending', 'confirmed'] } }, orderBy: { createdAt: 'asc' } },
           tenant: { select: { tradeName: true, taxId: true } },
           warranty: true,
+          buyer: true,
         },
       });
       if (!negocio) throw new NotFoundException('Negócio não encontrado');
 
       if (negocio.status === 'canceled' || negocio.status === 'rescinded') {
         throw new ConflictException(`Negócio em "${negocio.status}" não emite contrato.`);
+      }
+
+      // Sem identificar o comprador, o contrato diria "portador(a) do documento
+      // ____" e não identificaria a parte — parece documento e não serve como
+      // um. Melhor recusar e dizer onde preencher.
+      if (!negocio.buyer) {
+        throw new ConflictException(
+          'Preencha a qualificação do comprador (nome, CPF e endereço) antes de ' +
+            'emitir o contrato — sem ela o documento não identifica a parte.',
+        );
       }
 
       const garantia = {
@@ -107,9 +120,13 @@ export class ContractsService {
             : null,
         },
         cliente: {
-          nome: negocio.customer?.fullName ?? 'A DEFINIR',
-          documento: null,
+          nome: negocio.buyer.fullName,
+          documento: formatarCpf(negocio.buyer.cpf),
           email: negocio.customer?.email ?? null,
+          // Frase pronta com nacionalidade, estado civil, profissão, CPF, RG e
+          // endereço, na ordem da praxe. Montada no domínio para que o
+          // template não precise saber quais campos existem.
+          qualificacao: qualificarComprador(negocio.buyer),
         },
         veiculo: {
           descricao: `${negocio.vehicle.brand.name} ${negocio.vehicle.model.name} ${negocio.vehicle.versionName ?? ''}`.trim(),

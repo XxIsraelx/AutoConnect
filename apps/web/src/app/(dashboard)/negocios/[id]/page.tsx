@@ -13,6 +13,7 @@ import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import { useNegocio, useMargem, useTransicionar, useAdicionarPagamento } from '../dados';
 import Contrato from './Contrato';
 import Partes from './Partes';
+import Comprador from './Comprador';
 import { ROTULO_STATUS, COR_STATUS, ROTULO_PAGAMENTO } from '../rotulos';
 
 const VE_CUSTO = ['manager', 'tenant_admin', 'super_admin'];
@@ -257,6 +258,8 @@ export default function NegocioPage() {
         </div>
 
         <Partes negocio={negocio} editavel={editavel} />
+
+        <Comprador negocio={negocio} editavel={editavel} />
 
         <Contrato dealId={id} />
 

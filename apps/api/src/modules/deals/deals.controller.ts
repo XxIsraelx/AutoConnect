@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards,
+  Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, UseGuards,
 } from '@nestjs/common';
 import {
   createDealSchema,
@@ -9,6 +9,7 @@ import {
   listDealsSchema,
   createAcquisitionSchema,
   createVehicleCostSchema,
+  dadosDoCompradorSchema,
 } from '@autoconnect/shared';
 import { DealsService } from './deals.service';
 import { escopoDa } from '../../common/escopo';
@@ -65,6 +66,18 @@ export class DealsController {
     @Body() body: unknown,
   ): Promise<unknown> {
     return this.deals.update(escopoDa(req.user), id, updateDealSchema.parse(body));
+  }
+
+  /** Qualificação do comprador — sem ela o contrato não é emitido. */
+  @Put(':id/buyer')
+  comprador(
+    @Req() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    return this.deals.salvarComprador(
+      escopoDa(req.user), id, dadosDoCompradorSchema.parse(body),
+    );
   }
 
   @Post(':id/transition')

@@ -20,7 +20,13 @@ export type Bloco =
 export interface SnapshotContrato {
   emitidoEm: string;
   loja: { nome: string; documento: string | null; endereco: string | null };
-  cliente: { nome: string; documento: string | null; email: string | null };
+  cliente: {
+    nome: string;
+    documento: string | null;
+    email: string | null;
+    /** Qualificação completa da parte, montada pelo domínio. */
+    qualificacao?: string;
+  };
   veiculo: {
     descricao: string; anoModelo: number; anoFabricacao: number;
     placa: string | null; chassi: string | null; km: number;
@@ -140,7 +146,7 @@ export const TEMPLATE_PADRAO: Bloco[] = [
   },
   {
     tipo: 'paragrafo',
-    texto: 'COMPRADOR(A): {{cliente.nome}}, portador(a) do documento {{cliente.documento}}.',
+    texto: 'COMPRADOR(A): {{cliente.qualificacao}}.',
   },
   {
     tipo: 'clausula',

@@ -16,6 +16,7 @@ import type {
   ListDealsInput,
   CreateAcquisitionInput,
   CreateVehicleCostInput,
+  DadosDoCompradorInput,
 } from '@autoconnect/shared';
 import { DealStateService } from './deal-state.service';
 import { MarginService } from './margin.service';
@@ -34,6 +35,7 @@ const INCLUDE_DETALHE = {
   branch: { select: { id: true, name: true } },
   payments: { orderBy: { createdAt: 'asc' } },
   tradeIn: true,
+  buyer: true,
   statusEvents: {
     orderBy: { occurredAt: 'desc' },
     include: { actor: { select: { id: true, fullName: true } } },
@@ -172,6 +174,36 @@ export class DealsService {
          ORDER BY u.full_name
          LIMIT 20`,
     );
+  }
+
+
+  /**
+   * Identificação do comprador para o contrato.
+   *
+   * Fica no negócio e não no perfil do cliente: a loja não escreve em
+   * `customer_profiles` (isolado por `app.user_id`), e o contrato precisa do
+   * dado como estava na emissão.
+   */
+  async salvarComprador(escopo: Escopo, id: string, dados: DadosDoCompradorInput) {
+    const tenantId = this.tenantDe(escopo);
+
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const negocio = await tx.deal.findFirst({ where: { id, tenantId } });
+      if (!negocio) throw new NotFoundException('Negócio não encontrado');
+
+      if (!isDealEditable(negocio.status as DealStatusValue)) {
+        throw new ConflictException(
+          `Negócio em "${negocio.status}" não aceita alteração dos dados do comprador — ` +
+            'há contrato assinado com a qualificação anterior.',
+        );
+      }
+
+      return tx.dealBuyer.upsert({
+        where: { dealId: id },
+        create: { dealId: id, tenantId, ...dados },
+        update: dados,
+      });
+    });
   }
 
   async findAll(escopo: Escopo, filtros: ListDealsInput) {
