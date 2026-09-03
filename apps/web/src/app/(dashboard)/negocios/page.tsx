@@ -119,7 +119,8 @@ export default function NegociosPage() {
               <Handshake size={32} className="mx-auto text-slate-300 dark:text-slate-700" />
               <p className="mt-3 font-medium">Nenhum negócio {status && 'neste status'}</p>
               <p className="text-sm text-slate-500 mt-1">
-                Um negócio começa a partir de um veículo do estoque.
+                Um negócio começa na página do veículo, em <strong>Estoque →
+                abrir o carro → Negócio</strong>.
               </p>
             </div>
           ) : (

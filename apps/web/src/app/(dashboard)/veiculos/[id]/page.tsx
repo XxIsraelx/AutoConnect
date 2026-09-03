@@ -11,6 +11,7 @@ import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
 import CustoDoVeiculo from './CustoDoVeiculo';
 import ConsultaVeicular from './ConsultaVeicular';
+import NegocioDoVeiculo from './NegocioDoVeiculo';
 
 /* ── Tipos ───────────────────────────────────────────────── */
 
@@ -584,6 +585,8 @@ export default function EditVehiclePage() {
             </div>
           </div>
         </section>
+
+        <NegocioDoVeiculo vehicleId={params.id} preco={vehicle?.price ?? null} />
 
         <CustoDoVeiculo vehicleId={params.id} />
 

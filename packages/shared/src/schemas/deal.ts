@@ -57,6 +57,8 @@ export const createDealPaymentSchema = z.object({
 
 export const listDealsSchema = z.object({
   status: z.enum(DEAL_STATUSES).optional(),
+  /** Filtra os negócios de um veículo — a tela dele precisa saber se há um. */
+  vehicleId: z.string().uuid().optional(),
   salespersonId: z.string().uuid().optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),

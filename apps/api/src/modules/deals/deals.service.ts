@@ -142,6 +142,7 @@ export class DealsService {
       ...(ehGlobal(escopo) ? {} : { tenantId: escopo.tenantId }),
       ...(filtros.status ? { status: filtros.status as DealStatus } : {}),
       ...(filtros.salespersonId ? { salespersonId: filtros.salespersonId } : {}),
+      ...(filtros.vehicleId ? { vehicleId: filtros.vehicleId } : {}),
       ...(filtros.from || filtros.to
         ? { createdAt: { ...(filtros.from && { gte: filtros.from }), ...(filtros.to && { lte: filtros.to }) } }
         : {}),
