@@ -6,7 +6,7 @@ import {
   ChevronLeft, ChevronRight, List, CalendarRange, Search, Phone, Mail,
   CalendarClock, UserCheck, CheckCircle2, XCircle, AlertCircle, CalendarPlus,
 } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api} from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
 import { ErroAoCarregar } from '@/components/ErroAoCarregar';

@@ -4,8 +4,8 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ChevronLeft, Trash2, Upload, X, Star, Loader2,
-  ImagePlus, GripVertical, TrendingDown, TrendingUp, History,
+  ChevronLeft, Trash2, X, Star, Loader2,
+  ImagePlus, TrendingDown, TrendingUp, History,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';

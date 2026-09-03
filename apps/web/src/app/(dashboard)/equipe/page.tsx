@@ -6,7 +6,7 @@ import {
   Target, TrendingUp, Users, DollarSign, CalendarCheck, Award,
   ChevronRight, Send, UserX, UserCheck, RefreshCw, Trophy,
 } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api} from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
 import { ErroAoCarregar } from '@/components/ErroAoCarregar';
@@ -37,9 +37,6 @@ const ROLE_COLORS: Record<string, string> = {
   salesperson: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
 };
 
-function brl(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
-}
 function fmtPeriod(p: string) {
   const [y, m] = p.split('-').map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });

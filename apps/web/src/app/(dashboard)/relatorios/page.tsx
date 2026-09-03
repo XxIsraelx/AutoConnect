@@ -3,13 +3,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import {
-  TrendingUp, Users, Car, Target, RefreshCw, Calendar,
+  TrendingUp, Car, Target, RefreshCw, Calendar,
   ArrowUpRight, ArrowDownRight, Minus,
 } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api} from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
 import { ErroAoCarregar } from '@/components/ErroAoCarregar';

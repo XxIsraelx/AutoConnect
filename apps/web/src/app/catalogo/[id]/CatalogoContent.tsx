@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useParams } from 'next/navigation';
@@ -9,8 +9,7 @@ import {
   SlidersHorizontal, ChevronLeft, ChevronRight,
   Navigation, Loader2, ExternalLink,
   Fuel, Gauge, Settings2, DoorOpen,
-  Heart, MessageCircle, Calculator, Scale, CalendarPlus, Repeat,
-  CheckSquare, Square, ArrowRight, Check, AlertCircle,
+  Heart, MessageCircle, Calculator, Scale, CalendarPlus, Repeat, ArrowRight, Check, AlertCircle,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
@@ -1181,10 +1180,6 @@ export default function CatalogoContent() {
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr || (dealer?.tradeName ?? ''))}`;
   }
 
-  const selectedVehicle = useMemo(
-    () => vehicles.find(v => v.id === selectedVehicleId) ?? null,
-    [vehicles, selectedVehicleId],
-  );
 
   return (
     <div className="min-h-screen sup-base txt-forte">

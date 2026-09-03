@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  MapPin, Phone, Globe, Search, X, Heart,
-  Car, Fuel, Gauge, SlidersHorizontal, ChevronLeft, ChevronRight,
-  MessageCircle, ArrowLeft, Loader2, CalendarPlus, Repeat,
+  MapPin, Phone, Search, X, Heart,
+  Car, Fuel, Gauge, ChevronLeft, ChevronRight,
+  MessageCircle, Loader2, CalendarPlus, Repeat,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';

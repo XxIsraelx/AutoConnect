@@ -3,12 +3,11 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Car, User, Plus, History, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Plus, History, TrendingUp } from 'lucide-react';
 import {
   DEAL_TRANSITIONS, PAYMENT_KINDS, formatarBRL, somar, subtrair,
   isDealEditable, type DealStatusValue, type PaymentKindValue,
 } from '@autoconnect/shared';
-import { ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import { useNegocio, useMargem, useTransicionar, useAdicionarPagamento } from '../dados';
@@ -258,6 +257,8 @@ export default function NegocioPage() {
         </div>
 
         <Partes negocio={negocio} editavel={editavel} />
+
+        <Contrato dealId={id} />
 
         {/* Timeline */}
         <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4">

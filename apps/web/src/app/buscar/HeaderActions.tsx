@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import {
-  Heart, Bell, MessageSquare, X, Car, ChevronRight,
+  Heart, Bell, MessageSquare, Car, ChevronRight,
   Bookmark, TrendingDown, Loader2,
 } from 'lucide-react';
 import { api } from '@/lib/api';

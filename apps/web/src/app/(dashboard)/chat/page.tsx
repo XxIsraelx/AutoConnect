@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import {
-  Send, MessageSquare, Circle, Loader2, User,
+  Send, MessageSquare, Circle, Loader2,
   RefreshCw, AlertCircle, ChevronLeft, BadgeDollarSign, X, Archive,
 } from 'lucide-react';
 import { api } from '@/lib/api';

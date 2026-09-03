@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback} from 'react';
 import { useRouter } from 'next/navigation';
 import {
   LayoutDashboard, Ticket, Building2, Users, Megaphone,

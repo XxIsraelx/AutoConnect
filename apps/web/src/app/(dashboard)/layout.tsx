@@ -18,7 +18,6 @@ import ThemeToggle from '@/components/ThemeToggle';
 /* ── Badge de leads novos ─────────────────────────────────── */
 
 const POLL_INTERVAL = 30_000; // 30 segundos
-const STORAGE_KEY   = 'ac_leads_seen_count';
 
 function notify(title: string, body: string, href: string) {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;

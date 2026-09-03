@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback} from 'react';
 import {
   Users, Phone, Mail, Car, Clock, CheckCircle2,
   XCircle, MessageSquare, ChevronDown, Loader2,
   Search, X, RefreshCw, ExternalLink, Download,
-  History, UserCheck, Send, ChevronLeft, Repeat, Handshake,
+  History, UserCheck, Send, Repeat, Handshake,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
