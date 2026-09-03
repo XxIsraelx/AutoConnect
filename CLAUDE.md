@@ -16,6 +16,8 @@ SaaS multi-tenant para concessionárias de veículos. Objetivo: fechar o primeir
 | State | Zustand (auth) + TanStack Query (só em `/dashboard`) |
 | Mapa | **Leaflet** + tiles Esri Dark Gray |
 | Upload de imagens | **Cloudinary** (direto do navegador) |
+| Geração de PDF | **pdfmake** (JS puro, sem Chromium — ver *Contrato*) |
+| Documentos privados | **Supabase Storage**, bucket `documentos` (URL assinada) |
 | Agendamento de jobs | `@nestjs/schedule` (cron in-process) |
 | Auth | JWT (próprio) + Google OAuth |
 | Email | Resend ou Gmail SMTP (configurável por env) |
@@ -23,9 +25,14 @@ SaaS multi-tenant para concessionárias de veículos. Objetivo: fechar o primeir
 | Hospedagem | Railway (API + web) — região `us-east4` |
 
 > **Não usamos:** BullMQ/Redis (a variável `REDIS_URL` existe no `.env` mas nenhum
-> código a lê — os jobs agendados rodam via `@nestjs/schedule`), Mapbox
-> (`NEXT_PUBLIC_MAPBOX_TOKEN` está vazio e sem uso) e Supabase Storage (as
-> variáveis `SUPABASE_*` são órfãs — o upload é Cloudinary).
+> código a lê — os jobs agendados rodam via `@nestjs/schedule`) e Mapbox
+> (`NEXT_PUBLIC_MAPBOX_TOKEN` está vazio e sem uso).
+>
+> **Dois destinos de arquivo, de propósito:** foto de veículo vai para a
+> Cloudinary com preset *unsigned* (pública por natureza); contrato e documento
+> de identidade vão para o Supabase Storage num bucket **privado**, com upload
+> pelo backend e URL assinada de 10 minutos. Misturar os dois é como uma
+> política de bucket afrouxada expõe documento com CPF.
 >
 > O TanStack Query está configurado no `providers.tsx`, mas só `/dashboard` o
 > usa; as demais telas buscam dados com `useEffect` + o helper `api()`.
@@ -76,6 +83,7 @@ autoconnect/
 │           │   │   ├── dashboard/
 │           │   │   ├── equipe/
 │           │   │   ├── leads/
+│           │   │   ├── negocios/     # lista, funil de valor, contrato
 │           │   │   ├── relatorios/
 │           │   │   └── veiculos/      # lista + /novo + /[id]
 │           │   ├── admin/
@@ -172,10 +180,27 @@ NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=...          # upload de fotos
 NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=...       # precisa ser "unsigned"
 ```
 
+### Documentos privados — usadas pelo `DocumentosStorage`
+
+```env
+SUPABASE_URL="https://<ref>.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY="..."      # ignora RLS: nunca vai para o front
+SUPABASE_DOCUMENTS_BUCKET="documentos"
+```
+
+Sem as duas primeiras, o contrato continua sendo **emitido e regerado sob
+demanda** — apenas não fica arquivado. Um documento não arquivado é melhor que
+um contrato não emitido, e o aviso na inicialização torna a ausência visível.
+
+O bucket é privado, sem policy nenhuma em `storage.objects`: só a *service
+role* alcança os arquivos. A rota `/object/public/` responde **404 "Bucket not
+found"** para ele — negação mais forte que 403, porque não confirma nem que o
+bucket existe.
+
 ### Órfãs — presentes no `.env` mas sem nenhum código que as leia
 
-`REDIS_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-`SUPABASE_STORAGE_BUCKET`, `NEXT_PUBLIC_MAPBOX_TOKEN`.
+`REDIS_URL`, `SUPABASE_STORAGE_BUCKET` (aponta para `vehicle-images`; as fotos
+vão para a Cloudinary) e `NEXT_PUBLIC_MAPBOX_TOKEN`.
 
 ---
 
@@ -215,6 +240,12 @@ pnpm exec turbo run build --filter=@autoconnect/web
 ## Isolamento por tenant
 
 ### A regra
+
+As tabelas de venda e contrato (`deals`, `deal_payments`, `deal_status_events`,
+`trade_ins`, `vehicle_acquisitions`, `vehicle_costs`, `contract_templates`,
+`deal_contracts`, `contract_signatures`, `deal_warranties`) seguem a mesma
+regra, e carregam o dado mais sensível do sistema: preço de compra, margem,
+contrato assinado e CPF de signatário.
 
 **Todo acesso a tabela com `tenant_id` passa por `withTenant`.** Todo acesso a
 tabela do consumidor final (`customer_favorites`, `customer_profiles`,
@@ -324,7 +355,8 @@ de enxergar dados.
 
 ## Testes e CI
 
-O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde:**
+O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
+são 208 testes:
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -387,6 +419,12 @@ sem provar nada.
 | `rls-policies.e2e-spec.ts` | Cobertura: toda tabela com `tenant_id` tem policy. **Tabela nova sem policy quebra o CI sozinha** |
 | `rls-isolation.e2e-spec.ts` | O isolamento no banco, incluindo falhar fechado sem contexto |
 | `tenant-leak.e2e-spec.ts` | O contrato HTTP: **404, não 403** — 403 confirmaria que o recurso existe |
+| `deals-invariantes.e2e-spec.ts` | Um veículo, um negócio vivo — índice único parcial exercido no banco |
+| `deals.e2e-spec.ts` | O fluxo do negócio por HTTP, papéis e vazamento |
+| `proposta-chat.e2e-spec.ts` | A proposta do chat virando negócio (falha em silêncio por desenho) |
+| `chat-gateway.e2e-spec.ts` | O gateway pelo WebSocket — o evento é `conversation:send`, não `message:send` |
+| `contrato-imutavel.e2e-spec.ts` | Contrato emitido não muda: trigger no banco |
+| `contrato.e2e-spec.ts` | Emissão, hash, assinatura e anulação por HTTP |
 
 O `jest.config.js` da API roda os dois *projects*, para que um único `test`
 cubra unitário e integração — teste fora do comando do portão não é rodado por
@@ -413,6 +451,78 @@ forma acusa falsamente as quatro extensões (`citext`, `pg_trgm`, `pgcrypto`,
 
 > Os scripts `db:push` (raiz) e `push` (`packages/db`) **foram removidos**. Para
 > alterar o schema, sempre `prisma migrate dev`.
+
+---
+
+## Vendas e contrato
+
+### Dinheiro nunca é `number`
+
+`Decimal(14,2)` no banco, `Prisma.Decimal` no cálculo, **string** no JSON. No
+front, `formatarBRL` do `@autoconnect/shared` formata a partir da string, sem
+passar por ponto flutuante. `0.1 + 0.2` não é `0.3`, e um centavo numa comissão
+vira ligação do vendedor.
+
+`packages/shared/src/domain/dinheiro.ts` faz aritmética em centavos inteiros
+(`bigint`) para quem precisa somar no navegador.
+
+### Um veículo, um negócio vivo
+
+Índice único parcial `deals_veiculo_negocio_vivo_idx`, com
+`WHERE status NOT IN ('canceled','rescinded')`. A checagem no service não
+resolveria: entre o `SELECT` que confere e o `INSERT` que grava cabe outra
+transação, e o resultado é o mesmo carro vendido duas vezes, descoberto na
+entrega.
+
+Se `DEAL_TERMINAL_STATUSES` mudar, **este índice muda junto** — há teste que
+liga as duas listas.
+
+### A máquina de estados mora no `shared`
+
+`DEAL_TRANSITIONS` é consultada pelo front (para decidir quais botões mostrar) e
+pelo back (para recusar). Duas cópias da regra produz um botão que abre diálogo
+e termina em 409. Transição inválida é **409, não 400**: o pedido é bem formado,
+o estado é que conflita.
+
+Assimetria deliberada: antes de `signed` o negócio é **cancelado**; depois dela,
+**distratado**. São eventos jurídicos diferentes.
+
+### Contrato
+
+Três garantias, e uma armadilha medida:
+
+1. **Template versionado por tenant.** Editar cria versão nova; o contrato
+   aponta para a versão exata que usou.
+2. **Snapshot, não join.** Se o preço do veículo mudar, o contrato assinado não
+   muda junto.
+3. **Hash na emissão**, e o download **regenera** o PDF do snapshot e confere o
+   hash antes de entregar. Não bate, não sai.
+
+⚠ **O pdfmake não é determinístico por padrão** — ele carimba o relógio na data
+de criação, e o mesmo contrato gera bytes diferentes a cada execução. Medido,
+não suposto. `ContractPdfService.gerar()` recebe `emitidoEm` e o usa como data
+de criação; sem isso o hash não prova nada. Fontes Helvetica embutidas no
+pdfkit: nenhum arquivo de fonte no deploy.
+
+Contrato que saiu de `draft` é **imutável por trigger no banco**
+(`contrato_emitido_e_imutavel`), não só por regra de service — ali é uma linha
+que alguém remove sem perceber, e o efeito só aparece quando um cliente
+contesta a assinatura.
+
+### Garantia: a cláusula que não se deve conseguir escrever
+
+`validarGarantia` recusa emitir contrato em que a garantia contratual apareça
+como **redução** da legal de 90 dias, que cobre o veículo inteiro (CDC art. 26,
+II + art. 51, I). A regra é específica: prazo curto **sem** restrição de escopo
+passa — o que se recusa é prazo menor **combinado** com escopo restrito, que é
+o disfarce clássico ("3 meses de motor e câmbio").
+
+`textoDaGarantia` sempre declara a legal, mesmo havendo contratual: omiti-la é
+o que torna a cláusula abusiva.
+
+> ⚠ **O template padrão do código não foi revisado por advogado.** Está
+> declarado como ponto de partida. O portão da Fase 2 exige essa revisão antes
+> de qualquer cliente real emitir contrato.
 
 ---
 
@@ -450,10 +560,12 @@ forma acusa falsamente as quatro extensões (`citext`, `pg_trgm`, `pgcrypto`,
   não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
   foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
   migrations (ver *Testes e CI*).
-- Migrations atuais: `init`, `trade_in_and_dealer_setting`,
+- Migrations atuais (10): `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
   `add_announcements_invites_alerts_searches_goals`,
-  `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`.
+  `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`,
+  `deals_vendas_e_custos`, `sales_goal_meta_em_reais`,
+  `contrato_garantia_assinatura`.
 
 ---
 
@@ -474,6 +586,9 @@ forma acusa falsamente as quatro extensões (`citext`, `pg_trgm`, `pgcrypto`,
 | Dashboard | ✅ completo | ✅ completo | KPIs, GalaxyMap |
 | Admin | ✅ completo | ✅ completo | impersonation, announcements |
 | Página pública concessionária | ✅ | ✅ | `/c/[slug]` com chat iniciado pelo cliente |
+| **Negócios (`Deal`)** | ✅ completo | ✅ completo | máquina de estados, pagamento composto, margem em `Decimal` |
+| **Custo do veículo** | ✅ completo | ✅ completo | aquisição + preparação; base da margem |
+| **Contrato** | ✅ completo | ✅ completo | PDF determinístico, hash, assinatura interna |
 
 ---
 
@@ -509,22 +624,62 @@ consulta custa ~0,6s de ida e volta. Por isso a transação do cadastro usa
 
 ## Pendências conhecidas
 
+- ⚠ **O template de contrato não foi revisado por advogado.** É o item aberto
+  mais sério: o padrão do código emite documento com efeito jurídico e está
+  declarado como ponto de partida, não como peça revisada.
+- **`SUPABASE_SERVICE_ROLE_KEY` em produção**: definida no Railway em
+  03/09/2026, mas a validade da chave não foi verificada de forma independente
+  — uma chave errada só falha no upload, não na inicialização. A mesma chave foi
+  testada ponta a ponta localmente contra o bucket real.
 - **Login com Google não funciona em produção**: falta registrar no Google Cloud
   Console o redirect URI (`.../api/v1/auth/google/callback`) e publicar o app
   (`/auth/audience`), senão só contas de teste conseguem entrar.
-- **Erros de API engolidos** — ver a dívida citada em *Padrões > Frontend*.
+- **Erros de API engolidos** — restam **4** `catch` que descartam o erro de
+  propósito (marcados com comentário). Dos 27 `catch` no `apps/web`, os outros
+  23 exibem toast ou estado de erro. As 4 telas que engoliam o carregamento
+  inteiro foram corrigidas.
 - **Relatórios aparecem vazios**: os dados de seed são de maio/junho e o filtro
-  padrão é 30 dias.
+  padrão é 30 dias. Os dois gráficos novos (margem e giro) dependem de negócio
+  faturado, que o seed não cria.
 - **CVEs restantes no Next** só têm correção na linha 15.x (breaking changes).
 - **`/relatorios`, `/agendamentos` e `/equipe`** ainda não foram revisados para
-  telas pequenas; só o layout do dashboard foi.
+  telas pequenas; o layout do dashboard, a landing e `/negocios` foram.
+- **Crons in-process**: `@nestjs/schedule` roda na instância. Com duas réplicas
+  no Railway, todo lembrete de agendamento sai **duas vezes**. Passa hoje porque
+  roda uma instância só.
+- **API e banco em regiões diferentes** (Railway `us-east4` ↔ Supabase
+  `sa-east-1`), ~0,6s por consulta. O fechamento de um negócio faz várias.
+
+---
+
+## Onde o plano de vendas está
+
+`plano-implementacao-vendas.md` governa o trabalho. Estado em 03/09/2026:
+
+| Fase | Estado |
+|---|---|
+| 0 — Fundação (RLS, testes, CI) | ✅ portão fechado |
+| 1 — Negócio (`Deal`) | ✅ portão fechado |
+| 2 — Contrato | ✅ 4 de 5 (falta a revisão por advogado) |
+| 3 — Consultas veiculares e assinatura externa | ⬜ |
+| 4 — Crédito e F&I | ⬜ |
+| 5 — Obrigações fiscais | ⬜ |
+
+Duas correções ao plano já registradas **dentro dele**:
+
+- O achado nº 9 estava errado: `login`/`entrar` e `signup`/`cadastrar` não são
+  duplicatas, são quatro fluxos para dois públicos. Só `settings` e `team` eram
+  resíduo (diretórios vazios, removidos).
+- O portão da Fase 2 pede que a URL crua devolva 403; ela devolve **404 "Bucket
+  not found"**, que é negação mais forte.
 
 ---
 
 ## Próximos passos sugeridos
 
-1. **Distinguir falha de API de "sem dados"** nas 4 telas que engolem o carregamento
+1. **Revisão jurídica do template de contrato** — bloqueia uso real
 2. **Concluir o Google OAuth** no Console
-3. **Revisar responsividade** das páginas internas do dashboard
-4. **Testes e2e** — cobrir fluxo principal: lead → agendamento → chat
-   (a fundação já existe: ver *Testes e CI*)
+3. **Fase 3** do plano: consultas veiculares (placa/chassi) com cache por
+   custo de chamada, e assinatura externa atrás da interface que já existe
+4. **Revisar responsividade** de `/relatorios`, `/agendamentos` e `/equipe`
+5. **Seed com negócio faturado**, para os gráficos de margem e giro terem dado
