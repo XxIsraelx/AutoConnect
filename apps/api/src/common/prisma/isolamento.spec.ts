@@ -29,6 +29,8 @@ const MODELOS_DE_TENANT = [
   'vehicleAcquisition', 'vehicleCost',
   // Contrato: documento assinado, CPF do signatário e trilha de evidências.
   'contractTemplate', 'dealContract', 'contractSignature', 'dealWarranty',
+  // Consulta veicular: placa, chassi e quanto a loja gasta com fornecedor.
+  'vehicleQuery',
 ];
 
 /**

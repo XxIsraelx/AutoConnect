@@ -197,6 +197,7 @@ model Tenant {
   dealContracts       DealContract[]
   contractSignatures  ContractSignature[]
   dealWarranties      DealWarranty[]
+  vehicleQueries      VehicleQuery[]
 
   @@map("tenants")
 }
@@ -486,6 +487,7 @@ model Vehicle {
   tradeIn       TradeIn?
   acquisition   VehicleAcquisition?
   costs         VehicleCost[]
+  queries       VehicleQuery[]
 
   @@index([tenantId])
   @@index([branchId])
@@ -1209,4 +1211,73 @@ model DealWarranty {
 
   @@index([tenantId])
   @@map("deal_warranties")
+}
+
+// ─────────────────────────────────────────────────────────
+// Consultas veiculares
+//
+// Integração externa entra por camada de anticorrupção: o resto do sistema
+// nunca vê o formato do fornecedor. E **cada chamada custa dinheiro**, o que
+// muda o desenho: cache persistente, custo registrado e idempotência por dia
+// para que clique duplo não seja cobrado duas vezes.
+// ─────────────────────────────────────────────────────────
+
+enum VehicleQueryKind {
+  ownership
+  debts
+  auction
+  theft
+  fines
+  history
+}
+
+enum VehicleQueryStatus {
+  pending
+  success
+  failed
+}
+
+model VehicleQuery {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String  @map("tenant_id") @db.Uuid
+  /// Opcional: a loja consulta a placa antes de cadastrar o veículo.
+  vehicleId String? @map("vehicle_id") @db.Uuid
+
+  plate  String?
+  vin    String?
+  kind   VehicleQueryKind
+  status VehicleQueryStatus @default(pending)
+
+  /// Qual fornecedor respondeu. Guardado porque o mesmo tipo de consulta pode
+  /// mudar de fornecedor, e o histórico precisa dizer quem disse o quê.
+  provider String
+
+  /// Resposta crua do fornecedor, exatamente como veio. Quando ele mudar o
+  /// payload, o histórico continua auditável — e é o que permite reprocessar
+  /// sem pagar de novo.
+  rawResponse Json? @map("raw_response")
+  /// Resultado normalizado, no formato do domínio.
+  result      Json?
+
+  /// Custo da chamada em centavos. É requisito, não enfeite: sem ele a loja
+  /// não sabe quanto gastou em consulta no mês.
+  costCents Int? @map("cost_cents")
+
+  /// `tenant:alvo:tipo:AAAA-MM-DD`. Impede pagar duas vezes pelo mesmo clique.
+  idempotencyKey String   @unique @map("idempotency_key")
+  /// Fim da validade do cache. Consulta válida é reaproveitada sem nova chamada.
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz()
+
+  errorMessage String?  @map("error_message")
+  queriedAt    DateTime @default(now()) @map("queried_at") @db.Timestamptz()
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, queriedAt(sort: Desc)])
+  @@index([vehicleId, kind])
+  @@map("vehicle_queries")
 }
