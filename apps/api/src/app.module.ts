@@ -15,6 +15,7 @@ import { MapModule } from './modules/map/map.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { DealsModule } from './modules/deals/deals.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
+import { ArmazenamentoModule } from './common/armazenamento/armazenamento.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { UsersModule } from './modules/users/users.module';
@@ -43,6 +44,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
     LeadsModule,
     DealsModule,
     ContractsModule,
+    ArmazenamentoModule,
     AdminModule,
     AppointmentsModule,
     UsersModule,

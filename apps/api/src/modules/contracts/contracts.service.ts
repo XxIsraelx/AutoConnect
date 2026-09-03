@@ -7,6 +7,7 @@ import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.ser
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
 import { ehGlobal, type Escopo } from '../../common/escopo';
 import { ContractPdfService } from './contract-pdf.service';
+import { DocumentosStorage } from '../../common/armazenamento/documentos.storage';
 import { TEMPLATE_PADRAO, type Bloco, type SnapshotContrato } from './blocos';
 
 const brl = (d: Prisma.Decimal) =>
@@ -18,6 +19,7 @@ export class ContractsService {
     private readonly prisma: PrismaService,
     private readonly privilegiado: PrivilegedPrismaService,
     private readonly pdf: ContractPdfService,
+    private readonly storage: DocumentosStorage,
   ) {}
 
   private tenantDe(escopo: Escopo): string {
@@ -131,10 +133,17 @@ export class ContractsService {
         garantia,
       };
 
-      const { hash } = await this.pdf.gerar(
+      const { pdf, hash } = await this.pdf.gerar(
         template.blocks as unknown as Bloco[],
         snapshot,
         emitidoEm,
+      );
+
+      // Arquiva no bucket privado quando configurado. Falhar aqui não impede a
+      // emissão: o contrato continua reproduzível a partir do snapshot, e um
+      // documento não emitido é pior do que um documento não arquivado.
+      const guardado = await this.storage.guardar(
+        tenantId, `contratos/${hash}.pdf`, pdf,
       );
 
       const contrato = await tx.dealContract.create({
@@ -145,6 +154,7 @@ export class ContractsService {
           status: 'issued',
           snapshot: snapshot as unknown as Prisma.InputJsonValue,
           contentHash: hash,
+          storageKey: guardado?.chave,
           issuedAt: emitidoEm,
         },
       });
@@ -207,6 +217,34 @@ export class ContractsService {
 
     if (ehGlobal(escopo)) return ler(this.privilegiado);
     return this.prisma.withTenant(escopo.tenantId, ler);
+  }
+
+  /**
+   * Link temporário para o documento arquivado.
+   *
+   * Só existe quando há storage configurado — sem ele o download passa pelo
+   * backend, que é mais lento porém igualmente seguro.
+   */
+  async linkTemporario(escopo: Escopo, id: string): Promise<{ url: string; expiraEmMinutos: number }> {
+    const ler = async (tx: ScopedClient) => {
+      const contrato = await tx.dealContract.findFirst({
+        where: { id, ...(ehGlobal(escopo) ? {} : { tenantId: escopo.tenantId }) },
+        select: { storageKey: true },
+      });
+      if (!contrato) throw new NotFoundException('Contrato não encontrado');
+      if (!contrato.storageKey) {
+        throw new ConflictException(
+          'Este contrato não está arquivado. Baixe pelo endpoint de PDF.',
+        );
+      }
+      return contrato.storageKey;
+    };
+
+    const chave = ehGlobal(escopo)
+      ? await ler(this.privilegiado)
+      : await this.prisma.withTenant(escopo.tenantId, ler);
+
+    return { url: await this.storage.urlAssinada(chave), expiraEmMinutos: 10 };
   }
 
   /** Registra o aceite com a trilha de evidências. */
