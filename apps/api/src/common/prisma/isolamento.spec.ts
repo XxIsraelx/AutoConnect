@@ -27,6 +27,8 @@ const MODELOS_DE_TENANT = [
   // vira concorrente vendo a margem do outro.
   'deal', 'dealPayment', 'dealStatusEvent', 'tradeIn',
   'vehicleAcquisition', 'vehicleCost',
+  // Contrato: documento assinado, CPF do signatário e trilha de evidências.
+  'contractTemplate', 'dealContract', 'contractSignature', 'dealWarranty',
 ];
 
 /**

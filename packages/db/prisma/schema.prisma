@@ -193,6 +193,10 @@ model Tenant {
   tradeIns            TradeIn[]
   vehicleAcquisitions VehicleAcquisition[]
   vehicleCosts        VehicleCost[]
+  contractTemplates   ContractTemplate[]
+  dealContracts       DealContract[]
+  contractSignatures  ContractSignature[]
+  dealWarranties      DealWarranty[]
 
   @@map("tenants")
 }
@@ -296,6 +300,7 @@ model User {
   dealsAsCustomer            Deal[]                    @relation("DealCustomer")
   dealsAsSalesperson         Deal[]                    @relation("DealSalesperson")
   dealStatusEvents           DealStatusEvent[]
+  contractSignatures         ContractSignature[]
 
   @@index([tenantId])
   @@index([role])
@@ -829,17 +834,17 @@ model SavedSearch {
 }
 
 model SalesGoal {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId  String   @map("tenant_id") @db.Uuid
-  userId    String?  @map("user_id") @db.Uuid // null = meta geral da equipe
-  period    String // "YYYY-MM"
-  target    Int // meta de vendas (negócios fechados) no período
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  userId      String?  @map("user_id") @db.Uuid // null = meta geral da equipe
+  period      String // "YYYY-MM"
+  target      Int // meta de vendas (negócios fechados) no período
   /// Meta em reais. Opcional para não quebrar as metas já cadastradas — a
   /// loja pensa em faturamento, não em contagem, e quem só tem `target`
   /// continua funcionando.
   targetValue Decimal? @map("target_value") @db.Decimal(14, 2)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -944,6 +949,8 @@ model Deal {
   payments     DealPayment[]
   statusEvents DealStatusEvent[]
   tradeIn      TradeIn?
+  contracts    DealContract[]
+  warranty     DealWarranty?
 
   @@index([tenantId, status])
   @@index([tenantId, createdAt(sort: Desc)])
@@ -1072,4 +1079,134 @@ model VehicleCost {
   @@index([tenantId])
   @@index([vehicleId])
   @@map("vehicle_costs")
+}
+
+// ─────────────────────────────────────────────────────────
+// Contrato
+//
+// A partir daqui o sistema emite documento com efeito jurídico, e o desenho
+// reflete isso: o que foi emitido não muda, e é preciso poder provar.
+// ─────────────────────────────────────────────────────────
+
+enum ContractStatus {
+  draft
+  issued
+  signed
+  voided
+}
+
+enum SignerRole {
+  customer
+  dealer
+}
+
+model ContractTemplate {
+  id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  name     String
+  /// Editar um template nunca altera contrato já emitido: cria versão nova.
+  /// O contrato aponta para a versão exata que usou.
+  version  Int    @default(1)
+
+  /// Estrutura de blocos, não HTML livre — o gerador precisa produzir sempre
+  /// o mesmo byte para o mesmo modelo, senão o hash deixa de significar algo.
+  blocks   Json
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contracts DealContract[]
+
+  @@unique([tenantId, name, version])
+  @@index([tenantId])
+  @@map("contract_templates")
+}
+
+model DealContract {
+  id         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String         @map("tenant_id") @db.Uuid
+  dealId     String         @map("deal_id") @db.Uuid
+  templateId String         @map("template_id") @db.Uuid
+  status     ContractStatus @default(draft)
+
+  /// Cópia congelada dos dados da emissão. É snapshot e não join de propósito:
+  /// se o preço do veículo mudar depois, o contrato assinado não muda junto.
+  snapshot Json
+
+  /// SHA-256 do PDF no momento em que ele nasce. Prova que o arquivo não foi
+  /// trocado, e é a base de qualquer integração de assinatura depois.
+  contentHash String  @map("content_hash")
+  /// Caminho no armazenamento privado. Nunca URL pública.
+  storageKey  String? @map("storage_key")
+
+  issuedAt   DateTime  @default(now()) @map("issued_at") @db.Timestamptz()
+  signedAt   DateTime? @map("signed_at") @db.Timestamptz()
+  voidedAt   DateTime? @map("voided_at") @db.Timestamptz()
+  voidReason String?   @map("void_reason")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deal       Deal                @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  template   ContractTemplate    @relation(fields: [templateId], references: [id])
+  signatures ContractSignature[]
+
+  @@index([tenantId, dealId])
+  @@map("deal_contracts")
+}
+
+model ContractSignature {
+  id         String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String     @map("tenant_id") @db.Uuid
+  contractId String     @map("contract_id") @db.Uuid
+  role       SignerRole
+
+  signerUserId   String? @map("signer_user_id") @db.Uuid
+  signerName     String  @map("signer_name")
+  signerDocument String? @map("signer_document")
+
+  /// Trilha de evidências do aceite. Sem provedor externo ainda, é isto que
+  /// sustenta a assinatura — e é o mesmo conjunto que qualquer provedor pede.
+  ip           String?
+  userAgent    String? @map("user_agent")
+  /// Hash do documento que a pessoa aceitou. Se o contrato for reemitido, o
+  /// hash muda e a assinatura antiga deixa de casar — que é o comportamento
+  /// correto, não um bug.
+  acceptedHash String  @map("accepted_hash")
+
+  signedAt DateTime @default(now()) @map("signed_at") @db.Timestamptz()
+
+  tenant   Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contract DealContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  signer   User?        @relation(fields: [signerUserId], references: [id])
+
+  @@unique([contractId, role])
+  @@index([tenantId])
+  @@map("contract_signatures")
+}
+
+model DealWarranty {
+  dealId   String @id @map("deal_id") @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  /// Legal: CDC art. 26, II. 90 dias, cobre o veículo inteiro. Não é campo de
+  /// negociação — é constante contada a partir da entrega.
+  legalDays     Int       @default(90) @map("legal_days")
+  legalStartsAt DateTime? @map("legal_starts_at") @db.Timestamptz()
+
+  /// Contratual: aditiva, opcional, escopo livre. Nunca reduz a legal.
+  contractualMonths Int?    @map("contractual_months")
+  contractualScope  String? @map("contractual_scope")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("deal_warranties")
 }

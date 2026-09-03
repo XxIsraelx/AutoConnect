@@ -5,3 +5,4 @@ export * from './schemas/lead';
 export * from './domain/deal';
 export * from './domain/dinheiro';
 export * from './schemas/deal';
+export * from './domain/garantia';
