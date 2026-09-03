@@ -12,6 +12,7 @@ import { ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import { useNegocio, useMargem, useTransicionar, useAdicionarPagamento } from '../dados';
+import Contrato from './Contrato';
 import { ROTULO_STATUS, COR_STATUS, ROTULO_PAGAMENTO } from '../rotulos';
 
 const VE_CUSTO = ['manager', 'tenant_admin', 'super_admin'];
@@ -275,6 +276,8 @@ export default function NegocioPage() {
             </Link>
           </div>
         </div>
+
+        <Contrato dealId={id} />
 
         {/* Timeline */}
         <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4">

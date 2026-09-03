@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, API_URL, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import type { DealStatusValue, PaymentKindValue } from '@autoconnect/shared';
 
@@ -136,4 +136,101 @@ export function useAdicionarPagamento(id: string) {
       qc.invalidateQueries({ queryKey: ['negocios'] });
     },
   });
+}
+
+/* ── Contrato ─────────────────────────────────────────────── */
+
+export interface Contrato {
+  id: string;
+  status: 'draft' | 'issued' | 'signed' | 'voided';
+  contentHash: string;
+  storageKey: string | null;
+  issuedAt: string;
+  signedAt: string | null;
+  voidedAt: string | null;
+  voidReason: string | null;
+  template: { name: string; version: number };
+  signatures: {
+    id: string;
+    role: 'customer' | 'dealer';
+    signerName: string;
+    signedAt: string;
+  }[];
+}
+
+export function useContratos(dealId: string) {
+  const token = useToken();
+  return useQuery({
+    queryKey: ['contratos', dealId],
+    queryFn: () => api<Contrato[]>(`/deals/${dealId}/contracts`, { token }),
+    enabled: Boolean(token && dealId),
+  });
+}
+
+export function useEmitirContrato(dealId: string) {
+  const token = useToken();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => api<Contrato>(`/deals/${dealId}/contract`, { method: 'POST', token }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['contratos', dealId] });
+      // A emissão grava um evento na timeline do negócio.
+      qc.invalidateQueries({ queryKey: ['negocio', dealId] });
+    },
+  });
+}
+
+export function useAssinarContrato(dealId: string) {
+  const token = useToken();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (v: { id: string; role: 'customer' | 'dealer'; signerName: string }) =>
+      api(`/contracts/${v.id}/sign`, {
+        method: 'POST', token, body: { role: v.role, signerName: v.signerName },
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['contratos', dealId] }),
+  });
+}
+
+export function useAnularContrato(dealId: string) {
+  const token = useToken();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (v: { id: string; reason: string }) =>
+      api(`/contracts/${v.id}/void`, { method: 'POST', token, body: { reason: v.reason } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['contratos', dealId] }),
+  });
+}
+
+/**
+ * Baixa o PDF.
+ *
+ * Não dá para usar `<a href>`: a rota exige o header `Authorization`, e um
+ * link cru devolveria 401. Busca-se o arquivo com o token, e o blob é aberto
+ * em aba nova — o object URL é revogado depois para não vazar memória.
+ */
+export async function baixarPdf(contratoId: string, token: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/v1/contracts/${contratoId}/pdf`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    // O backend recusa o download quando o hash regerado não confere; a
+    // mensagem dele é mais útil que um "falhou" genérico.
+    let msg = `Erro ${res.status}`;
+    try {
+      const corpo = await res.json();
+      if (typeof corpo.message === 'string') msg = corpo.message;
+    } catch {
+      // resposta sem JSON: fica o status
+    }
+    throw new ApiError(res.status, msg);
+  }
+
+  const url = URL.createObjectURL(await res.blob());
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
