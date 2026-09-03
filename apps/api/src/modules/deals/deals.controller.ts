@@ -46,6 +46,13 @@ export class DealsController {
     return this.deals.findAll(escopoDa(req.user), listDealsSchema.parse(query));
   }
 
+  /** Clientes com quem a loja já se relacionou. Vem antes de `:id` na ordem
+   *  das rotas, senão o Nest trataria "customers" como um id. */
+  @Get('customers')
+  clientes(@Req() req: AuthRequest, @Query('q') q?: string): Promise<unknown> {
+    return this.deals.clientesRelacionados(escopoDa(req.user), q);
+  }
+
   @Get(':id')
   findOne(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string): Promise<unknown> {
     return this.deals.findOne(escopoDa(req.user), id);

@@ -13,6 +13,7 @@ import { useAuthStore } from '@/store/auth';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import { useNegocio, useMargem, useTransicionar, useAdicionarPagamento } from '../dados';
 import Contrato from './Contrato';
+import Partes from './Partes';
 import { ROTULO_STATUS, COR_STATUS, ROTULO_PAGAMENTO } from '../rotulos';
 
 const VE_CUSTO = ['manager', 'tenant_admin', 'super_admin'];
@@ -256,28 +257,7 @@ export default function NegocioPage() {
           )}
         </div>
 
-        {/* Partes */}
-        <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Partes</p>
-          <div className="space-y-2 text-sm">
-            <p className="flex items-center gap-2">
-              <User size={14} className="text-slate-400" />
-              {negocio.customer?.fullName ?? 'Sem cliente vinculado'}
-            </p>
-            <p className="flex items-center gap-2">
-              <User size={14} className="text-slate-400" />
-              {negocio.salesperson?.fullName ?? 'Sem vendedor'}
-            </p>
-            <Link
-              href={`/veiculos/${negocio.vehicle.id}`}
-              className="flex items-center gap-2 text-brand-accent hover:underline"
-            >
-              <Car size={14} /> Ver veículo
-            </Link>
-          </div>
-        </div>
-
-        <Contrato dealId={id} />
+        <Partes negocio={negocio} editavel={editavel} />
 
         {/* Timeline */}
         <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4">

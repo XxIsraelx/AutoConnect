@@ -234,3 +234,45 @@ export async function baixarPdf(contratoId: string, token: string): Promise<void
   window.open(url, '_blank');
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
+
+/* ── Cliente do negócio ───────────────────────────────────── */
+
+export interface ClienteRelacionado {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+}
+
+/**
+ * Clientes com quem a loja já se relacionou.
+ *
+ * Não é a base da plataforma: o backend usa o mesmo critério da policy de
+ * isolamento — quem tem lead, agendamento ou conversa com esta loja.
+ */
+export function useClientesRelacionados(busca: string, habilitado: boolean) {
+  const token = useToken();
+  return useQuery({
+    queryKey: ['clientes-relacionados', busca],
+    queryFn: () =>
+      api<ClienteRelacionado[]>(
+        `/deals/customers${busca ? `?q=${encodeURIComponent(busca)}` : ''}`,
+        { token },
+      ),
+    enabled: Boolean(token) && habilitado,
+  });
+}
+
+export function useVincularCliente(dealId: string) {
+  const token = useToken();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (customerUserId: string | null) =>
+      api(`/deals/${dealId}`, { method: 'PATCH', token, body: { customerUserId } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['negocio', dealId] });
+      qc.invalidateQueries({ queryKey: ['negocios'] });
+    },
+  });
+}

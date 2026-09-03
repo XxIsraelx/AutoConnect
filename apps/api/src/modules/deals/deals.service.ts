@@ -137,6 +137,43 @@ export class DealsService {
     });
   }
 
+
+  /**
+   * Clientes com quem a loja já se relacionou, para vincular ao negócio.
+   *
+   * O critério é o **mesmo** da policy `cliente_relacionado` (migration
+   * 20260902150000): quem tem lead, agendamento ou conversa com esta
+   * concessionária. Não é a base de clientes da plataforma — a loja não deve
+   * enxergar quem nunca falou com ela.
+   *
+   * Cliente tem `tenant_id` nulo, então nenhum `where: { tenantId }` o
+   * alcançaria; o vínculo é sempre indireto, por isso o SQL explícito.
+   */
+  async clientesRelacionados(escopo: Escopo, busca?: string) {
+    const tenantId = this.tenantDe(escopo);
+    const termo = busca?.trim() ? `%${busca.trim()}%` : null;
+
+    return this.prisma.withTenant(tenantId, (tx) =>
+      tx.$queryRaw<{ id: string; fullName: string; email: string; phone: string | null }[]>`
+        SELECT u.id, u.full_name AS "fullName", u.email, u.phone
+          FROM users u
+         WHERE u.role = 'customer'
+           AND u.status <> 'deleted'
+           AND (
+                EXISTS (SELECT 1 FROM leads l
+                         WHERE l.customer_user_id = u.id AND l.tenant_id = ${tenantId}::uuid)
+             OR EXISTS (SELECT 1 FROM appointments a
+                         WHERE a.customer_user_id = u.id AND a.tenant_id = ${tenantId}::uuid)
+             OR EXISTS (SELECT 1 FROM conversations c
+                         WHERE c.customer_user_id = u.id AND c.tenant_id = ${tenantId}::uuid)
+           )
+           AND (${termo}::text IS NULL
+                OR u.full_name ILIKE ${termo} OR u.email ILIKE ${termo})
+         ORDER BY u.full_name
+         LIMIT 20`,
+    );
+  }
+
   async findAll(escopo: Escopo, filtros: ListDealsInput) {
     const where: Prisma.DealWhereInput = {
       ...(ehGlobal(escopo) ? {} : { tenantId: escopo.tenantId }),
