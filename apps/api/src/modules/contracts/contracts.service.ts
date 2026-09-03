@@ -3,7 +3,8 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@autoconnect/db';
 import {
-  validarGarantia, GARANTIA_LEGAL_DIAS, formatarCpf, qualificarComprador,
+  validarGarantia, GARANTIA_LEGAL_DIAS, formatarCpf,
+  qualificarComprador, qualificarVendedor,
 } from '@autoconnect/shared';
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
@@ -66,7 +67,12 @@ export class ContractsService {
           vehicle: { include: { brand: true, model: true } },
           customer: { select: { fullName: true, email: true } },
           payments: { where: { status: { in: ['pending', 'confirmed'] } }, orderBy: { createdAt: 'asc' } },
-          tenant: { select: { tradeName: true, taxId: true } },
+          tenant: {
+            select: {
+              legalName: true, tradeName: true, taxId: true, stateRegistration: true,
+              legalRepName: true, legalRepCpf: true, legalRepRole: true,
+            },
+          },
           warranty: true,
           buyer: true,
         },
@@ -98,6 +104,15 @@ export class ContractsService {
       const veredito = validarGarantia(garantia);
       if (!veredito.ok) throw new ConflictException(veredito.motivo);
 
+      // Mesma exigência do comprador: sem representante legal, o contrato não
+      // diz quem se obrigou pela loja.
+      if (!negocio.tenant.legalRepName) {
+        throw new ConflictException(
+          'Informe o representante legal da concessionária em Configurações ' +
+            'antes de emitir contrato — é quem assina pela loja.',
+        );
+      }
+
       const template = await this.templateAtivo(tx, tenantId);
       const emitidoEm = new Date();
 
@@ -108,17 +123,24 @@ export class ContractsService {
 
       const snapshot: SnapshotContrato = {
         emitidoEm: emitidoEm.toLocaleDateString('pt-BR'),
-        loja: {
-          nome: negocio.tenant.tradeName,
-          documento: negocio.tenant.taxId,
-          endereco: filial
+        loja: (() => {
+          const endereco = filial
             ? [
                 [filial.addressLine, filial.addressNumber].filter(Boolean).join(', '),
                 filial.city,
                 filial.state,
               ].filter(Boolean).join(' — ')
-            : null,
-        },
+            : null;
+
+          return {
+            nome: negocio.tenant.tradeName,
+            documento: negocio.tenant.taxId,
+            endereco,
+            // Frase pronta com razão social, CNPJ, IE, sede e representante.
+            qualificacao: qualificarVendedor({ ...negocio.tenant, endereco }),
+            representante: negocio.tenant.legalRepName,
+          };
+        })(),
         cliente: {
           nome: negocio.buyer.fullName,
           documento: formatarCpf(negocio.buyer.cpf),

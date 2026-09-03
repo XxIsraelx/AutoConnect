@@ -277,6 +277,9 @@ export class TenantsService {
       brandColor?: string;
       websiteUrl?: string;
       acceptsTradeIn?: boolean;
+      legalRepName?: string;
+      legalRepCpf?: string;
+      legalRepRole?: string;
     },
   ): Promise<unknown> {
     return this.prisma.withTenant(tenantId, (tx) =>

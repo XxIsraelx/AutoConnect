@@ -1,8 +1,8 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query, Req } from '@nestjs/common';
-import { Prisma } from '@autoconnect/db';
 import { TenantsService } from './tenants.service';
 import type { AuthenticatedRequest } from '../../common/middleware/tenant.middleware';
 import { escopoDa } from '../../common/escopo';
+import { updateTenantSchema, updateBranchSchema } from '@autoconnect/shared';
 
 @Controller('tenant')
 export class TenantsController {
@@ -39,41 +39,37 @@ export class TenantsController {
     return this.tenants.getUsersProximity(req.tenantId!);
   }
 
-  /** PATCH /tenant/me — atualiza dados da concessionária */
+  /**
+   * PATCH /tenant/me — atualiza dados da concessionária.
+   *
+   * O corpo passa pelo Zod, e não só por anotação de tipo. Antes ele ia cru
+   * para o `tenant.update` do Prisma: um `tenant_admin` que mandasse
+   * `{ "isActive": false }` desativava a própria loja, e o mesmo valeria para
+   * `slug` (a URL pública), `taxId` ou `settings`. Tipo de TypeScript não
+   * existe em tempo de execução; o Zod descarta o que não está no schema.
+   */
   @Patch('me')
   update(
     @Req() req: AuthenticatedRequest,
-    @Body() body: {
-      tradeName?: string;
-      primaryPhone?: string;
-      logoUrl?: string;
-      brandColor?: string;
-      websiteUrl?: string;
-      acceptsTradeIn?: boolean;
-    },
+    @Body() body: unknown,
   ): Promise<unknown> {
-    return this.tenants.updateTenant(req.tenantId!, body);
+    return this.tenants.updateTenant(req.tenantId!, updateTenantSchema.parse(body));
   }
 
-  /** PATCH /tenant/branch/:id — atualiza dados de uma filial */
+  /**
+   * PATCH /tenant/branch/:id — atualiza dados de uma filial.
+   *
+   * Também passava o corpo cru para o Prisma. O Zod descarta o que não está no
+   * schema, e `isHeadquarters` ficou de fora de propósito: trocar a matriz
+   * merece rota própria.
+   */
   @Patch('branch/:id')
   updateBranch(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: {
-      name?: string;
-      phone?: string;
-      email?: string;
-      addressLine?: string;
-      addressNumber?: string;
-      complement?: string;
-      neighborhood?: string;
-      city?: string;
-      state?: string;
-      postalCode?: string;
-      businessHours?: Prisma.InputJsonValue;
-    },
+    @Body() body: unknown,
   ): Promise<unknown> {
-    return this.tenants.updateBranch(req.tenantId!, id, body);
+    return this.tenants.updateBranch(req.tenantId!, id, updateBranchSchema.parse(body));
   }
+
 }

@@ -19,7 +19,14 @@ export type Bloco =
 /** Dados congelados na emissão. Tudo string: nada é recalculado depois. */
 export interface SnapshotContrato {
   emitidoEm: string;
-  loja: { nome: string; documento: string | null; endereco: string | null };
+  loja: {
+    nome: string;
+    documento: string | null;
+    endereco: string | null;
+    /** Qualificação completa, com representante legal. */
+    qualificacao?: string;
+    representante?: string | null;
+  };
   cliente: {
     nome: string;
     documento: string | null;
@@ -98,8 +105,17 @@ export function paraConteudo(blocos: Bloco[], snap: SnapshotContrato): object[] 
         saida.push({
           margin: [0, 40, 0, 0],
           columns: [
-            { text: `_______________________________\n${snap.loja.nome}\nVendedor`, style: 'corpo', alignment: 'center' },
-            { text: `_______________________________\n${snap.cliente.nome}\nComprador`, style: 'corpo', alignment: 'center' },
+            {
+              text:
+                '_______________________________\n' +
+                `${snap.loja.representante ?? snap.loja.nome}\n` +
+                `${snap.loja.nome}`,
+              style: 'corpo', alignment: 'center',
+            },
+            {
+              text: `_______________________________\n${snap.cliente.nome}\nComprador(a)`,
+              style: 'corpo', alignment: 'center',
+            },
           ],
         });
         break;
@@ -140,9 +156,7 @@ export const TEMPLATE_PADRAO: Bloco[] = [
   { tipo: 'titulo', texto: 'CONTRATO DE COMPRA E VENDA DE VEÍCULO AUTOMOTOR' },
   {
     tipo: 'paragrafo',
-    texto:
-      'VENDEDORA: {{loja.nome}}, inscrita no CNPJ sob o nº {{loja.documento}}, ' +
-      'com endereço em {{loja.endereco}}.',
+    texto: 'VENDEDORA: {{loja.qualificacao}}.',
   },
   {
     tipo: 'paragrafo',

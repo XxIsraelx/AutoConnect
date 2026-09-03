@@ -177,3 +177,55 @@ export function qualificarComprador(c: {
     endereco ? `residente e domiciliado(a) em ${endereco}` : null,
   ].filter(Boolean).join(', ');
 }
+
+/**
+ * Qualificação da vendedora no contrato.
+ *
+ * A pessoa jurídica é identificada por razão social e CNPJ; o representante
+ * legal é quem de fato assina. Um contrato em que ninguém é nomeado como
+ * signatário pela loja tem o mesmo defeito de um sem CPF do comprador: parece
+ * documento e não diz quem se obrigou.
+ */
+export function qualificarVendedor(v: {
+  legalName: string; tradeName: string; taxId?: string | null;
+  stateRegistration?: string | null; endereco?: string | null;
+  legalRepName?: string | null; legalRepCpf?: string | null; legalRepRole?: string | null;
+}): string {
+  const empresa = [
+    v.legalName,
+    v.tradeName && v.tradeName !== v.legalName ? `nome fantasia ${v.tradeName}` : null,
+    v.taxId ? `inscrita no CNPJ sob o nº ${formatarCnpj(v.taxId)}` : null,
+    v.stateRegistration ? `Inscrição Estadual nº ${v.stateRegistration}` : null,
+    v.endereco ? `com sede em ${v.endereco}` : null,
+  ].filter(Boolean).join(', ');
+
+  if (!v.legalRepName) return empresa;
+
+  const rep = [
+    v.legalRepName,
+    v.legalRepRole,
+    v.legalRepCpf ? `inscrito(a) no CPF sob o nº ${formatarCpf(v.legalRepCpf)}` : null,
+  ].filter(Boolean).join(', ');
+
+  return `${empresa}, neste ato representada por ${rep}`;
+}
+
+/** CNPJ formatado: `00.000.000/0001-91`. */
+export function formatarCnpj(cnpj: string): string {
+  const d = cnpj.replace(/\D/g, '');
+  return d.length === 14
+    ? `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`
+    : cnpj;
+}
+
+/** Campos do representante legal, editáveis nas configurações da loja. */
+export const representanteLegalSchema = z.object({
+  legalRepName: z.string().min(3).max(160),
+  legalRepCpf: z
+    .string()
+    .transform((v) => v.replace(/\D/g, ''))
+    .refine(cpfValido, 'CPF inválido — confira os dígitos.'),
+  legalRepRole: z.string().max(60).optional(),
+});
+
+export type RepresentanteLegalInput = z.infer<typeof representanteLegalSchema>;

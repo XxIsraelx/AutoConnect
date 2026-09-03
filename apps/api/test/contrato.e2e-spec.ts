@@ -50,6 +50,11 @@ describe('Contrato (e2e)', () => {
     dono = app.get(PrivilegedPrismaService, { strict: false });
     jwt = app.get(JwtService);
     f = await criarDoisTenants(dono);
+    await dono.$executeRaw`
+      UPDATE tenants
+         SET legal_rep_name = 'Carlos Souza', legal_rep_cpf = '52998224725',
+             legal_rep_role = 'sócio-administrador'
+       WHERE id = ${f.a.id}::uuid`;
     comoAdmin = jwt.sign({ sub: f.a.usuarioId, role: 'tenant_admin', tenantId: f.a.id });
     comoVendedor = jwt.sign({ sub: f.a.usuarioId, role: 'salesperson', tenantId: f.a.id });
   }, 90_000);
@@ -156,6 +161,34 @@ describe('Contrato (e2e)', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.cpf).toBe('52998224725');
+    }, 30_000);
+  });
+
+
+  describe('qualificação da vendedora', () => {
+    it('recusa emitir sem representante legal', async () => {
+      const dealId = await criarNegocio();
+      await dono.$executeRaw`
+        UPDATE tenants SET legal_rep_name = NULL WHERE id = ${f.a.id}::uuid`;
+
+      const res = await post(`/deals/${dealId}/contract`, comoVendedor);
+
+      expect(res.status).toBe(409);
+      expect(res.body.message).toMatch(/representante legal/i);
+
+      await dono.$executeRaw`
+        UPDATE tenants SET legal_rep_name = 'Carlos Souza' WHERE id = ${f.a.id}::uuid`;
+    }, 30_000);
+
+    it('o snapshot nomeia quem assina pela loja, com CNPJ e CPF formatados', async () => {
+      const dealId = await criarNegocio();
+      const { body } = await post(`/deals/${dealId}/contract`, comoVendedor);
+      const q = body.snapshot.loja.qualificacao;
+
+      expect(q).toMatch(/neste ato representada por Carlos Souza/);
+      expect(q).toMatch(/sócio-administrador/);
+      expect(q).toMatch(/CPF sob o nº 529\.982\.247-25/);
+      expect(body.snapshot.loja.representante).toBe('Carlos Souza');
     }, 30_000);
   });
 

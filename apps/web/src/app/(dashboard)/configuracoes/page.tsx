@@ -38,6 +38,9 @@ interface TenantFull {
   logoUrl: string | null;
   brandColor: string | null;
   websiteUrl: string | null;
+  legalRepName: string | null;
+  legalRepCpf: string | null;
+  legalRepRole: string | null;
   acceptsTradeIn: boolean;
   branches: Branch[];
   subscription: { plan: string; status: string } | null;
@@ -194,6 +197,7 @@ export default function ConfiguracoesPage() {
   /* Forms separados para cada seção */
   const [tenantForm, setTenantForm] = useState({
     tradeName: '', primaryPhone: '', brandColor: '', websiteUrl: '', logoUrl: '',
+    legalRepName: '', legalRepCpf: '', legalRepRole: '',
     acceptsTradeIn: false,
   });
   const [branchForm, setBranchForm] = useState({
@@ -223,6 +227,9 @@ export default function ConfiguracoesPage() {
           primaryPhone: t.primaryPhone ?? '',
           brandColor:   t.brandColor   ?? '#3b82f6',
           websiteUrl:   t.websiteUrl   ?? '',
+          legalRepName: t.legalRepName ?? '',
+          legalRepCpf:  t.legalRepCpf  ?? '',
+          legalRepRole: t.legalRepRole ?? '',
           logoUrl:      t.logoUrl      ?? '',
           acceptsTradeIn: t.acceptsTradeIn ?? false,
         });
@@ -262,6 +269,9 @@ export default function ConfiguracoesPage() {
           websiteUrl:   tenantForm.websiteUrl   || undefined,
           logoUrl:      tenantForm.logoUrl      || undefined,
           acceptsTradeIn: tenantForm.acceptsTradeIn,
+          legalRepName: tenantForm.legalRepName || undefined,
+          legalRepCpf:  tenantForm.legalRepCpf  || undefined,
+          legalRepRole: tenantForm.legalRepRole || undefined,
         }),
       });
       setTenant(updated);
@@ -344,6 +354,27 @@ export default function ConfiguracoesPage() {
                          onChange={e => setT('primaryPhone', e.target.value)}
                          placeholder="(11) 99999-9999" />
                 </div>
+              </Field>
+            </div>
+
+            {/* Representante legal — quem assina os contratos pela loja. Sem
+                ele a emissão do contrato é recusada, porque o documento não
+                diria quem se obrigou. */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Field label="Representante legal" hint="quem assina os contratos pela loja">
+                <input className={input} value={tenantForm.legalRepName}
+                       onChange={e => setT('legalRepName', e.target.value)}
+                       placeholder="Nome completo" />
+              </Field>
+              <Field label="CPF do representante">
+                <input className={input} value={tenantForm.legalRepCpf}
+                       onChange={e => setT('legalRepCpf', e.target.value)}
+                       inputMode="numeric" placeholder="000.000.000-00" />
+              </Field>
+              <Field label="Cargo">
+                <input className={input} value={tenantForm.legalRepRole}
+                       onChange={e => setT('legalRepRole', e.target.value)}
+                       placeholder="sócio-administrador" />
               </Field>
             </div>
 

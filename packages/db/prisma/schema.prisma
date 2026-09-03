@@ -160,23 +160,34 @@ enum SubscriptionStatus {
 // ============ TENANT / SAAS ============
 
 model Tenant {
-  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  slug              String   @unique @db.Citext
-  legalName         String   @map("legal_name")
-  tradeName         String   @map("trade_name")
-  taxId             String?  @unique @map("tax_id") // CNPJ (14 dígitos, sem pontuação)
-  stateRegistration String?  @map("state_registration") // Inscrição Estadual (IE)
-  primaryEmail      String   @map("primary_email") @db.Citext
-  primaryPhone      String?  @map("primary_phone")
-  logoUrl           String?  @map("logo_url")
-  brandColor        String?  @map("brand_color")
-  websiteUrl        String?  @map("website_url")
-  timezone          String   @default("America/Sao_Paulo")
-  isActive          Boolean  @default(true) @map("is_active")
-  acceptsTradeIn    Boolean  @default(false) @map("accepts_trade_in")
-  settings          Json     @default("{}")
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  id                String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug              String  @unique @db.Citext
+  legalName         String  @map("legal_name")
+  tradeName         String  @map("trade_name")
+  taxId             String? @unique @map("tax_id") // CNPJ (14 dígitos, sem pontuação)
+  stateRegistration String? @map("state_registration") // Inscrição Estadual (IE)
+  primaryEmail      String  @map("primary_email") @db.Citext
+  primaryPhone      String? @map("primary_phone")
+  logoUrl           String? @map("logo_url")
+  brandColor        String? @map("brand_color")
+  websiteUrl        String? @map("website_url")
+  timezone          String  @default("America/Sao_Paulo")
+  isActive          Boolean @default(true) @map("is_active")
+  acceptsTradeIn    Boolean @default(false) @map("accepts_trade_in")
+
+  /// Representante legal que assina pela concessionária.
+  ///
+  /// Fica no tenant e não no negócio porque é a mesma pessoa em todos os
+  /// contratos — pedir a cada venda seria digitação repetida e fonte de
+  /// divergência. O contrato congela no snapshot, então trocar o
+  /// representante depois não altera documento já emitido.
+  legalRepName String?  @map("legal_rep_name")
+  legalRepCpf  String?  @map("legal_rep_cpf")
+  /// Cargo: sócio-administrador, procurador, gerente…
+  legalRepRole String?  @map("legal_rep_role")
+  settings     Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
   subscription        TenantSubscription?
   branches            DealershipBranch[]
