@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import {
   Send, MessageSquare, Circle, Loader2, User,
-  RefreshCw, AlertCircle, ChevronLeft, BadgeDollarSign, X,
+  RefreshCw, AlertCircle, ChevronLeft, BadgeDollarSign, X, Archive,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
@@ -113,6 +113,25 @@ export default function ChatPage() {
   const typingTimer = useRef<NodeJS.Timeout | null>(null);
 
   const activeConv = conversations.find((c) => c.id === activeId);
+
+  const [encerrando, setEncerrando] = useState(false);
+  const [erroEncerrar, setErroEncerrar] = useState<string | null>(null);
+
+  async function encerrar(id: string) {
+    if (!token) return;
+    setEncerrando(true);
+    setErroEncerrar(null);
+    try {
+      await api(`/conversations/${id}/close`, { method: 'PATCH', token });
+      setConversations((cs) =>
+        cs.map((c) => (c.id === id ? { ...c, status: 'closed' } : c)),
+      );
+    } catch (e) {
+      setErroEncerrar(textoDoErro(e));
+    } finally {
+      setEncerrando(false);
+    }
+  }
 
   /* Carrega conversas */
   const loadConversations = useCallback(async () => {
@@ -297,9 +316,31 @@ export default function ChatPage() {
                       </p>
                     )}
                   </div>
+
+                  {/* Encerrar. O endpoint existia e nenhuma tela o chamava: a
+                      conversa ficava aberta para sempre, e a caixa do vendedor
+                      acumulava atendimento já resolvido. */}
+                  {activeConv.status === 'open' && (
+                    <button
+                      onClick={() => void encerrar(activeConv.id)}
+                      disabled={encerrando}
+                      title="Encerrar conversa"
+                      className="ml-auto p-2 rounded-lg text-slate-400 hover:text-rose-600
+                                 dark:hover:text-rose-400 hover:bg-slate-100 dark:hover:bg-slate-800
+                                 transition disabled:opacity-50"
+                    >
+                      {encerrando ? <Loader2 size={15} className="animate-spin" /> : <Archive size={15} />}
+                    </button>
+                  )}
                 </>
               )}
             </div>
+            {erroEncerrar && (
+              <p className="px-4 py-2 text-xs text-rose-600 dark:text-rose-400 border-b
+                            border-slate-200 dark:border-slate-800">
+                {erroEncerrar}
+              </p>
+            )}
 
             {/* Mensagens */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50 dark:bg-slate-950">

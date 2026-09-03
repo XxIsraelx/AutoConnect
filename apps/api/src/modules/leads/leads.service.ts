@@ -138,6 +138,12 @@ export class LeadsService {
           customer: {
             select: { id: true, fullName: true, email: true, phone: true },
           },
+          // Quem é o responsável precisa vir na listagem: é onde o gerente
+          // distribui a fila, e sem isto o botão de atribuir não teria o que
+          // exibir nem como saber se já há alguém.
+          assignee: {
+            select: { id: true, fullName: true, email: true, role: true },
+          },
         },
       }),
         tx.lead.count({ where }),

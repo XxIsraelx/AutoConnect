@@ -52,6 +52,7 @@ interface Lead {
   createdAt: string;
   vehicle: LeadVehicle | null;
   customer: { id: string; fullName: string; email: string; phone: string | null } | null;
+  assignee: TeamMember | null;
   metadata?: { tradeIn?: TradeInMeta } | null;
 }
 
@@ -122,6 +123,112 @@ function StatusBadge({ status }: { status: LeadStatus }) {
     <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${cfg.bg} ${cfg.color}`}>
       {cfg.icon} {cfg.label}
     </span>
+  );
+}
+
+/* ── Atribuir vendedor ───────────────────────────────────── */
+
+/**
+ * Atribuição do lead a um vendedor.
+ *
+ * A tela mostrava "Responsável: Não atribuído" e não oferecia como mudar — o
+ * endpoint existia desde sempre e nenhuma tela o chamava. Sem isto o gerente
+ * não distribui a fila, e a comissão, que é por vendedor, não tem a quem ir.
+ */
+function AtribuirVendedor({
+  lead, onAtribuido,
+}: {
+  lead: Lead;
+  onAtribuido: () => void;
+}) {
+  const token = useAuthStore(s => s.token);
+  const [aberto, setAberto] = useState(false);
+  const [equipe, setEquipe] = useState<TeamMember[] | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!aberto || equipe || !token) return;
+    api<TeamMember[]>('/users', { token })
+      .then(setEquipe)
+      .catch((e) => setErro(textoDoErro(e)));
+  }, [aberto, equipe, token]);
+
+  async function atribuir(salesPersonId: string | null) {
+    if (!token) return;
+    setSalvando(true);
+    setErro(null);
+    try {
+      await api(`/leads/${lead.id}/assign`, {
+        method: 'PATCH', token, body: { salesPersonId },
+      });
+      setAberto(false);
+      onAtribuido();
+    } catch (e) {
+      setErro(textoDoErro(e));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setAberto(v => !v)}
+        disabled={salvando}
+        className="flex items-center gap-1.5 text-xs font-semibold text-slate-400
+                   hover:text-brand-accent transition-colors disabled:opacity-50"
+      >
+        {salvando ? <Loader2 size={11} className="animate-spin" /> : <UserCheck size={11} />}
+        {lead.assignee ? lead.assignee.fullName.split(' ')[0] : 'Atribuir'}
+      </button>
+
+      {aberto && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setAberto(false)} />
+          <div className="absolute right-0 top-full mt-1 z-20 w-52 rounded-xl border
+                          border-slate-200 dark:border-white/[.08] bg-white dark:bg-[#1e293b]
+                          shadow-xl overflow-hidden">
+            {!equipe ? (
+              <p className="px-3 py-2 text-xs text-slate-400">carregando…</p>
+            ) : (
+              <>
+                {lead.assignee && (
+                  <button
+                    onClick={() => void atribuir(null)}
+                    className="w-full text-left px-3 py-2 text-xs text-slate-500
+                               hover:bg-slate-100 dark:hover:bg-white/[.06] transition"
+                  >
+                    Remover atribuição
+                  </button>
+                )}
+                {equipe
+                  .filter(m => m.id !== lead.assignee?.id)
+                  .map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() => void atribuir(m.id)}
+                      className="w-full text-left px-3 py-2 text-xs
+                                 hover:bg-slate-100 dark:hover:bg-white/[.06] transition"
+                    >
+                      {m.fullName}
+                    </button>
+                  ))}
+              </>
+            )}
+          </div>
+        </>
+      )}
+
+      {erro && (
+        <p className="absolute right-0 top-full mt-1 z-30 w-56 text-[11px] rounded-lg
+                      bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900
+                      text-rose-700 dark:text-rose-300 px-2 py-1.5">
+          {erro}
+          <button onClick={() => setErro(null)} className="block mt-1 underline">fechar</button>
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -538,10 +645,11 @@ function HistoryModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
 /* ── LeadCard ────────────────────────────────────────────── */
 
 function LeadCard({
-  lead, onStatusChange, onShowHistory, onChat, chatLoading,
+  lead, onStatusChange, onShowHistory, onChat, chatLoading, onRecarregar,
 }: {
   lead: Lead;
   onStatusChange: (id: string, s: LeadStatus) => void;
+  onRecarregar:   () => void;
   onShowHistory:  (lead: Lead) => void;
   onChat:         (lead: Lead) => void;
   chatLoading:    boolean;
@@ -581,6 +689,7 @@ function LeadCard({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <StatusBadge status={lead.status} />
+          <AtribuirVendedor lead={lead} onAtribuido={onRecarregar} />
           <AbrirNegocio lead={lead} />
           <StatusDropdown leadId={lead.id} current={lead.status} onUpdate={onStatusChange} />
         </div>
@@ -912,7 +1021,7 @@ export default function LeadsPage() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map(lead => (
-              <LeadCard key={lead.id} lead={lead} onStatusChange={handleStatusChange} onShowHistory={setHistoryLead} onChat={openChat} chatLoading={chatLoadingId === lead.id} />
+              <LeadCard key={lead.id} lead={lead} onStatusChange={handleStatusChange} onShowHistory={setHistoryLead} onChat={openChat} chatLoading={chatLoadingId === lead.id} onRecarregar={() => loadLeads(true)} />
             ))}
           </div>
 

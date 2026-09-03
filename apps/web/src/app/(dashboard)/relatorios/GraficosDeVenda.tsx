@@ -5,8 +5,8 @@ import {
   ResponsiveContainer, ComposedChart, Bar, Line, BarChart,
   CartesianGrid, XAxis, YAxis, Tooltip, Cell, Legend,
 } from 'recharts';
-import { Wallet, Timer } from 'lucide-react';
-import { formatarBRL } from '@autoconnect/shared';
+import { Wallet, Timer, Search } from 'lucide-react';
+import { formatarBRL, ROTULO_CONSULTA, type TipoConsulta } from '@autoconnect/shared';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { ErroAoCarregar } from '@/components/ErroAoCarregar';
@@ -17,6 +17,13 @@ interface LinhaMargem {
   venda: string;
   custo: string;
   margem: string;
+}
+
+interface GastoConsultas {
+  totalCentavos: number;
+  chamadas: number;
+  falhas: number;
+  porTipo: { tipo: string; chamadas: number; centavos: number }[];
 }
 
 interface LinhaEstoque {
@@ -57,6 +64,13 @@ export default function GraficosDeVenda() {
   const estoque = useQuery({
     queryKey: ['relatorio-estoque'],
     queryFn: () => api<LinhaEstoque[]>('/tenant/reports/inventory', { token }),
+    enabled: Boolean(token),
+    retry: false,
+  });
+
+  const gasto = useQuery({
+    queryKey: ['relatorio-gasto-consultas'],
+    queryFn: () => api<GastoConsultas>('/tenant/reports/query-spend', { token }),
     enabled: Boolean(token),
     retry: false,
   });
@@ -119,6 +133,37 @@ export default function GraficosDeVenda() {
           </ResponsiveContainer>
         )}
       </div>
+
+      {/* Gasto com consultas — o plano trata isto como requisito, não enfeite:
+          sem ele a loja não sabe quanto gastou em consulta no mês. */}
+      {gasto.data && gasto.data.chamadas > 0 && (
+        <div className={`${CARTAO} lg:col-span-2`}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Search size={15} className="text-slate-400" />
+              <h2 className="text-sm font-semibold">Consultas veiculares no mês</h2>
+            </div>
+            <span className="text-sm font-bold">
+              {formatarBRL((gasto.data.totalCentavos / 100).toFixed(2))}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500">
+            <span>{gasto.data.chamadas} chamadas</span>
+            {gasto.data.falhas > 0 && (
+              // Falha é cobrada pelo fornecedor: aparece separada para a loja
+              // saber quanto gastou sem receber resposta.
+              <span className="text-amber-600 dark:text-amber-400">
+                {gasto.data.falhas} sem resposta
+              </span>
+            )}
+            {gasto.data.porTipo.map((t) => (
+              <span key={t.tipo}>
+                {ROTULO_CONSULTA[t.tipo as TipoConsulta] ?? t.tipo}: {t.chamadas}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Giro de estoque */}
       <div className={CARTAO}>

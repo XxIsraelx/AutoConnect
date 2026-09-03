@@ -18,6 +18,26 @@ export const valorMonetario = z
   .string()
   .regex(/^\d+(\.\d{1,2})?$/, 'Use um valor como "12345.67", sem separador de milhar');
 
+
+/**
+ * Data de fato consumado não pode estar no futuro.
+ *
+ * Sem isto dá para registrar que o carro entrou no estoque daqui a três dias —
+ * e o sistema passa a exibir "0 dias em estoque" para um veículo que ainda nem
+ * foi comprado. O `Math.max(0, …)` do cálculo de dias escondia o absurdo em
+ * vez de acusá-lo.
+ *
+ * A tolerância de 24h existe porque o navegador manda a data escolhida no
+ * fuso local, que pode estar até 14h à frente do relógio do servidor. Ela
+ * absorve o fuso sem deixar passar "semana que vem".
+ */
+const TOLERANCIA_FUSO_MS = 24 * 60 * 60 * 1000;
+
+export const dataPassada = (rotulo: string) =>
+  z.coerce.date().refine((d) => d.getTime() <= Date.now() + TOLERANCIA_FUSO_MS, {
+    message: `${rotulo} não pode estar no futuro.`,
+  });
+
 export const createDealSchema = z.object({
   vehicleId: z.string().uuid(),
   leadId: z.string().uuid().optional(),
@@ -71,7 +91,7 @@ export const createAcquisitionSchema = z.object({
   supplierName: z.string().max(160).optional(),
   supplierDocument: z.string().max(20).optional(),
   purchaseValue: valorMonetario,
-  enteredAt: z.coerce.date(),
+  enteredAt: dataPassada('A data de entrada no estoque'),
   notes: z.string().max(500).optional(),
 });
 
@@ -80,7 +100,7 @@ export const createVehicleCostSchema = z.object({
   value: valorMonetario,
   description: z.string().max(300).optional(),
   supplierName: z.string().max(160).optional(),
-  incurredAt: z.coerce.date(),
+  incurredAt: dataPassada('A data do custo'),
 });
 
 export type CreateDealInput = z.infer<typeof createDealSchema>;
