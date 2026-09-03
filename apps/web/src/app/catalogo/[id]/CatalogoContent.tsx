@@ -22,6 +22,7 @@ import type {
   PublicDealer, PublicVehicle, PublicVehicleDetail,
   VehiclesPage, PublicBrand,
 } from '../../../app/buscar/types';
+import SeloProcedencia from './SeloProcedencia';
 
 /* ── Helpers ─────────────────────────────────────────────── */
 
@@ -911,6 +912,8 @@ function VehicleDrawer({
                 <FinancingCalc price={vehicle.price} />
               </div>
             )}
+
+            <SeloProcedencia vehicleId={vehicle.id} />
 
             {/* Especificações em grid */}
             <div className="px-5 py-3 grid grid-cols-2 gap-2">

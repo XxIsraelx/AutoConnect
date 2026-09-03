@@ -10,6 +10,7 @@ import {
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
 import CustoDoVeiculo from './CustoDoVeiculo';
+import ConsultaVeicular from './ConsultaVeicular';
 
 /* ── Tipos ───────────────────────────────────────────────── */
 
@@ -37,6 +38,10 @@ interface VehicleDetail {
   transmission: string | null;
   condition: string;
   status: string;
+  /// A API devolve o registro inteiro; a interface é que não os declarava.
+  /// A consulta veicular precisa de um dos dois.
+  licensePlate: string | null;
+  vin: string | null;
   price: string;
   promoPrice: string | null;
   description: string | null;
@@ -581,6 +586,12 @@ export default function EditVehiclePage() {
         </section>
 
         <CustoDoVeiculo vehicleId={params.id} />
+
+        <ConsultaVeicular
+          vehicleId={params.id}
+          placa={vehicle?.licensePlate ?? null}
+          chassi={vehicle?.vin ?? null}
+        />
 
         <PriceHistory vehicleId={params.id} />
 
