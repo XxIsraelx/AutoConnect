@@ -65,14 +65,7 @@ export class ContractsController {
     res.end(pdf);
   }
 
-  /** Link assinado de validade curta, quando o contrato está arquivado. */
-  @Get('contracts/:id/link')
-  link(
-    @Req() req: AuthRequest,
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<unknown> {
-    return this.contratos.linkTemporario(escopoDa(req.user), id);
-  }
+
 
   @Post('contracts/:id/sign')
   assinar(

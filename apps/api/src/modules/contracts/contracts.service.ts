@@ -258,34 +258,6 @@ export class ContractsService {
     return this.prisma.withTenant(escopo.tenantId, ler);
   }
 
-  /**
-   * Link temporário para o documento arquivado.
-   *
-   * Só existe quando há storage configurado — sem ele o download passa pelo
-   * backend, que é mais lento porém igualmente seguro.
-   */
-  async linkTemporario(escopo: Escopo, id: string): Promise<{ url: string; expiraEmMinutos: number }> {
-    const ler = async (tx: ScopedClient) => {
-      const contrato = await tx.dealContract.findFirst({
-        where: { id, ...(ehGlobal(escopo) ? {} : { tenantId: escopo.tenantId }) },
-        select: { storageKey: true },
-      });
-      if (!contrato) throw new NotFoundException('Contrato não encontrado');
-      if (!contrato.storageKey) {
-        throw new ConflictException(
-          'Este contrato não está arquivado. Baixe pelo endpoint de PDF.',
-        );
-      }
-      return contrato.storageKey;
-    };
-
-    const chave = ehGlobal(escopo)
-      ? await ler(this.privilegiado)
-      : await this.prisma.withTenant(escopo.tenantId, ler);
-
-    return { url: await this.storage.urlAssinada(chave), expiraEmMinutos: 10 };
-  }
-
   /** Registra o aceite com a trilha de evidências. */
   async assinar(
     escopo: Escopo,

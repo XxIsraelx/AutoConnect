@@ -243,7 +243,8 @@ pnpm exec turbo run build --filter=@autoconnect/web
 
 As tabelas de venda e contrato (`deals`, `deal_payments`, `deal_status_events`,
 `trade_ins`, `vehicle_acquisitions`, `vehicle_costs`, `contract_templates`,
-`deal_contracts`, `contract_signatures`, `deal_warranties`) seguem a mesma
+`deal_contracts`, `contract_signatures`, `deal_warranties`, `deal_buyers`,
+`vehicle_queries`) seguem a mesma
 regra, e carregam o dado mais sensível do sistema: preço de compra, margem,
 contrato assinado e CPF de signatário.
 
@@ -356,7 +357,7 @@ de enxergar dados.
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 208 testes:
+são 266 testes:
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -454,6 +455,36 @@ forma acusa falsamente as quatro extensões (`citext`, `pg_trgm`, `pgcrypto`,
 
 ---
 
+## Três armadilhas que já morderam aqui
+
+### 1. Endpoint pronto não é funcionalidade
+
+Seis vezes nesta base a API foi construída e testada, e **nenhuma tela chamava
+o endpoint**: abrir negócio, vincular cliente, lead → negócio, atribuir
+vendedor, gasto com consultas, encerrar conversa. Teste e2e batendo direto na
+rota passa verde sem provar que alguém chega lá.
+
+O que pega: cruzar as rotas dos controllers com as chamadas do `apps/web`.
+Rota sem chamada é funcionalidade inalcançável ou código morto — as duas coisas
+merecem decisão.
+
+### 2. `noUnusedLocals` no web existe por um motivo
+
+Um refatorador apagou `<Contrato />` do JSX e deixou o `import`. Typecheck
+verde, lint verde, emissão de contrato impossível. O ESLint da API pega isso; o
+do web (`next/core-web-vitals`) não pegava. A trava está ligada — **não a
+desligue** para "resolver" um aviso.
+
+### 3. Tipo de TypeScript não valida nada em tempo de execução
+
+`PATCH /tenant/me` tinha o corpo só *anotado* e ia inteiro para
+`tenant.update({ data })`. Um `tenant_admin` mandando `{"isActive": false}`
+desativava a própria loja; `slug` trocava a URL pública. **Todo corpo passa
+por Zod**, que descarta o que não está no schema — `mass-assignment.e2e-spec.ts`
+fixa isso.
+
+---
+
 ## Vendas e contrato
 
 ### Dinheiro nunca é `number`
@@ -520,6 +551,32 @@ o disfarce clássico ("3 meses de motor e câmbio").
 `textoDaGarantia` sempre declara a legal, mesmo havendo contratual: omiti-la é
 o que torna a cláusula abusiva.
 
+### As duas partes precisam estar identificadas
+
+O contrato recusa emissão sem qualificação do **comprador** (`DealBuyer`:
+nome, CPF validado por dígitos, RG, endereço) e sem **representante legal** da
+loja (`Tenant.legalRepName/Cpf/Role`, configurado uma vez). Um documento que
+diz "portador(a) do documento ____" parece contrato e não identifica quem se
+obrigou.
+
+O comprador fica no negócio, não no perfil do cliente: a loja não escreve em
+`customer_profiles` (isolado por `app.user_id`), e o contrato precisa do dado
+como estava na emissão.
+
+### Consulta veicular
+
+Cache antes de idempotência, idempotência antes da chamada — **cada consulta é
+cobrada por chamada**. TTL por tipo (débito 24h, leilão 90 dias) e cache por
+concessionária: compartilhar revelaria que a concorrente consultou aquela placa.
+
+A chamada ao fornecedor fica **fora** do `withTenant`: relançar erro dentro da
+transação desfazia por rollback o próprio registro da falha, e a loja veria
+cobrança na fatura sem correspondente no sistema.
+
+Sem `CONSULTA_FORNECEDOR`, a API recusa com mensagem clara em vez de devolver
+"nada encontrado" — que viraria selo afirmando carro limpo com base em consulta
+que nunca aconteceu. O valor `simulado` é ignorado em produção.
+
 > ⚠ **O template padrão do código não foi revisado por advogado.** Está
 > declarado como ponto de partida. O portão da Fase 2 exige essa revisão antes
 > de qualquer cliente real emitir contrato.
@@ -560,12 +617,13 @@ o que torna a cláusula abusiva.
   não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
   foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
   migrations (ver *Testes e CI*).
-- Migrations atuais (10): `init`, `trade_in_and_dealer_setting`,
+- Migrations atuais (13): `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
   `add_announcements_invites_alerts_searches_goals`,
   `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`,
   `deals_vendas_e_custos`, `sales_goal_meta_em_reais`,
-  `contrato_garantia_assinatura`.
+  `contrato_garantia_assinatura`, `consultas_veiculares`,
+  `comprador_do_contrato`, `representante_legal`.
 
 ---
 
@@ -589,6 +647,7 @@ o que torna a cláusula abusiva.
 | **Negócios (`Deal`)** | ✅ completo | ✅ completo | máquina de estados, pagamento composto, margem em `Decimal` |
 | **Custo do veículo** | ✅ completo | ✅ completo | aquisição + preparação; base da margem |
 | **Contrato** | ✅ completo | ✅ completo | PDF determinístico, hash, assinatura interna |
+| **Consulta veicular** | ✅ estrutura | ✅ completo | cache, idempotência e custo; **falta fornecedor real** |
 
 ---
 
@@ -624,31 +683,38 @@ consulta custa ~0,6s de ida e volta. Por isso a transação do cadastro usa
 
 ## Pendências conhecidas
 
-- ⚠ **O template de contrato não foi revisado por advogado.** É o item aberto
-  mais sério: o padrão do código emite documento com efeito jurídico e está
-  declarado como ponto de partida, não como peça revisada.
-- **`SUPABASE_SERVICE_ROLE_KEY` em produção**: definida no Railway em
-  03/09/2026, mas a validade da chave não foi verificada de forma independente
-  — uma chave errada só falha no upload, não na inicialização. A mesma chave foi
-  testada ponta a ponta localmente contra o bucket real.
-- **Login com Google não funciona em produção**: falta registrar no Google Cloud
-  Console o redirect URI (`.../api/v1/auth/google/callback`) e publicar o app
-  (`/auth/audience`), senão só contas de teste conseguem entrar.
-- **Erros de API engolidos** — restam **4** `catch` que descartam o erro de
-  propósito (marcados com comentário). Dos 27 `catch` no `apps/web`, os outros
-  23 exibem toast ou estado de erro. As 4 telas que engoliam o carregamento
-  inteiro foram corrigidas.
-- **Relatórios aparecem vazios**: os dados de seed são de maio/junho e o filtro
-  padrão é 30 dias. Os dois gráficos novos (margem e giro) dependem de negócio
-  faturado, que o seed não cria.
-- **CVEs restantes no Next** só têm correção na linha 15.x (breaking changes).
-- **`/relatorios`, `/agendamentos` e `/equipe`** ainda não foram revisados para
-  telas pequenas; o layout do dashboard, a landing e `/negocios` foram.
-- **Crons in-process**: `@nestjs/schedule` roda na instância. Com duas réplicas
-  no Railway, todo lembrete de agendamento sai **duas vezes**. Passa hoje porque
-  roda uma instância só.
-- **API e banco em regiões diferentes** (Railway `us-east4` ↔ Supabase
-  `sa-east-1`), ~0,6s por consulta. O fechamento de um negócio faz várias.
+Auditadas em 04/09/2026, contra o repositório.
+
+**Bloqueiam uso real**
+- ⚠ **Template de contrato não revisado por advogado.** O sistema emite
+  documento com efeito jurídico a partir de um template declarado no código
+  como ponto de partida.
+- ⚠ **Sem fornecedor de consulta veicular.** Depende de contrato comercial. A
+  estrutura está pronta e a API recusa em voz alta enquanto não houver.
+
+**Da definição de pronto do plano, um item nunca foi cumprido**
+- **Feature flag.** O plano pede "feature nova atrás de flag até o piloto
+  validar". Nada foi entregue atrás de flag — negócios, contrato e consulta
+  entraram direto. Não há infraestrutura de flag no projeto.
+
+**Dívidas de infraestrutura**
+- **Crons in-process** (`@nestjs/schedule`): com duas réplicas no Railway, todo
+  lembrete sai **duas vezes**. Passa hoje porque roda uma instância só.
+- **API e banco em regiões diferentes** (`us-east4` ↔ `sa-east-1`), ~0,6s por
+  consulta.
+- **`SUPABASE_SERVICE_ROLE_KEY` no Railway**: definida, mas a validade da chave
+  nunca foi verificada de forma independente — chave errada só falha no upload.
+
+**Menores**
+- **Google OAuth em produção**: falta registrar o redirect URI e publicar o app
+  no Console.
+- **Um `catch` silencioso deliberado** em `SeloProcedencia`: falha no selo não
+  pode virar erro na tela de venda. Está comentado no código.
+- **`/relatorios`, `/agendamentos` e `/equipe`** ainda não revisados para telas
+  pequenas.
+- **Relatórios vazios**: seed é de maio/junho, filtro padrão de 30 dias, e os
+  gráficos de margem e giro dependem de negócio faturado que o seed não cria.
+- **CVEs do Next** só têm correção na linha 15.x (breaking changes).
 
 ---
 
