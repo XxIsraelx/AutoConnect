@@ -67,7 +67,6 @@ export default function CustomerLoginPage() {
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 shadow-sm">
       <div className="mb-6">
-        <div className="text-2xl font-bold tracking-tight mb-1">AutoConnect</div>
         <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Bem-vindo de volta</h2>
         <p className="text-sm text-slate-500 mt-1">Entre para ver seus veículos favoritos e conversas</p>
       </div>

@@ -1,4 +1,5 @@
 'use client';
+import Logo from '@/components/Logo';
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
@@ -225,9 +226,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Logo */}
         <div className="px-5 py-5 border-b border-slate-200 dark:border-slate-800
                         flex items-center justify-between gap-2">
-          <Link href="/dashboard" className="text-lg font-bold tracking-tight
-                                             hover:text-blue-600 transition-colors">
-            AutoConnect
+          <Link href="/dashboard" className="text-lg hover:opacity-80 transition-opacity">
+            <Logo />
           </Link>
           {/* Fechar a gaveta — no desktop a sidebar é fixa, então não aparece */}
           <button
@@ -334,7 +334,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           >
             <Menu size={20} />
           </button>
-          <Link href="/dashboard" className="font-bold tracking-tight">AutoConnect</Link>
+          <Link href="/dashboard"><Logo /></Link>
 
           {/* Total de pendências, já que os badges do menu ficam ocultos */}
           {leadsNew + apptBadge + chatBadge > 0 && (

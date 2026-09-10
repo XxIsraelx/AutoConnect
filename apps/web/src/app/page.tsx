@@ -1,3 +1,4 @@
+import Logo from '@/components/Logo';
 import Link from 'next/link';
 import LandingNav from '@/components/LandingNav';
 import {
@@ -343,7 +344,7 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="border-t border-slate-100 dark:border-slate-800">
         <div className="mx-auto max-w-6xl px-6 py-10 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <span className="font-bold tracking-tight">AutoConnect</span>
+          <Logo />
           <div className="flex items-center gap-6 text-sm text-slate-400">
             <Link href="/login" className="hover:text-slate-600">Painel da concessionária</Link>
             <Link href="/entrar" className="hover:text-slate-600">Área do cliente</Link>

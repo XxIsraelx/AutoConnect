@@ -154,7 +154,6 @@ export default function CustomerSignupPage() {
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 shadow-sm w-full max-w-md">
       {/* Header */}
       <div className="mb-6">
-        <div className="text-xl font-bold tracking-tight mb-1">AutoConnect</div>
         <h2 className="text-lg font-semibold">Criar sua conta</h2>
       </div>
 

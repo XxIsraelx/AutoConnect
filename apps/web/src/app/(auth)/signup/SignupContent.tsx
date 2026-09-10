@@ -466,7 +466,6 @@ export default function SignupPage() {
 
       {/* Cabeçalho */}
       <div className="mb-6">
-        <div className="text-xl font-bold tracking-tight mb-1">AutoConnect</div>
         <h2 className="text-lg font-semibold">Cadastrar concessionária</h2>
         <p className="text-sm text-slate-500 mt-0.5">14 dias grátis, sem cartão de crédito.</p>
       </div>

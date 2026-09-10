@@ -1,3 +1,4 @@
+import Logo from '@/components/Logo';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { Building2, Car, ArrowRight, ArrowLeft, Check } from 'lucide-react';
@@ -39,7 +40,7 @@ export default function ComecarPage() {
           <Link href="/" className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition">
             <ArrowLeft size={16} /> Voltar
           </Link>
-          <span className="text-lg font-bold tracking-tight">AutoConnect</span>
+          <Logo className="text-lg" />
           <Link href="/login" className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition">
             Entrar
           </Link>

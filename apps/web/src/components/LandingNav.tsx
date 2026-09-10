@@ -1,4 +1,5 @@
 'use client';
+import Logo from '@/components/Logo';
 
 import { useState } from 'react';
 import Link from 'next/link';
@@ -31,8 +32,8 @@ export default function LandingNav() {
   return (
     <nav className="sticky top-0 z-50 border-b border-slate-100 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
-        <Link href="/" className="text-lg font-bold tracking-tight shrink-0">
-          AutoConnect
+        <Link href="/" className="text-lg shrink-0">
+          <Logo />
         </Link>
 
         {/* Desktop */}
