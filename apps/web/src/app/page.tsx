@@ -13,6 +13,10 @@ import {
   Star,
 } from 'lucide-react';
 
+/** Barras do gráfico de exemplo na maquete do painel (valores relativos). */
+const BARRAS = [4, 7, 5, 9, 6, 11, 8, 13, 10, 15, 12, 14];
+const BARRA_MAIOR = Math.max(...BARRAS);
+
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
@@ -94,13 +98,16 @@ export default function HomePage() {
                   </div>
                 ))}
               </div>
-              <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-3 h-24 flex items-center justify-center">
-                <div className="flex items-end gap-1 h-12">
-                  {[4, 7, 5, 9, 6, 11, 8, 13, 10, 15, 12, 14].map((h, i) => (
+              <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-3 h-24">
+                {/* Altura em % do card, não em px: com `h * 5px` a barra mais
+                    alta media 75px num card de 72px úteis e vazava por cima
+                    dos cards de KPI. */}
+                <div className="flex items-end justify-center gap-1 h-full">
+                  {BARRAS.map((h, i) => (
                     <div
                       key={i}
                       className="w-2.5 sm:w-4 rounded-sm bg-brand-accent/20 dark:bg-brand-accent/30"
-                      style={{ height: `${h * 5}px` }}
+                      style={{ height: `${(h / BARRA_MAIOR) * 100}%` }}
                     />
                   ))}
                 </div>
