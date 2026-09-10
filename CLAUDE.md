@@ -452,6 +452,12 @@ a API lê o `.env` da raiz, e com o Gmail preenchido ali a suíte mandava e-mail
 de verdade (convite, agendamento, troca) e abria SMTP a cada boot do Nest — o
 portão ficou lento e vermelho.
 
+E zera **`SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`**, pelo mesmo motivo:
+com a chave no `.env`, cada rodada gravava ~10 PDFs de contrato fictício no
+bucket `documentos` de **produção** — 272 arquivos órfãos acumulados em pastas
+de lojas que os testes criam e apagam. Regra geral: todo serviço externo com
+credencial no `.env` precisa ser desligado aqui.
+
 ### CI
 
 `.github/workflows/ci.yml` roda em todo push na `main` e em todo PR: instala,

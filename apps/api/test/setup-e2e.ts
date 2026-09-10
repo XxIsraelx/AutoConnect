@@ -71,5 +71,12 @@ process.env.RESEND_API_KEY = '';
 process.env.GMAIL_USER = '';
 process.env.GMAIL_APP_PASSWORD = '';
 
+// E para o Storage: com a chave do Supabase no `.env`, cada rodada gravava ~10
+// PDFs de contrato fictício no bucket `documentos` de PRODUÇÃO — 272 arquivos
+// em pastas de lojas que os testes criam e apagam. Sem as duas, o contrato é
+// emitido e regerado sob demanda, só não é arquivado.
+process.env.SUPABASE_URL = '';
+process.env.SUPABASE_SERVICE_ROLE_KEY = '';
+
 /** Nome do banco de teste, para os testes afirmarem onde estão conectados. */
 export const BANCO_DE_TESTE = verificada.pathname.replace(/^\//, '');
