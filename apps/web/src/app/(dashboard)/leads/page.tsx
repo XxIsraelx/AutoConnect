@@ -665,18 +665,21 @@ function LeadCard({
 
   return (
     <div className={`bg-white dark:bg-[#1e293b] border rounded-2xl p-4 transition-all group
-                    ${tradeIn ? 'border-emerald-500/30 hover:border-emerald-500/50' : 'border-slate-200 dark:border-slate-200 dark:border-white/[.06] hover:border-slate-300 dark:hover:border-white/[.12]'}`}>
+                    ${tradeIn ? 'border-emerald-500/30 hover:border-emerald-500/50' : 'border-slate-200 dark:border-white/[.06] hover:border-slate-300 dark:hover:border-white/[.12]'}`}>
       {/* Header */}
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
-            <span className="text-blue-400 text-sm font-bold">
+      {/* Cabeçalho: só identidade. As ações ficavam aqui num grupo shrink-0 e,
+          quando passaram de uma para três, ocuparam 265 dos 286px da linha — o
+          nome do cliente ficava com 0px e o selo caía em cima do avatar. */}
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center shrink-0">
+            <span className="text-blue-600 dark:text-blue-400 text-sm font-bold">
               {name.charAt(0).toUpperCase()}
             </span>
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
-              <p className="text-sm font-bold text-white truncate">{name}</p>
+              <p className="text-sm font-bold txt-forte truncate">{name}</p>
               {tradeIn && (
                 <span className="shrink-0 inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide
                                  px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
@@ -687,12 +690,18 @@ function LeadCard({
             <p className="text-[10px] text-slate-500">{timeAgo(lead.createdAt)}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="shrink-0">
           <StatusBadge status={lead.status} />
-          <AtribuirVendedor lead={lead} onAtribuido={onRecarregar} />
-          <AbrirNegocio lead={lead} />
-          <StatusDropdown leadId={lead.id} current={lead.status} onUpdate={onStatusChange} />
         </div>
+      </div>
+
+      {/* Ações em linha própria, com quebra: aguenta ação nova sem voltar a
+          espremer o nome. Alinhadas à direita porque os menus suspensos abrem
+          ancorados na direita — à esquerda eles vazariam pela borda do card. */}
+      <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 mb-3">
+        <AtribuirVendedor lead={lead} onAtribuido={onRecarregar} />
+        <AbrirNegocio lead={lead} />
+        <StatusDropdown leadId={lead.id} current={lead.status} onUpdate={onStatusChange} />
       </div>
 
       {/* Carro oferecido na troca */}
@@ -703,7 +712,7 @@ function LeadCard({
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[10px] text-emerald-400/80 uppercase tracking-wide">Oferece na troca</p>
-            <p className="text-xs font-bold text-white truncate">
+            <p className="text-xs font-bold txt-forte truncate">
               {[tv.brandName, tv.modelName, tv.versionName].filter(Boolean).join(' ')}
               {tv.yearModel ? ` ${tv.yearModel}` : ''}
             </p>
@@ -718,26 +727,26 @@ function LeadCard({
 
       {/* Veículo */}
       {lead.vehicle && (
-        <div className="flex items-center gap-2.5 rounded-xl bg-white/[.03] border border-white/[.05] p-2.5 mb-3">
+        <div className="flex items-center gap-2.5 rounded-xl sup-tenue border borda p-2.5 mb-3">
           {cover
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={cover} alt="" className="w-12 h-9 rounded-lg object-cover shrink-0" />
-            : <div className="w-12 h-9 rounded-lg bg-white/[.05] flex items-center justify-center shrink-0">
-                <Car size={16} className="text-white/20" />
+            : <div className="w-12 h-9 rounded-lg sup-fraca flex items-center justify-center shrink-0">
+                <Car size={16} className="text-slate-300 dark:text-white/20" />
               </div>
           }
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold text-white truncate">
+            <p className="text-xs font-bold txt-forte truncate">
               {lead.vehicle.brand.name} {lead.vehicle.model.name} {lead.vehicle.versionName ?? ''}
             </p>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-[10px] text-slate-500">{lead.vehicle.yearModel}</span>
-              <span className="text-[10px] font-bold text-blue-400">{formatPrice(lead.vehicle.price)}</span>
+              <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">{formatPrice(lead.vehicle.price)}</span>
             </div>
           </div>
           <Link
             href={`/veiculos/${lead.vehicle.id}`}
-            className="shrink-0 text-slate-600 hover:text-slate-400 transition-colors"
+            className="shrink-0 text-slate-400 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-400 transition-colors"
             title="Ver veículo"
           >
             <ExternalLink size={12} />
@@ -747,13 +756,13 @@ function LeadCard({
 
       {/* Mensagem */}
       {lead.message && (
-        <p className="text-xs text-slate-400 leading-relaxed mb-3 italic line-clamp-2">
+        <p className="text-xs txt-fraco leading-relaxed mb-3 italic line-clamp-2">
           &ldquo;{lead.message}&rdquo;
         </p>
       )}
 
       {/* Contato */}
-      <div className="flex items-center gap-3 pt-2 border-t border-white/[.05]">
+      <div className="flex items-center gap-3 pt-2 border-t borda">
         {email && (
           <a href={`mailto:${email}`}
              className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-blue-400 transition-colors truncate">
@@ -771,7 +780,7 @@ function LeadCard({
             <button
               onClick={() => onChat(lead)}
               disabled={chatLoading}
-              className="flex items-center gap-1 text-[10px] font-semibold text-blue-400
+              className="flex items-center gap-1 text-[10px] font-semibold text-blue-600 dark:text-blue-400
                          hover:text-blue-300 transition-colors disabled:opacity-50"
               title="Conversar pelo chat"
             >
