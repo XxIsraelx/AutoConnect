@@ -73,6 +73,19 @@ const ACESSO_DIRETO = new RegExp(
   'g',
 );
 
+/**
+ * Transação e SQL cru pelo cliente comum também rodam sem contexto — e escapam
+ * do padrão acima, porque o modelo aparece depois, no `tx`. Foi assim que a
+ * importação em lote e o gráfico de leads por dia ficaram cegos sob RLS sem
+ * nenhum teste acusar. Quem precisa de transação usa `withTenant`/`withUser`.
+ */
+const SEM_CONTEXTO = /this\.prisma\.\$(transaction|queryRaw|executeRaw|queryRawUnsafe|executeRawUnsafe)\b/g;
+
+/** Exceções a SEM_CONTEXTO, com motivo — nenhuma toca tabela. */
+const SEM_CONTEXTO_PERMITIDO = new Map<string, string>([
+  ['modules/health/health.controller.ts', 'SELECT 1: mede a conexão, não lê tabela'],
+]);
+
 describe('isolamento por tenant — regra de arquitetura', () => {
   const infratores = new Map<string, string[]>();
 
@@ -103,6 +116,27 @@ describe('isolamento por tenant — regra de arquitetura', () => {
     const jaMigrados = [...PENDENTES.keys()].filter((f) => !infratores.has(f));
 
     expect(jaMigrados).toEqual([]);
+  });
+
+  it('nada abre transação nem roda SQL cru sem contexto pelo cliente comum', () => {
+    const achados = arquivosTs(RAIZ).flatMap((caminho) => {
+      const rel = relative(RAIZ, caminho);
+      if (SEM_CONTEXTO_PERMITIDO.has(rel)) return [];
+      const m = readFileSync(caminho, 'utf8').match(SEM_CONTEXTO);
+      return m ? [`${rel}: ${[...new Set(m)].join(', ')}`] : [];
+    });
+
+    expect(achados).toEqual([]);
+  });
+
+  it('as exceções de SQL sem contexto ainda existem no código', () => {
+    // Regex nova, sem /g: a global guarda `lastIndex` entre chamadas de .test().
+    const usa = new RegExp(SEM_CONTEXTO.source);
+    const mortas = [...SEM_CONTEXTO_PERMITIDO.keys()].filter(
+      (rel) => !usa.test(readFileSync(join(RAIZ, rel), 'utf8')),
+    );
+
+    expect(mortas).toEqual([]);
   });
 
   it.each([

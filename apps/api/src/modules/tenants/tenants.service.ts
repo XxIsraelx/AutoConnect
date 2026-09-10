@@ -303,8 +303,10 @@ export class TenantsService {
         topVehicles,
         conversionStats,
       ] = await Promise.all([
-        // Leads agrupados por dia
-        this.prisma.$queryRaw<Array<{ day: string; count: bigint }>>`
+        // Leads agrupados por dia. `tx`, não `this.prisma`: fora da transação
+        // a consulta roda sem `app.tenant_id` e, sob RLS, volta vazia — o
+        // gráfico some sem erro nenhum.
+        tx.$queryRaw<Array<{ day: string; count: bigint }>>`
           SELECT date_trunc('day', created_at AT TIME ZONE 'UTC')::date::text AS day,
                  COUNT(*)::bigint AS count
           FROM leads

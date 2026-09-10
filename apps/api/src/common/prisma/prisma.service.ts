@@ -42,11 +42,16 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
    * O terceiro argumento `true` limita o efeito à transação — a conexão volta
    * limpa ao pool, sem vazar o tenant para a próxima requisição.
    */
-  async withTenant<T>(tenantId: string, fn: (tx: ScopedClient) => Promise<T>): Promise<T> {
+  async withTenant<T>(
+    tenantId: string,
+    fn: (tx: ScopedClient) => Promise<T>,
+    /** Para lotes: os 5s padrão do Prisma não cabem em dezenas de idas ao banco. */
+    opcoes?: { maxWait?: number; timeout?: number },
+  ): Promise<T> {
     return this.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
       return fn(tx);
-    });
+    }, opcoes);
   }
 
   /**

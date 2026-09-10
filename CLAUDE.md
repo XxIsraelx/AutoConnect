@@ -333,6 +333,14 @@ uma decisão.
 
 ### Ligar a fiscalização em produção
 
+> **Estado em 10/09/2026:** o banco de produção já mostra a aplicação
+> conectando como `autoconnect_app` (conexões pelo Supavisor desde o deploy das
+> 17:39 UTC; o papel tem senha e nenhuma data de expiração). Ou seja, o RLS
+> **já fiscaliza em produção**. Dois caminhos rodavam sem contexto e quebraram
+> em silêncio com isso — importação em lote (500) e gráfico de leads por dia
+> (vazio) —, e `isolamento.spec.ts` agora recusa `this.prisma.$transaction` e
+> SQL cru pelo cliente comum, o padrão pelo qual os dois escaparam.
+
 Todo o código já opera sob RLS — o CI prova isso rodando a suíte de integração
 conectada como `autoconnect_app`. Falta só a troca de configuração:
 
@@ -357,7 +365,7 @@ de enxergar dados.
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 271 testes:
+são 275 testes:
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -426,6 +434,7 @@ sem provar nada.
 | `chat-gateway.e2e-spec.ts` | O gateway pelo WebSocket — o evento é `conversation:send`, não `message:send` |
 | `contrato-imutavel.e2e-spec.ts` | Contrato emitido não muda: trigger no banco |
 | `contrato.e2e-spec.ts` | Emissão, hash, assinatura e anulação por HTTP |
+| `rls-caminhos.e2e-spec.ts` | Importação em lote e gráfico de leads por dia — rodavam sem contexto e ficavam cegos sob RLS |
 
 O `jest.config.js` da API roda os dois *projects*, para que um único `test`
 cubra unitário e integração — teste fora do comando do portão não é rodado por

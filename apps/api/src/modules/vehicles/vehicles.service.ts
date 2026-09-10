@@ -273,7 +273,10 @@ export class VehiclesService {
    * existem, case-insensitive) e insere os veículos numa única transação.
    */
   async importMany(tenantId: string, rows: ImportRow[]) {
-    return this.prisma.$transaction(async (tx) => {
+    // withTenant, não $transaction: sem `app.tenant_id` o RLS recusa o INSERT
+    // em `vehicles` e também o de marca nova (`catalogo_insercao` exige loja
+    // autenticada). A importação inteira falhava para o papel da aplicação.
+    return this.prisma.withTenant(tenantId, async (tx) => {
       // Resolve marcas únicas por nome normalizado
       const brandIdByKey = new Map<string, string>();
       for (const name of new Set(rows.map((r) => r.brandName.trim()))) {
