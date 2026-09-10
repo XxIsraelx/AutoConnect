@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 import * as nodemailer from 'nodemailer';
@@ -27,7 +27,7 @@ function escaparTexto<T extends object>(o: T): T {
 }
 
 @Injectable()
-export class EmailService {
+export class EmailService implements OnApplicationBootstrap {
   private readonly logger = new Logger(EmailService.name);
   private readonly resend: Resend | null = null;
   private readonly smtp: nodemailer.Transporter | null = null;
@@ -49,6 +49,11 @@ export class EmailService {
       this.smtp = nodemailer.createTransport({
         service: 'gmail',
         auth: { user: gmailUser, pass: gmailPass },
+        // O padrão do nodemailer é 2 minutos esperando a conexão: com a porta
+        // bloqueada, cada envio segurava um socket esse tempo todo por nada.
+        connectionTimeout: 10_000,
+        greetingTimeout: 10_000,
+        socketTimeout: 20_000,
       });
       this.from = `AutoConnect <${gmailUser}>`;
       this.logger.log(`E-mail via Gmail ativado (${gmailUser})`);
@@ -56,6 +61,69 @@ export class EmailService {
       this.from = 'AutoConnect <no-reply@autoconnect.app>';
       this.logger.warn('Nenhum provedor de e-mail configurado — links serão logados no console');
     }
+  }
+
+  /**
+   * Testa o provedor ao subir, sem segurar a inicialização.
+   *
+   * O log dizia "E-mail via Gmail ativado" com o Railway bloqueando SMTP (só o
+   * plano Pro libera): nenhum e-mail saía, e isso só apareceu no primeiro
+   * "esqueci a senha" de um usuário. Agora aparece no deploy.
+   */
+  onApplicationBootstrap(): void {
+    void this.verificarProvedor();
+  }
+
+  /** `true` se o provedor aceita envio. Nunca lança: o diagnóstico vai para o log. */
+  async verificarProvedor(): Promise<boolean> {
+    try {
+      if (this.resend) return await this.verificarResend(this.resend);
+      if (this.smtp) {
+        await this.smtp.verify();
+        this.logger.log('SMTP respondeu — e-mail pronto para envio');
+        return true;
+      }
+      return false; // sem provedor: o construtor já avisou
+    } catch (err) {
+      const motivo = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Provedor de e-mail inacessível — NENHUM e-mail vai sair (${motivo}). ` +
+          'No Railway, SMTP só existe no plano Pro; use RESEND_API_KEY.',
+      );
+      return false;
+    }
+  }
+
+  private async verificarResend(resend: Resend): Promise<boolean> {
+    const dominio = /@([^>\s]+)/.exec(this.from)?.[1];
+    if (dominio === 'resend.dev') {
+      this.logger.warn(
+        'EMAIL_FROM usa o remetente de teste da Resend: só entrega para o dono da conta. ' +
+          'Verifique um domínio próprio e troque o EMAIL_FROM.',
+      );
+      return false;
+    }
+
+    const { data, error } = await resend.domains.list();
+    if (error) {
+      // Chave só de envio não pode listar domínios — e a recusa prova que ela vale.
+      if (error.name === 'restricted_api_key') {
+        this.logger.log('Resend: chave de envio válida');
+        return true;
+      }
+      this.logger.error(`Resend recusou a chave — NENHUM e-mail vai sair (${error.message})`);
+      return false;
+    }
+
+    const verificado = data.data.some((d) => d.name === dominio && d.status === 'verified');
+    if (!verificado) {
+      this.logger.error(
+        `O domínio "${dominio}" do EMAIL_FROM não está verificado na Resend — NENHUM e-mail vai sair`,
+      );
+      return false;
+    }
+    this.logger.log(`Resend pronta — domínio ${dominio} verificado`);
+    return true;
   }
 
   async sendPasswordReset(to: string, name: string, token: string): Promise<void> {

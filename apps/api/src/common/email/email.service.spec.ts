@@ -83,6 +83,80 @@ describe('EmailService — conteúdo vindo de formulário', () => {
   });
 });
 
+describe('EmailService — diagnóstico do provedor na inicialização', () => {
+  const nu = () => new EmailService(new ConfigService({}));
+
+  it('SMTP bloqueado (porta fechada no Railway) é acusado, não "ativado"', async () => {
+    const svc = nu();
+    Object.assign(svc, {
+      smtp: { verify: async () => { throw new Error('Connection timeout'); } },
+    });
+
+    await expect(svc.verificarProvedor()).resolves.toBe(false);
+  });
+
+  it('SMTP que responde passa', async () => {
+    const svc = nu();
+    Object.assign(svc, { smtp: { verify: async () => true } });
+
+    await expect(svc.verificarProvedor()).resolves.toBe(true);
+  });
+
+  it('sem provedor nenhum não finge estar pronto', async () => {
+    await expect(nu().verificarProvedor()).resolves.toBe(false);
+  });
+
+  const comResend = (from: string, list: () => Promise<unknown>) => {
+    const svc = nu();
+    Object.assign(svc, { from, resend: { domains: { list } } });
+    return svc;
+  };
+
+  it('remetente de teste da Resend é acusado — só entrega ao dono da conta', async () => {
+    const svc = comResend('AutoConnect <onboarding@resend.dev>', async () => {
+      throw new Error('não deveria nem consultar');
+    });
+
+    await expect(svc.verificarProvedor()).resolves.toBe(false);
+  });
+
+  it('domínio do EMAIL_FROM sem verificação é acusado', async () => {
+    const svc = comResend('AutoConnect <nao-responda@loja.com.br>', async () => ({
+      data: { data: [{ name: 'loja.com.br', status: 'pending' }] },
+      error: null,
+    }));
+
+    await expect(svc.verificarProvedor()).resolves.toBe(false);
+  });
+
+  it('domínio verificado passa', async () => {
+    const svc = comResend('AutoConnect <nao-responda@loja.com.br>', async () => ({
+      data: { data: [{ name: 'loja.com.br', status: 'verified' }] },
+      error: null,
+    }));
+
+    await expect(svc.verificarProvedor()).resolves.toBe(true);
+  });
+
+  it('chave só de envio (não lista domínios) é válida', async () => {
+    const svc = comResend('AutoConnect <nao-responda@loja.com.br>', async () => ({
+      data: null,
+      error: { name: 'restricted_api_key', message: 'restricted' },
+    }));
+
+    await expect(svc.verificarProvedor()).resolves.toBe(true);
+  });
+
+  it('chave inválida é acusada', async () => {
+    const svc = comResend('AutoConnect <nao-responda@loja.com.br>', async () => ({
+      data: null,
+      error: { name: 'invalid_api_key', message: 'API key is invalid' },
+    }));
+
+    await expect(svc.verificarProvedor()).resolves.toBe(false);
+  });
+});
+
 describe('EmailService — Resend', () => {
   it('e-mail recusado pela Resend vira erro, não "enviado"', async () => {
     const { svc } = servico();

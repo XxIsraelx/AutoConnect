@@ -63,5 +63,13 @@ process.env.NODE_ENV = 'test';
 // Segredo fixo para os testes: o JwtModule falha ao subir sem ele.
 process.env.JWT_SECRET ??= 'segredo-de-teste-nao-usar-em-producao';
 
+// Mesma lógica do banco, para e-mail: com o Gmail preenchido no `.env` da raiz,
+// a suíte mandava convite, agendamento e troca de verdade para endereços de
+// teste, e cada boot do Nest abria conexão SMTP. Vazio aqui vence o `.env`
+// (o @nestjs/config não sobrescreve process.env) e cai no log do console.
+process.env.RESEND_API_KEY = '';
+process.env.GMAIL_USER = '';
+process.env.GMAIL_APP_PASSWORD = '';
+
 /** Nome do banco de teste, para os testes afirmarem onde estão conectados. */
 export const BANCO_DE_TESTE = verificada.pathname.replace(/^\//, '');

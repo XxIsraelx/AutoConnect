@@ -365,7 +365,7 @@ de enxergar dados.
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 275 testes:
+são 283 testes:
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -446,6 +446,11 @@ ninguém.
 host local com banco terminado em `_test`. Sem isso, um teste que escreve
 rodaria contra o Supabase de produção, que é justamente o que o `.env` da raiz
 aponta. A trava não é opcional — não a remova para "testar contra dados reais".
+
+O mesmo arquivo **zera `RESEND_API_KEY`, `GMAIL_USER` e `GMAIL_APP_PASSWORD`**:
+a API lê o `.env` da raiz, e com o Gmail preenchido ali a suíte mandava e-mail
+de verdade (convite, agendamento, troca) e abria SMTP a cada boot do Nest — o
+portão ficou lento e vermelho.
 
 ### CI
 
