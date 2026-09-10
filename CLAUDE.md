@@ -357,7 +357,7 @@ de enxergar dados.
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 266 testes:
+são 271 testes:
 
 ```bash
 pnpm exec turbo run typecheck lint test

@@ -3,6 +3,29 @@ import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 import * as nodemailer from 'nodemailer';
 
+/**
+ * Escapa texto para dentro do HTML do e-mail.
+ *
+ * Nome do cliente, mensagem do lead e observação da loja vêm de formulário.
+ * Sem isto, um "cliente" chamado `<a href="...">Clique aqui</a>` punha um link
+ * de phishing no e-mail que a concessionária recebe com a nossa marca.
+ */
+export function esc(texto: string): string {
+  return texto
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Cópia com todo campo de texto escapado — para montar o HTML, nunca o assunto. */
+function escaparTexto<T extends object>(o: T): T {
+  return Object.fromEntries(
+    Object.entries(o).map(([k, v]) => [k, typeof v === 'string' ? esc(v) : v]),
+  ) as T;
+}
+
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
@@ -39,7 +62,7 @@ export class EmailService {
     const link = `${this.webUrl}/redefinir-senha?token=${token}`;
     const subject = 'Redefinir senha — AutoConnect';
     const html = this.buildHtml(
-      `Olá, ${name}!`,
+      `Olá, ${esc(name)}!`,
       'Recebemos uma solicitação para redefinir a senha da sua conta. Clique no botão abaixo para criar uma nova senha.',
       link,
       'Redefinir senha',
@@ -52,7 +75,7 @@ export class EmailService {
     const link = `${this.webUrl}/verificar-email?token=${token}`;
     const subject = 'Confirme seu e-mail — AutoConnect';
     const html = this.buildHtml(
-      `Olá, ${name}!`,
+      `Olá, ${esc(name)}!`,
       'Clique no botão abaixo para confirmar seu e-mail e ativar sua conta no AutoConnect.',
       link,
       'Confirmar e-mail',
@@ -69,8 +92,9 @@ export class EmailService {
     message: string | null;
     leadUrl: string;
   }): Promise<void> {
-    const { to, dealerName, customerName, vehicleInfo, message, leadUrl } = opts;
-    const subject = `Novo interesse recebido — ${vehicleInfo}`;
+    const { to, leadUrl } = opts;
+    const { dealerName, customerName, vehicleInfo, message } = escaparTexto(opts);
+    const subject = `Novo interesse recebido — ${opts.vehicleInfo}`;
     const bodyText = [
       `<strong>${customerName}</strong> demonstrou interesse em <strong>${vehicleInfo}</strong>.`,
       message
@@ -97,7 +121,7 @@ export class EmailService {
     const subject = `Convite para a equipe da ${opts.tenantName}`;
     const html = this.buildHtml(
       `Você foi convidado! 🎉`,
-      `A <b>${opts.tenantName}</b> convidou você para fazer parte da equipe como <b>${opts.roleLabel}</b> no AutoConnect. Clique abaixo para criar sua conta e começar.`,
+      `A <b>${esc(opts.tenantName)}</b> convidou você para fazer parte da equipe como <b>${esc(opts.roleLabel)}</b> no AutoConnect. Clique abaixo para criar sua conta e começar.`,
       opts.inviteUrl,
       'Aceitar convite',
       'Este convite expira em 7 dias. Se você não esperava este e-mail, pode ignorá-lo.',
@@ -119,8 +143,8 @@ export class EmailService {
     const html = this.buildHtml(
       `Novo agendamento solicitado 📅`,
       [
-        `<strong>${opts.customerName}</strong> solicitou <strong>${opts.typeLabel.toLowerCase()}</strong>`,
-        opts.vehicleInfo ? ` do veículo <strong>${opts.vehicleInfo}</strong>` : '',
+        `<strong>${esc(opts.customerName)}</strong> solicitou <strong>${esc(opts.typeLabel.toLowerCase())}</strong>`,
+        opts.vehicleInfo ? ` do veículo <strong>${esc(opts.vehicleInfo)}</strong>` : '',
         ` para <strong>${whenStr}</strong>.`,
       ].join(''),
       link,
@@ -142,18 +166,19 @@ export class EmailService {
   }): Promise<void> {
     const whenStr = this.formatWhen(opts.when);
     const link = `${this.webUrl}/perfil`;
+    const e = escaparTexto(opts);
     const titles = {
       confirmed:   'Agendamento confirmado ✅',
       canceled:    'Agendamento cancelado',
       rescheduled: 'Agendamento reagendado 🔄',
     };
     const bodies = {
-      confirmed:   `Sua solicitação de <strong>${opts.typeLabel.toLowerCase()}</strong>${opts.vehicleInfo ? ` do <strong>${opts.vehicleInfo}</strong>` : ''} na <strong>${opts.dealerName}</strong> foi confirmada para <strong>${whenStr}</strong>. Te esperamos lá!`,
-      canceled:    `Seu <strong>${opts.typeLabel.toLowerCase()}</strong>${opts.vehicleInfo ? ` do <strong>${opts.vehicleInfo}</strong>` : ''} na <strong>${opts.dealerName}</strong>, marcado para <strong>${whenStr}</strong>, foi cancelado. Entre em contato com a loja para remarcar.`,
-      rescheduled: `Seu <strong>${opts.typeLabel.toLowerCase()}</strong>${opts.vehicleInfo ? ` do <strong>${opts.vehicleInfo}</strong>` : ''} na <strong>${opts.dealerName}</strong> foi reagendado para <strong>${whenStr}</strong>.`,
+      confirmed:   `Sua solicitação de <strong>${e.typeLabel.toLowerCase()}</strong>${e.vehicleInfo ? ` do <strong>${e.vehicleInfo}</strong>` : ''} na <strong>${e.dealerName}</strong> foi confirmada para <strong>${whenStr}</strong>. Te esperamos lá!`,
+      canceled:    `Seu <strong>${e.typeLabel.toLowerCase()}</strong>${e.vehicleInfo ? ` do <strong>${e.vehicleInfo}</strong>` : ''} na <strong>${e.dealerName}</strong>, marcado para <strong>${whenStr}</strong>, foi cancelado. Entre em contato com a loja para remarcar.`,
+      rescheduled: `Seu <strong>${e.typeLabel.toLowerCase()}</strong>${e.vehicleInfo ? ` do <strong>${e.vehicleInfo}</strong>` : ''} na <strong>${e.dealerName}</strong> foi reagendado para <strong>${whenStr}</strong>.`,
     };
     const html = this.buildHtml(
-      `Olá, ${opts.customerName}!`,
+      `Olá, ${e.customerName}!`,
       `${titles[opts.status]}<br/><br/>${bodies[opts.status]}`,
       link,
       'Ver meus agendamentos',
@@ -173,9 +198,10 @@ export class EmailService {
   }): Promise<void> {
     const whenStr = this.formatWhen(opts.when);
     const link = `${this.webUrl}/perfil`;
+    const e = escaparTexto(opts);
     const html = this.buildHtml(
-      `Lembrete: seu ${opts.typeLabel.toLowerCase()} está chegando ⏰`,
-      `Olá, ${opts.customerName}! Passando para lembrar do seu <strong>${opts.typeLabel.toLowerCase()}</strong>${opts.vehicleInfo ? ` do <strong>${opts.vehicleInfo}</strong>` : ''} na <strong>${opts.dealerName}</strong>, marcado para <strong>${whenStr}</strong>. Te esperamos lá!`,
+      `Lembrete: seu ${e.typeLabel.toLowerCase()} está chegando ⏰`,
+      `Olá, ${e.customerName}! Passando para lembrar do seu <strong>${e.typeLabel.toLowerCase()}</strong>${e.vehicleInfo ? ` do <strong>${e.vehicleInfo}</strong>` : ''} na <strong>${e.dealerName}</strong>, marcado para <strong>${whenStr}</strong>. Te esperamos lá!`,
       link,
       'Ver meus agendamentos',
       'Se precisar remarcar ou cancelar, acesse sua área de cliente ou entre em contato com a loja.',
@@ -194,8 +220,8 @@ export class EmailService {
   }): Promise<void> {
     const subject = `📉 Baixou de preço: ${opts.vehicleInfo}`;
     const html = this.buildHtml(
-      `Boa notícia, ${opts.name}! 🎉`,
-      `O <strong>${opts.vehicleInfo}</strong> que você está monitorando agora está por <strong>${this.brl(opts.price)}</strong> — dentro do alvo de ${this.brl(opts.target)} que você definiu. Corra antes que acabe!`,
+      `Boa notícia, ${esc(opts.name)}! 🎉`,
+      `O <strong>${esc(opts.vehicleInfo)}</strong> que você está monitorando agora está por <strong>${this.brl(opts.price)}</strong> — dentro do alvo de ${this.brl(opts.target)} que você definiu. Corra antes que acabe!`,
       opts.link,
       'Ver veículo',
       'Você recebeu este e-mail porque criou um alerta de preço no AutoConnect. O alerta deste veículo não será reenviado.',
@@ -215,8 +241,8 @@ export class EmailService {
   }): Promise<void> {
     const link = `${this.webUrl}/leads`;
     const body = [
-      `<strong>${opts.customerName}</strong> ofereceu um veículo na troca: <strong>${opts.offeredVehicle}</strong>.`,
-      opts.desiredVehicle ? `<br/><br/>Interesse de compra: <strong>${opts.desiredVehicle}</strong>.` : '',
+      `<strong>${esc(opts.customerName)}</strong> ofereceu um veículo na troca: <strong>${esc(opts.offeredVehicle)}</strong>.`,
+      opts.desiredVehicle ? `<br/><br/>Interesse de compra: <strong>${esc(opts.desiredVehicle)}</strong>.` : '',
       opts.fipeReference != null ? `<br/>Referência FIPE do usado: <strong>${this.brl(opts.fipeReference)}</strong>.` : '',
       opts.expectedValue != null ? `<br/>Valor esperado pelo cliente: <strong>${this.brl(opts.expectedValue)}</strong>.` : '',
     ].join('');
@@ -244,11 +270,11 @@ export class EmailService {
     const link = `${this.webUrl}/perfil`;
     const abatement =
       opts.desiredPrice != null
-        ? `<br/><br/>Aplicando na compra do <strong>${opts.desiredVehicle}</strong> (${this.brl(opts.desiredPrice)}), você pagaria <strong>${this.brl(Math.max(0, opts.desiredPrice - opts.value))}</strong> de diferença.`
+        ? `<br/><br/>Aplicando na compra do <strong>${esc(opts.desiredVehicle ?? 'veículo desejado')}</strong> (${this.brl(opts.desiredPrice)}), você pagaria <strong>${this.brl(Math.max(0, opts.desiredPrice - opts.value))}</strong> de diferença.`
         : '';
     const html = this.buildHtml(
-      `Olá, ${opts.customerName}! Avaliamos seu carro 🔁`,
-      `A <strong>${opts.dealerName}</strong> avaliou seu <strong>${opts.offeredVehicle}</strong> em <strong>${this.brl(opts.value)}</strong> para a troca.${abatement}${opts.note ? `<br/><br/><em>Observação da loja:</em> "${opts.note}"` : ''}`,
+      `Olá, ${esc(opts.customerName)}! Avaliamos seu carro 🔁`,
+      `A <strong>${esc(opts.dealerName)}</strong> avaliou seu <strong>${esc(opts.offeredVehicle)}</strong> em <strong>${this.brl(opts.value)}</strong> para a troca.${abatement}${opts.note ? `<br/><br/><em>Observação da loja:</em> "${esc(opts.note)}"` : ''}`,
       link,
       'Ver detalhes',
       'Esta é uma avaliação inicial e pode mudar após a vistoria presencial do veículo.',
@@ -273,8 +299,12 @@ export class EmailService {
 
   private async send(to: string, subject: string, html: string, devLink: string): Promise<void> {
     if (this.resend) {
-      const result = await this.resend.emails.send({ from: this.from, to, subject, html });
-      this.logger.log(`E-mail enviado via Resend para ${to} | id: ${(result as { id?: string }).id ?? 'n/a'}`);
+      // O SDK da Resend não lança: devolve { data, error }. Ler só o resultado
+      // registrava "enviado" para e-mail recusado — domínio não verificado,
+      // chave inválida — e o convite sumia sem ninguém saber.
+      const { data, error } = await this.resend.emails.send({ from: this.from, to, subject, html });
+      if (error) throw new Error(`Resend recusou o e-mail para ${to}: ${error.name} — ${error.message}`);
+      this.logger.log(`E-mail enviado via Resend para ${to} | id: ${data.id}`);
       return;
     }
 
@@ -299,7 +329,7 @@ export class EmailService {
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px">
         <h2 style="font-size:22px;font-weight:700;margin-bottom:8px">${title}</h2>
         <p style="color:#64748b;margin-bottom:24px">${body}</p>
-        <a href="${link}"
+        <a href="${esc(link)}"
            style="display:inline-block;background:#3B82F6;color:#fff;font-weight:600;
                   padding:12px 28px;border-radius:10px;text-decoration:none;font-size:14px">
           ${btnText}
