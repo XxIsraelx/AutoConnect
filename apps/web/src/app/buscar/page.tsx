@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import Sidebar, { directionsUrl } from './Sidebar';
 import HeaderActions from './HeaderActions';
+import Logo, { LogoMarca } from '@/components/Logo';
+import ThemeToggle from '@/components/ThemeToggle';
 
 const DEALER_ROLES = ['tenant_admin', 'manager', 'salesperson'];
 
@@ -186,41 +188,25 @@ export default function BuscarPage() {
     <div className="h-screen flex flex-col overflow-hidden sup-base">
 
       {/* ── HEADER ─────────────────────────────────────────── */}
-      <header className="h-14 sup-base/85 backdrop-blur-xl border-b borda flex items-center px-4 gap-3 shrink-0 relative z-[900]">
+      {/* Fundo sólido, sem blur: nada rola por baixo deste header (o mapa fica
+          abaixo, no fluxo), e o `sup-base/85` de antes nem gerava classe —
+          `sup-base` é componente, não cor, e não aceita modificador de opacidade. */}
+      <header className="h-14 sm:h-16 sup-base border-b borda flex items-center gap-2 sm:gap-3 px-3 sm:px-6 shrink-0 relative z-[900]">
 
-        {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 shrink-0 group">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center
-                          shadow-lg shadow-blue-900/60 ring-1 ring-slate-200 dark:ring-white/20
-                          group-hover:shadow-blue-700/60 group-hover:scale-105 transition-all">
-            <MapPin size={14} className="txt-forte" />
-          </div>
-          <span className="font-extrabold txt-forte text-base tracking-tight hidden sm:block">
-            Auto<span className="text-blue-400">Connect</span>
-          </span>
+        {/* Marca — a mesma das outras páginas. No celular só o símbolo: o nome
+            não cabe ao lado de Mapa/Lista e das ações do cliente. */}
+        <Link href="/" aria-label="AutoConnect — início" className="shrink-0 text-lg hover:opacity-80 transition-opacity">
+          <LogoMarca className="h-6 w-auto sm:hidden" />
+          <span className="hidden sm:inline"><Logo /></span>
         </Link>
 
-        {/* Breadcrumb */}
-        <div className="hidden md:flex items-center gap-1.5 text-sm">
-          <span className="text-slate-700">/</span>
-          <span className="font-medium text-slate-500">Buscar concessionárias</span>
-        </div>
-
-        {/* Badge de contagem — com dot "ao vivo" */}
-        <div className="hidden sm:flex items-center gap-2 text-xs sup-fraca border borda txt-fraco rounded-full px-3 py-1 select-none">
-          {loading ? (
-            <><Loader2 size={11} className="animate-spin" /> Carregando…</>
-          ) : (
-            <>
-              <span className="relative flex w-1.5 h-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-                <span className="relative inline-flex rounded-full w-1.5 h-1.5 bg-emerald-400" />
-              </span>
-              <span className="font-semibold txt-medio">{withCoords.length}</span> no mapa
-              <span className="txt-tenue">·</span>
-              <span className="font-semibold txt-medio">{pins.length}</span> total
-            </>
-          )}
+        {/* Onde estou */}
+        <div className="hidden md:flex items-center gap-3 min-w-0">
+          <span className="h-5 w-px bg-slate-200 dark:bg-slate-700" aria-hidden />
+          <h1 className="text-sm font-semibold txt-medio whitespace-nowrap">Buscar concessionárias</h1>
+          <span className="hidden lg:inline text-xs txt-tenue whitespace-nowrap">
+            {loading ? 'Carregando…' : `${withCoords.length} no mapa · ${pins.length} no total`}
+          </span>
         </div>
 
         <div className="flex-1" />
@@ -231,14 +217,23 @@ export default function BuscarPage() {
             <button
               key={v}
               onClick={() => setMobile(v)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all
+              aria-pressed={mobileView === v}
+              aria-label={v === 'map' ? 'Ver mapa' : 'Ver lista'}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all
                 ${mobileView === v
                   ? 'sup-media txt-forte shadow-sm'
                   : 'text-slate-500 hover:txt-medio'}`}
             >
-              {v === 'map' ? <><MapIcon size={12}/> Mapa</> : <><List size={12}/> Lista</>}
+              {v === 'map' ? <MapIcon size={13} /> : <List size={13} />}
+              {/* Logado, o cliente ganha três ícones de ação e o menu do perfil:
+                  em 375px o rótulo não cabe junto, e o ícone basta. */}
+              <span className={user ? 'sr-only' : ''}>{v === 'map' ? 'Mapa' : 'Lista'}</span>
             </button>
           ))}
+        </div>
+
+        <div className="hidden md:block">
+          <ThemeToggle compacto />
         </div>
 
         {/* Ações do cliente (favoritos, notificações, chat) */}
@@ -307,19 +302,20 @@ export default function BuscarPage() {
             )}
           </div>
         ) : (
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             <Link
               href="/entrar"
-              className="text-sm txt-fraco hover:txt-forte px-3 py-1.5
-                         rounded-lg hover:sup-fraca transition-all font-medium"
+              className="text-sm font-medium txt-fraco hover:txt-forte px-2.5 sm:px-3 py-2
+                         rounded-lg hover:sup-fraca transition whitespace-nowrap"
             >
               Entrar
             </Link>
+            {/* No celular não cabe: em 375px o botão vazava da tela. A tela de
+                entrar já oferece "Criar conta grátis". */}
             <Link
               href="/cadastrar"
-              className="text-sm bg-blue-600 text-white px-4 py-1.5 rounded-lg
-                         hover:bg-blue-500 transition-colors font-semibold
-                         shadow-lg shadow-blue-900/50"
+              className="hidden sm:inline-flex text-sm bg-brand-accent text-white px-4 py-2 rounded-lg
+                         font-medium hover:bg-blue-600 transition whitespace-nowrap"
             >
               Criar conta
             </Link>
