@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   MapContainer, TileLayer, Marker,
   CircleMarker, Circle, ZoomControl, useMap,
@@ -37,9 +37,6 @@ function createBalloonIcon(selected: boolean, vehiclesCount: number) {
   const gradId = selected ? 'pin-grad-sel' : 'pin-grad';
   const [c1, c2] = selected ? ['#fbbf24', '#d97706'] : ['#60a5fa', '#2563eb'];
   const iconColor = selected ? '#d97706' : '#2563eb';
-  const glow = selected
-    ? 'drop-shadow(0 6px 20px rgba(245,158,11,.75))'
-    : 'drop-shadow(0 6px 18px rgba(59,130,246,.55))';
 
   const badge = vehiclesCount > 0
     ? `<div class="pin-badge${selected ? ' pin-badge--selected' : ''}">${vehiclesCount > 99 ? '99+' : vehiclesCount}</div>`
@@ -51,7 +48,7 @@ function createBalloonIcon(selected: boolean, vehiclesCount: number) {
         <svg xmlns="http://www.w3.org/2000/svg"
              viewBox="0 0 42 54" width="42" height="54"
              overflow="visible"
-             style="filter:${glow}">
+             class="pin-svg${selected ? ' pin-svg--sel' : ''}">
           <defs>
             <linearGradient id="${gradId}" x1="0" y1="0" x2="0.6" y2="1">
               <stop offset="0%" stop-color="${c1}"/>
@@ -160,16 +157,26 @@ function FitOnLoad({ pins }: { pins: ValidPin[] }) {
 function FlyToSelected({ pin, allPins }: { pin: ValidPin | null; allPins: ValidPin[] }) {
   const map = useMap();
   const prevId = useRef<string | null>(null);
+  // Refs para o efeito depender só do *id* selecionado. Dependendo dos objetos,
+  // ele disparava a cada render da página: o mapa voltava voando para a loja
+  // no meio do arrasto do usuário.
+  const pinRef = useRef(pin);
+  pinRef.current = pin;
+  const allPinsRef = useRef(allPins);
+  allPinsRef.current = allPins;
+  const id = pin?.id ?? null;
 
   useEffect(() => {
-    if (pin) {
-      map.flyTo([pin.latitude, pin.longitude], Math.max(map.getZoom(), 14), { duration: 1.2 });
-    } else if (prevId.current !== null && allPins.length > 1) {
-      const bounds = L.latLngBounds(allPins.map((p) => [p.latitude, p.longitude]));
+    const alvo = pinRef.current;
+    const todos = allPinsRef.current;
+    if (alvo) {
+      map.flyTo([alvo.latitude, alvo.longitude], Math.max(map.getZoom(), 14), { duration: 1.2 });
+    } else if (prevId.current !== null && todos.length > 1) {
+      const bounds = L.latLngBounds(todos.map((p) => [p.latitude, p.longitude]));
       map.flyToBounds(bounds, { padding: [64, 64], maxZoom: 13, duration: 1.2 });
     }
-    prevId.current = pin?.id ?? null;
-  }, [pin, allPins, map]);
+    prevId.current = id;
+  }, [id, map]);
 
   return null;
 }
@@ -402,10 +409,21 @@ export default function MapClient({
 }: Props) {
   const [tilesLoaded, setTilesLoaded] = useState(false);
   const tema = useTemaResolvido();
-  const validPins = pins.filter(
-    (p): p is ValidPin => Number.isFinite(p.latitude) && Number.isFinite(p.longitude),
+  // Memoizados de propósito. Um array novo a cada render fazia o ClusterLayer
+  // desmontar e remontar todos os pins (com a animação de entrada) sempre que
+  // a página re-renderizava — chegada dos veículos da loja, filtro, hover na
+  // lista —, e isso caía bem no meio do gesto no mapa.
+  const validPins = useMemo(
+    () => pins.filter(
+      (p): p is ValidPin => Number.isFinite(p.latitude) && Number.isFinite(p.longitude),
+    ),
+    [pins],
   );
-  const selectedPin = validPins.find((p) => p.id === selectedId) ?? null;
+  const selectedPin = useMemo(
+    () => validPins.find((p) => p.id === selectedId) ?? null,
+    [validPins, selectedId],
+  );
+  const userIcon = useMemo(() => createUserIcon(), []);
   const routePin = routeTo && Number.isFinite(routeTo.latitude) && Number.isFinite(routeTo.longitude)
     ? (routeTo as ValidPin)
     : null;
@@ -434,6 +452,9 @@ export default function MapClient({
           className={tema === 'dark' ? 'basemap-dark' : undefined}
           maxZoom={20}
           maxNativeZoom={16}
+          // No pinça, baixar tiles de cada nível intermediário disputa rede e
+          // CPU com a animação; busca só quando o gesto termina.
+          updateWhenZooming={false}
           eventHandlers={{ load: () => setTilesLoaded(true) }}
         />
 
@@ -443,6 +464,7 @@ export default function MapClient({
           url={`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${VARIANTE[tema]}_Gray_Reference/MapServer/tile/{z}/{y}/{x}`}
           maxZoom={20}
           maxNativeZoom={16}
+          updateWhenZooming={false}
         />
 
         <ZoomControl position="bottomright" />
@@ -491,7 +513,7 @@ export default function MapClient({
         {userLocation && (
           <Marker
             position={[userLocation.lat, userLocation.lng]}
-            icon={createUserIcon()}
+            icon={userIcon}
             zIndexOffset={2000}
             interactive={false}
           />

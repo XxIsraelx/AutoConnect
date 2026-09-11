@@ -426,6 +426,37 @@ html, body {
     inset 0 0 24px 6px rgba(2, 6, 23, 0.35);
 }
 
+/* Brilho dos pins. Era `style=` embutido no SVG de cada ícone, fora do alcance
+   da regra de celular abaixo. */
+.pin-svg      { filter: drop-shadow(0 6px 18px rgba(59, 130, 246, 0.55)); }
+.pin-svg--sel { filter: drop-shadow(0 6px 20px rgba(245, 158, 11, 0.75)); }
+
+/* Mapa em tela de toque: tudo que é refeito a cada quadro do arrasto sai.
+   - O tingimento da base (5 filtros sobre a camada inteira) vira opacidade
+     sobre o fundo escuro do tile-pane — composição pura, sem refiltrar. Com o
+     cinza da Esri (~63) sobre #0f172a a 0,5, o terreno fica ~rgb(39,43,52),
+     próximo do rgb(30,40,63) do filtro. `!important` porque o Leaflet grava
+     opacity:1 inline no container da camada.
+   - drop-shadow em cada pin e backdrop-filter nos controles e no tooltip: o
+     desfoque é recalculado enquanto o mapa se move por baixo. */
+@media (pointer: coarse) {
+  .basemap-dark {
+    filter: none;
+    opacity: 0.5 !important;
+  }
+  .pin-svg,
+  .pin-svg--sel,
+  .dealer-marker--selected .dealer-marker-inner {
+    filter: none;
+  }
+  .leaflet-control-zoom a,
+  .leaflet-control-attribution,
+  .leaflet-tooltip.pin-tooltip {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 /* Shimmer enquanto os tiles do mapa carregam */
 @keyframes map-shimmer-sweep {
   from { background-position: -200% 0; }
