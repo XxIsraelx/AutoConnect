@@ -52,7 +52,7 @@ function KpiCard({ label, value, sub, trend }: { label: string; value: string | 
   const TrendIcon = trend === undefined ? Minus : trend > 0 ? ArrowUpRight : trend < 0 ? ArrowDownRight : Minus;
   const trendColor = trend === undefined || trend === 0 ? 'text-slate-400' : trend > 0 ? 'text-emerald-500' : 'text-rose-500';
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5">
+    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 min-w-0">
       <p className="text-xs text-slate-500 font-medium mb-1">{label}</p>
       <p className="text-2xl font-bold">{value}</p>
       {sub && <p className="text-xs text-slate-500 mt-1">{sub}</p>}
@@ -94,9 +94,9 @@ export default function RelatoriosPage() {
   const totalLeads = data?.conversion.total ?? 0;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold">Relatórios</h1>
           <p className="text-sm text-slate-500 mt-0.5">Análise de desempenho da sua concessionária</p>
@@ -122,6 +122,7 @@ export default function RelatoriosPage() {
           <button
             onClick={load}
             disabled={loading}
+            title="Atualizar"
             className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
           >
             <RefreshCw size={14} className={cn(loading && 'animate-spin')} />
@@ -139,7 +140,7 @@ export default function RelatoriosPage() {
       ) : data ? (
         <>
           {/* KPIs */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
             <KpiCard label="Total de Leads" value={totalLeads} sub={`Últimos ${days} dias`} />
             <KpiCard label="Taxa de Conversão" value={`${data.conversion.rate}%`} sub={`${data.conversion.won} ganhos`} />
             <KpiCard label="Agendamentos" value={data.appointments?.total ?? 0} sub={`${data.appointments?.completed ?? 0} concluídos`} />
@@ -165,8 +166,8 @@ export default function RelatoriosPage() {
                   const prev = i > 0 ? data.funnel![i - 1].count : null;
                   const stepRate = prev && prev > 0 ? Math.round((f.count / prev) * 100) : null;
                   return (
-                    <div key={f.stage} className="flex items-center gap-3">
-                      <span className="w-28 text-xs text-slate-500 text-right shrink-0">{f.stage}</span>
+                    <div key={f.stage} className="flex items-center gap-2 sm:gap-3">
+                      <span className="w-20 sm:w-28 text-xs text-slate-500 text-right shrink-0">{f.stage}</span>
                       <div className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-lg h-7 overflow-hidden">
                         <div
                           className={cn('h-full rounded-lg flex items-center px-2.5 transition-all duration-700 min-w-[2rem]', colors[i % colors.length])}
@@ -175,7 +176,7 @@ export default function RelatoriosPage() {
                           <span className="text-[11px] font-bold text-white">{f.count}</span>
                         </div>
                       </div>
-                      <span className="w-12 text-[11px] text-slate-400 shrink-0">
+                      <span className="w-9 sm:w-12 text-[11px] text-slate-400 shrink-0">
                         {stepRate !== null ? `${stepRate}%` : ''}
                       </span>
                     </div>
@@ -242,8 +243,11 @@ export default function RelatoriosPage() {
                 <TrendingUp size={15} className="text-amber-500" />
                 <h2 className="text-sm font-semibold">Origem dos Leads</h2>
               </div>
-              <div className="flex items-center gap-4">
-                <ResponsiveContainer width="50%" height={180}>
+              {/* No celular a legenda desce: lado a lado, pizza e rótulos
+                  disputavam ~150px cada. */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="w-full sm:w-1/2 shrink-0">
+                <ResponsiveContainer width="100%" height={180}>
                   <PieChart>
                     <Pie data={data.bySource.map((s) => ({ ...s, name: SOURCE_LABELS[s.source] ?? s.source }))}
                       dataKey="count" cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3}>
@@ -254,7 +258,8 @@ export default function RelatoriosPage() {
                     <Tooltip contentStyle={{ fontSize: 12 }} />
                   </PieChart>
                 </ResponsiveContainer>
-                <div className="flex-1 space-y-2">
+                </div>
+                <div className="flex-1 min-w-0 space-y-2">
                   {data.bySource.map((s, i) => (
                     <div key={s.source} className="flex items-center justify-between text-xs">
                       <div className="flex items-center gap-1.5">

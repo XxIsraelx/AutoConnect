@@ -7,11 +7,11 @@ import {
   Search, X, RefreshCw, ExternalLink, Download,
   History, UserCheck, Send, Repeat, Handshake,
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { textoDoErro } from '@/components/ErroAoCarregar';
+import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 
 /* ── Tipos ───────────────────────────────────────────────── */
 
@@ -408,13 +408,21 @@ function HistoryModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
   const [apprSaving, setApprSaving] = useState(false);
   const [apprErro, setApprErro] = useState('');
 
-  useEffect(() => {
+  const [erroHistorico, setErroHistorico] = useState<unknown>(null);
+
+  const carregarHistorico = useCallback(() => {
     if (!token) return;
+    setLoading(true);
+    setErroHistorico(null);
     api<LeadHistory>(`/leads/${lead.id}/history`, { token })
       .then(setHistory)
-      .catch(() => null)
+      // Antes o erro era descartado e o painel abria vazio, como se o lead
+      // não tivesse histórico nenhum.
+      .catch(setErroHistorico)
       .finally(() => setLoading(false));
   }, [lead.id, token]);
+
+  useEffect(() => { carregarHistorico(); }, [carregarHistorico]);
 
   async function appraise(status: 'offered' | 'rejected' = 'offered') {
     if (!token) return;
@@ -612,6 +620,10 @@ function HistoryModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
                 </div>
               </div>
             )}
+          </div>
+        ) : erroHistorico ? (
+          <div className="flex-1 overflow-y-auto">
+            <ErroAoCarregar erro={erroHistorico} onTentarNovamente={carregarHistorico} carregando={loading} contexto="o histórico" />
           </div>
         ) : null}
 
@@ -814,6 +826,8 @@ export default function LeadsPage() {
   const [loading, setLoading]     = useState(true);
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(1);
+  const [erro, setErro]           = useState<unknown>(null);
+  const [erroStats, setErroStats] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState<LeadStatus | ''>('');
   const [search, setSearch]             = useState('');
@@ -836,21 +850,26 @@ export default function LeadsPage() {
     }
   }
 
-  const loadLeads = useCallback(async (reset = false) => {
+  // A página vem por argumento: logo após `setPage`, o `page` desta closure
+  // ainda é o antigo, e "Carregar mais" rebuscava a página 1 duplicando leads.
+  const loadLeads = useCallback(async (reset = false, pagina?: number) => {
     if (!token) return;
     setLoading(true);
-    const currentPage = reset ? 1 : page;
+    const currentPage = reset ? 1 : (pagina ?? page);
     if (reset) setPage(1);
 
     const params = new URLSearchParams({ page: String(currentPage), perPage: '20' });
     if (statusFilter) params.set('status', statusFilter);
 
+    setErro(null);
     try {
       const data = await api<LeadsResponse>(`/leads?${params}`, { token });
       setLeads(reset ? data.items : prev => [...prev, ...data.items]);
       setTotal(data.total);
     } catch (err) {
-      console.error(err);
+      // Antes só ia para o console: a tela mostrava "Nenhum lead ainda" e o
+      // vendedor concluía que não havia fila para atender.
+      setErro(err);
     } finally {
       setLoading(false);
     }
@@ -861,7 +880,11 @@ export default function LeadsPage() {
     try {
       const data = await api<LeadStats>('/leads/stats', { token });
       setStats(data);
-    } catch {}
+      setErroStats(false);
+    } catch {
+      // Sem a contagem, "0 total" seria mentira: o cabeçalho avisa (ver JSX).
+      setErroStats(true);
+    }
   }, [token]);
 
   useEffect(() => {
@@ -885,6 +908,9 @@ export default function LeadsPage() {
       const res = await fetch(`${apiBase}/leads/export/csv?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      // fetch não lança em 4xx/5xx: sem isto o corpo do erro era baixado
+      // como se fosse o CSV.
+      if (!res.ok) throw new ApiError(res.status, `Falha ao exportar (HTTP ${res.status})`);
       const blob = await res.blob();
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
@@ -923,8 +949,17 @@ export default function LeadsPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Leads</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            {totalLeads} total
-            {newLeads > 0 && <span className="ml-2 text-blue-500 font-semibold">· {newLeads} novo{newLeads !== 1 ? 's' : ''}</span>}
+            {erroStats ? (
+              <span className="text-rose-600 dark:text-rose-400">
+                Contagem indisponível ·{' '}
+                <button onClick={loadStats} className="underline hover:no-underline">tentar novamente</button>
+              </span>
+            ) : (
+              <>
+                {totalLeads} total
+                {newLeads > 0 && <span className="ml-2 text-blue-500 font-semibold">· {newLeads} novo{newLeads !== 1 ? 's' : ''}</span>}
+              </>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1012,6 +1047,8 @@ export default function LeadsPage() {
             <div key={i} className="rounded-2xl bg-slate-100 dark:bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-200 dark:border-white/[.06] p-4 animate-pulse h-44" />
           ))}
         </div>
+      ) : erro && leads.length === 0 ? (
+        <ErroAoCarregar erro={erro} onTentarNovamente={() => loadLeads(true)} carregando={loading} contexto="os leads" />
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center py-24 text-center">
           <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-white/[.04] flex items-center justify-center mb-4">
@@ -1034,6 +1071,13 @@ export default function LeadsPage() {
             ))}
           </div>
 
+          {/* Falha ao carregar mais: os leads já exibidos continuam na tela. */}
+          {erro && leads.length > 0 && (
+            <p className="text-xs text-rose-600 dark:text-rose-400 text-center mt-6">
+              Não foi possível carregar mais leads: {textoDoErro(erro)}
+            </p>
+          )}
+
           {/* Load more */}
           {leads.length < total && !loading && !search && (
             <div className="flex justify-center mt-8">
@@ -1041,7 +1085,7 @@ export default function LeadsPage() {
                 onClick={() => {
                   const nextPage = page + 1;
                   setPage(nextPage);
-                  loadLeads();
+                  loadLeads(false, nextPage);
                 }}
                 className="flex items-center gap-2 px-6 py-2.5 rounded-xl
                            border border-slate-200 dark:border-slate-200 dark:border-white/[.08]

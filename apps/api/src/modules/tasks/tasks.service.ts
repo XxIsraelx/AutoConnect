@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
 import { EmailService } from '../../common/email/email.service';
+import { executarEmUmaReplica } from './execucao-unica';
 
 const TYPE_LABELS: Record<string, string> = {
   test_drive: 'Test drive',
@@ -26,6 +27,10 @@ function vehicleInfo(v: {
  *  - Re-engajamento de leads frios (alerta in-app ao vendedor)
  *
  * Rodam globais (todas as concessionárias) — sem contexto de tenant.
+ *
+ * Cada execução passa por `executarEmUmaReplica`: com mais de uma réplica, o
+ * cron dispara em todas, mas só uma executa (advisory lock no Postgres). Os
+ * corpos continuam idempotentes de propósito — ver o comentário do helper.
  */
 @Injectable()
 export class TasksService {
@@ -43,7 +48,13 @@ export class TasksService {
   /* ── Lembretes de agendamento ─────────────────────────────── */
 
   @Cron(CronExpression.EVERY_HOUR, { name: 'appointment-reminders' })
-  async sendAppointmentReminders(): Promise<void> {
+  async sendAppointmentReminders(): Promise<boolean> {
+    return executarEmUmaReplica(this.privilegiado, 'appointment-reminders', this.logger, () =>
+      this.enviarLembretes(),
+    );
+  }
+
+  private async enviarLembretes(): Promise<void> {
     const now = new Date();
     const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
@@ -94,7 +105,13 @@ export class TasksService {
   /* ── Re-engajamento de leads frios ────────────────────────── */
 
   @Cron(CronExpression.EVERY_DAY_AT_8AM, { name: 'cold-leads' })
-  async reengageColdLeads(): Promise<void> {
+  async reengageColdLeads(): Promise<boolean> {
+    return executarEmUmaReplica(this.privilegiado, 'cold-leads', this.logger, () =>
+      this.alertarLeadsFrios(),
+    );
+  }
+
+  private async alertarLeadsFrios(): Promise<void> {
     const now = Date.now();
     let created = 0;
 

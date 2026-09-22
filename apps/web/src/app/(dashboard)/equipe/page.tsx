@@ -9,7 +9,7 @@ import {
 import { api} from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
-import { ErroAoCarregar } from '@/components/ErroAoCarregar';
+import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import { formatarBRL } from '@autoconnect/shared';
 
 /* ── Tipos ──────────────────────────────────────────────── */
@@ -78,11 +78,11 @@ function Progress({ value, goal, color = 'blue' }: { value: number; goal: number
 }
 
 /* ── KPI card ───────────────────────────────────────────── */
-function Kpi({ Icon, label, value, sub, accent }: { Icon: React.ElementType; label: string; value: string; sub?: string; accent: string }) {
+function Kpi({ Icon, label, value, sub, accent, className }: { Icon: React.ElementType; label: string; value: string; sub?: string; accent: string; className?: string }) {
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+    <div className={cn('bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 min-w-0', className)}>
       <div className="flex items-center gap-2 mb-2">
-        <span className={cn('w-7 h-7 rounded-lg flex items-center justify-center', accent)}><Icon size={15} /></span>
+        <span className={cn('w-7 h-7 rounded-lg flex items-center justify-center shrink-0', accent)}><Icon size={15} /></span>
         <span className="text-xs text-slate-500">{label}</span>
       </div>
       <p className="text-2xl font-extrabold leading-none">{value}</p>
@@ -107,6 +107,9 @@ export default function EquipePage() {
   const [showGoals, setShowGoals]   = useState(false);
   const [selected, setSelected]     = useState<MemberStat | null>(null);
   const [busyId, setBusyId]         = useState<string | null>(null);
+  // Falha de uma ação sobre membro (aparece no drawer) ou convite (na lista).
+  const [erroMembro, setErroMembro]   = useState('');
+  const [erroConvite, setErroConvite] = useState('');
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -131,20 +134,23 @@ export default function EquipePage() {
   async function changeRole(id: string, role: string) {
     if (!token) return;
     setBusyId(id);
+    setErroMembro('');
     try { await api(`/users/${id}/role`, { token, method: 'PATCH', body: { role } }); await load(); }
-    catch (e) { alert(e instanceof Error ? e.message : 'Erro'); }
+    catch (e) { setErroMembro(textoDoErro(e)); }
     finally { setBusyId(null); }
   }
   async function setStatus(id: string, status: 'active' | 'suspended') {
     if (!token) return;
     setBusyId(id);
+    setErroMembro('');
     try { await api(`/users/${id}/status`, { token, method: 'PATCH', body: { status } }); await load(); setSelected(null); }
-    catch (e) { alert(e instanceof Error ? e.message : 'Erro'); }
+    catch (e) { setErroMembro(textoDoErro(e)); }
     finally { setBusyId(null); }
   }
   async function setCommission(id: string, commissionPct: number | null) {
     if (!token) return;
     setBusyId(id);
+    setErroMembro('');
     try {
       await api(`/team/members/${id}/commission`, { token, method: 'PATCH', body: { commissionPct } });
       await load();
@@ -154,20 +160,31 @@ export default function EquipePage() {
         ? { ...cur, commissionPct, commission: null }
         : cur));
     }
-    catch (e) { alert(e instanceof Error ? e.message : 'Erro'); }
+    catch (e) { setErroMembro(textoDoErro(e)); }
     finally { setBusyId(null); }
   }
+  // Nenhuma das duas tinha catch: a promessa rejeitava sem ninguém ver, e o
+  // convite seguia na lista como se tivesse sido revogado ou reenviado.
   async function revokeInvite(id: string) {
     if (!token) return;
-    await api(`/invitations/${id}`, { token, method: 'DELETE' });
-    setInvitations((p) => p.filter((i) => i.id !== id));
+    setBusyId(id);
+    setErroConvite('');
+    try {
+      await api(`/invitations/${id}`, { token, method: 'DELETE' });
+      setInvitations((p) => p.filter((i) => i.id !== id));
+    } catch (e) {
+      setErroConvite(`Não foi possível revogar o convite: ${textoDoErro(e)}`);
+    } finally { setBusyId(null); }
   }
   async function resendInvite(id: string) {
     if (!token) return;
     setBusyId(id);
+    setErroConvite('');
     try {
       const inv = await api<Invitation>(`/invitations/${id}/resend`, { token, method: 'POST' });
       setInvitations((p) => p.map((i) => i.id === id ? { ...i, ...inv } : i));
+    } catch (e) {
+      setErroConvite(`Não foi possível reenviar o convite: ${textoDoErro(e)}`);
     } finally { setBusyId(null); }
   }
   function copyLink(inv: Invitation) {
@@ -188,19 +205,19 @@ export default function EquipePage() {
   const ranking = [...members].sort((a, b) => b.won - a.won);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold">Equipe & Metas</h1>
           <p className="text-sm text-slate-500 mt-0.5">Desempenho de {fmtPeriod(period)}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <select value={period} onChange={(e) => setPeriod(e.target.value)}
             className="px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 outline-none focus:ring-2 focus:ring-blue-500 capitalize">
             {lastNPeriods(6).map((p) => <option key={p} value={p}>{fmtPeriod(p)}</option>)}
           </select>
-          <button onClick={load} className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition">
+          <button onClick={load} disabled={loading} title="Atualizar" className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition">
             <RefreshCw size={14} className={cn(loading && 'animate-spin')} />
           </button>
           {isAdmin && (
@@ -223,7 +240,7 @@ export default function EquipePage() {
               <div className="flex items-center gap-2 text-blue-100 text-xs font-semibold mb-1">
                 <Trophy size={13} /> META DA EQUIPE · {fmtPeriod(period)}
               </div>
-              <p className="text-4xl font-extrabold leading-none">
+              <p className="text-3xl sm:text-4xl font-extrabold leading-none">
                 {team.won}<span className="text-blue-200 text-2xl"> / {team.goal ?? '—'}</span>
                 <span className="text-base font-semibold text-blue-100 ml-2">vendas</span>
               </p>
@@ -248,21 +265,24 @@ export default function EquipePage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Kpi Icon={Award} label="Vendas (leads ganhos)" value={String(team.won)} sub={`${team.assigned} leads atendidos`} accent="bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400" />
           <Kpi Icon={TrendingUp} label="Conversão" value={`${team.conversion}%`} sub="ganhos ÷ atendidos" accent="bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400" />
-          <Kpi Icon={DollarSign} label="Valor vendido" value={formatarBRL(team.valueSold)} sub="em negócios faturados" accent="bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400" />
+          {/* "R$ 2.345.678,90" não cabe em meia largura de 375px: no celular
+              este cartão ocupa a linha inteira, por último. */}
+          <Kpi Icon={DollarSign} label="Valor vendido" value={formatarBRL(team.valueSold)} sub="em negócios faturados" accent="bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400"
+            className="col-span-2 order-last md:col-span-1 md:order-none" />
           <Kpi Icon={Users} label="Membros" value={String(team.memberCount)} sub="na equipe" accent="bg-purple-100 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400" />
         </div>
       )}
 
       {/* Lista de membros com desempenho */}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <div className="px-4 sm:px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <h2 className="text-sm font-semibold">Desempenho por membro</h2>
-          <span className="text-xs text-slate-400">Clique para ver detalhes</span>
+          <span className="text-xs text-slate-400">Toque para ver detalhes</span>
         </div>
         <div className="divide-y divide-slate-100 dark:divide-slate-800">
           {ranking.map((m, i) => (
             <button key={m.id} onClick={() => setSelected(m)}
-              className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition text-left">
+              className="w-full flex items-center gap-3 sm:gap-4 px-4 sm:px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition text-left">
               <div className="w-6 text-center shrink-0">
                 {i < 3 && m.won > 0
                   ? <span className={cn('text-sm font-extrabold', i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : 'text-amber-700')}>{i + 1}º</span>
@@ -275,12 +295,16 @@ export default function EquipePage() {
                   : <span className="text-blue-600 dark:text-blue-400 text-sm font-bold">{m.fullName?.charAt(0).toUpperCase()}</span>}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 min-w-0">
                   <p className="text-sm font-medium truncate">{m.fullName}</p>
-                  <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full font-medium', ROLE_COLORS[m.role] ?? 'bg-slate-100 text-slate-600')}>{ROLE_LABELS[m.role] ?? m.role}</span>
-                  {m.status === 'suspended' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300 font-medium">Suspenso</span>}
+                  <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0', ROLE_COLORS[m.role] ?? 'bg-slate-100 text-slate-600')}>{ROLE_LABELS[m.role] ?? m.role}</span>
+                  {m.status === 'suspended' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300 font-medium shrink-0">Suspenso</span>}
                 </div>
-                <div className="hidden sm:block mt-1.5 max-w-xs"><Progress value={m.won} goal={m.goal} color="emerald" /></div>
+                <div className="mt-1.5 max-w-xs"><Progress value={m.won} goal={m.goal} color="emerald" /></div>
+                {/* No celular as colunas de números somem; o resumo fica aqui. */}
+                <p className="md:hidden mt-1 text-[11px] text-slate-400 truncate">
+                  {m.assigned} leads · {m.conversion}% conv. · {formatarBRL(m.valueSold)}
+                </p>
               </div>
               <div className="hidden md:flex items-center gap-5 text-center shrink-0">
                 <div><p className="text-sm font-bold">{m.assigned}</p><p className="text-[10px] text-slate-400">leads</p></div>
@@ -297,23 +321,26 @@ export default function EquipePage() {
       {/* Convites pendentes */}
       {invitations.length > 0 && (
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+          <div className="px-4 sm:px-5 py-4 border-b border-slate-100 dark:border-slate-800">
             <h2 className="text-sm font-semibold">Convites pendentes ({invitations.length})</h2>
+            {erroConvite && <p role="alert" className="mt-1 text-xs text-rose-600 dark:text-rose-400">{erroConvite}</p>}
           </div>
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {invitations.map((inv) => {
               const expired = new Date(inv.expiresAt) < new Date();
               return (
-                <div key={inv.id} className="flex items-center gap-4 px-5 py-3.5">
-                  <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0"><Mail size={14} className="text-slate-400" /></div>
+                <div key={inv.id} className="flex items-center gap-3 sm:gap-4 px-4 sm:px-5 py-3.5">
+                  <div className="hidden sm:flex w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 items-center justify-center shrink-0"><Mail size={14} className="text-slate-400" /></div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{inv.email}</p>
-                    <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                      <Clock size={10} />{expired ? 'Expirado' : `Expira ${new Date(inv.expiresAt).toLocaleDateString('pt-BR')}`}
+                    <p className="text-xs text-slate-500 flex flex-wrap items-center gap-x-1.5 gap-y-1 mt-0.5">
+                      <span className="flex items-center gap-1"><Clock size={10} />{expired ? 'Expirado' : `Expira ${new Date(inv.expiresAt).toLocaleDateString('pt-BR')}`}</span>
+                      {/* No celular o cargo desce para cá, liberando a largura do e-mail. */}
+                      <span className={cn('sm:hidden text-[10px] px-1.5 py-0.5 rounded-full font-medium', ROLE_COLORS[inv.role] ?? 'bg-slate-100 text-slate-600')}>{ROLE_LABELS[inv.role] ?? inv.role}</span>
                     </p>
                   </div>
-                  <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium', ROLE_COLORS[inv.role] ?? 'bg-slate-100 text-slate-600')}>{ROLE_LABELS[inv.role] ?? inv.role}</span>
-                  <div className="flex items-center gap-1">
+                  <span className={cn('hidden sm:inline text-xs px-2 py-0.5 rounded-full font-medium shrink-0', ROLE_COLORS[inv.role] ?? 'bg-slate-100 text-slate-600')}>{ROLE_LABELS[inv.role] ?? inv.role}</span>
+                  <div className="flex items-center gap-1 shrink-0">
                     <button onClick={() => resendInvite(inv.id)} disabled={busyId === inv.id} title="Reenviar e-mail"
                       className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-500">
                       {busyId === inv.id ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
@@ -323,7 +350,7 @@ export default function EquipePage() {
                         {copiedId === inv.id ? <CheckCheck size={14} className="text-emerald-500" /> : <Copy size={14} />}
                       </button>
                     )}
-                    <button onClick={() => revokeInvite(inv.id)} title="Revogar" className="p-1.5 rounded hover:bg-rose-50 dark:hover:bg-rose-950/20 hover:text-rose-500 transition text-slate-500">
+                    <button onClick={() => revokeInvite(inv.id)} disabled={busyId === inv.id} title="Revogar" className="p-1.5 rounded hover:bg-rose-50 dark:hover:bg-rose-950/20 hover:text-rose-500 transition text-slate-500">
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -339,7 +366,8 @@ export default function EquipePage() {
       {showGoals && token && data && <GoalsModal token={token} period={period} members={members} teamGoal={team?.goal ?? null} onClose={() => setShowGoals(false)} onSaved={() => { setShowGoals(false); load(); }} />}
       {selected && (
         <MemberDrawer member={selected} period={period} isAdmin={isAdmin} busy={busyId === selected.id}
-          onClose={() => setSelected(null)}
+          erro={erroMembro}
+          onClose={() => { setSelected(null); setErroMembro(''); }}
           onChangeRole={(r) => changeRole(selected.id, r)}
           onSetStatus={(s) => setStatus(selected.id, s)}
           onSetCommission={(pct) => setCommission(selected.id, pct)} />
@@ -349,8 +377,8 @@ export default function EquipePage() {
 }
 
 /* ── Drawer do membro ───────────────────────────────────── */
-function MemberDrawer({ member, period, isAdmin, busy, onClose, onChangeRole, onSetStatus, onSetCommission }: {
-  member: MemberStat; period: string; isAdmin: boolean; busy: boolean;
+function MemberDrawer({ member, period, isAdmin, busy, erro, onClose, onChangeRole, onSetStatus, onSetCommission }: {
+  member: MemberStat; period: string; isAdmin: boolean; busy: boolean; erro: string;
   onClose: () => void; onChangeRole: (r: string) => void; onSetStatus: (s: 'active' | 'suspended') => void;
   onSetCommission: (pct: number | null) => void;
 }) {
@@ -367,12 +395,19 @@ function MemberDrawer({ member, period, isAdmin, busy, onClose, onChangeRole, on
   ];
   return (
     <>
-      <div onClick={onClose} className="fixed inset-0 z-[2000] bg-black/40 backdrop-blur-sm" />
-      <aside className="fixed top-0 right-0 z-[2001] h-full w-full max-w-md bg-white dark:bg-slate-950 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col">
+      <div onClick={onClose} className="fixed inset-0 !mt-0 z-[2000] bg-black/40 backdrop-blur-sm" />
+      {/* !mt-0: o drawer é filho do `space-y-6` da página, que lhe dava 24px de
+          margem e cortava o rodapé no celular. */}
+      <aside className="fixed top-0 right-0 !mt-0 z-[2001] h-full w-full max-w-md bg-white dark:bg-slate-950 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col">
         <div className="flex items-center justify-between px-5 h-14 border-b border-slate-200 dark:border-slate-800 shrink-0">
           <h2 className="text-sm font-bold">Detalhes do membro</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button>
         </div>
+        {erro && (
+          <p role="alert" className="border-b border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 px-5 py-2.5 text-xs text-rose-600 dark:text-rose-400 shrink-0">
+            Não foi possível salvar: {erro}
+          </p>
+        )}
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           {/* Cabeçalho */}
           <div className="flex items-center gap-3">
@@ -531,10 +566,12 @@ function GoalsModal({ token, period, members, teamGoal, onClose, onSaved }: {
     Object.fromEntries(members.map((m) => [m.id, m.goal != null ? String(m.goal) : ''])),
   );
   const [saving, setSaving] = useState(false);
+  const [erro, setErro] = useState('');
   const input = 'w-20 px-2 py-1.5 text-sm text-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-blue-500';
 
   async function save() {
     setSaving(true);
+    setErro('');
     try {
       const reqs: Promise<unknown>[] = [];
       if (team !== '') reqs.push(api('/team/goals', { token, method: 'POST', body: { userId: null, period, target: Number(team) } }));
@@ -544,7 +581,11 @@ function GoalsModal({ token, period, members, teamGoal, onClose, onSaved }: {
       }
       await Promise.all(reqs);
       onSaved();
-    } catch { setSaving(false); }
+    } catch (e) {
+      // O botão voltava ao normal sem dizer nada, e as metas pareciam salvas.
+      setErro(textoDoErro(e));
+      setSaving(false);
+    }
   }
 
   return (
@@ -557,7 +598,7 @@ function GoalsModal({ token, period, members, teamGoal, onClose, onSaved }: {
         <div className="space-y-2">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Meta por vendedor</p>
           {members.map((m) => (
-            <div key={m.id} className="flex items-center justify-between">
+            <div key={m.id} className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 min-w-0">
                 <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0 text-xs font-bold text-blue-600 dark:text-blue-400">{m.fullName?.charAt(0).toUpperCase()}</div>
                 <span className="text-sm truncate">{m.fullName}</span>
@@ -567,6 +608,7 @@ function GoalsModal({ token, period, members, teamGoal, onClose, onSaved }: {
           ))}
         </div>
       </div>
+      {erro && <p role="alert" className="mt-4 text-xs text-rose-600 dark:text-rose-400">Não foi possível salvar as metas: {erro}</p>}
       <div className="flex gap-2 mt-5">
         <button onClick={onClose} className="flex-1 px-4 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition">Cancelar</button>
         <button onClick={save} disabled={saving} className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition flex items-center justify-center gap-2">
@@ -580,13 +622,15 @@ function GoalsModal({ token, period, members, teamGoal, onClose, onSaved }: {
 /* ── Modal base ─────────────────────────────────────────── */
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+    <div className="fixed inset-0 !mt-0 z-[2100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md max-h-full flex flex-col">
+        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
           <h2 className="font-semibold">{title}</h2>
           <button onClick={onClose} className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition"><X size={16} /></button>
         </div>
-        <div className="p-6">{children}</div>
+        {/* Com muitos vendedores, o modal de metas passava da altura da tela
+            e o botão de salvar ficava inalcançável no celular. */}
+        <div className="p-5 sm:p-6 overflow-y-auto">{children}</div>
       </div>
     </div>
   );

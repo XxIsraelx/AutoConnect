@@ -41,8 +41,13 @@ Auditadas em 04/09/2026, contra o repositório.
   entraram direto. Não há infraestrutura de flag no projeto.
 
 **Dívidas de infraestrutura**
-- **Crons in-process** (`@nestjs/schedule`): com duas réplicas no Railway, todo
-  lembrete sai **duas vezes**. Passa hoje porque roda uma instância só.
+- ~~**Crons in-process** duplicados com duas réplicas~~ — resolvido em
+  22/09/2026: cada execução pega `pg_try_advisory_xact_lock` antes de rodar
+  (`modules/tasks/execucao-unica.ts`); a outra réplica loga e pula. A réplica
+  que dispara depois de a primeira terminar é coberta pela idempotência dos
+  jobs (`reminderSentAt`, alerta de lead frio a cada 6 dias). Limite: a trava
+  dura até 50 min — job que passar disso volta a poder se sobrepor (loga aviso).
+  Fixado em `test/cron-uma-replica.e2e-spec.ts`.
 - **API e banco em regiões diferentes** (`us-east4` ↔ `sa-east-1`), ~0,6s por
   consulta.
 - **`SUPABASE_SERVICE_ROLE_KEY` no Railway**: definida, mas a validade da chave
@@ -53,10 +58,26 @@ Auditadas em 04/09/2026, contra o repositório.
   no Console.
 - **Um `catch` silencioso deliberado** em `SeloProcedencia`: falha no selo não
   pode virar erro na tela de venda. Está comentado no código.
-- **`/relatorios`, `/agendamentos` e `/equipe`** ainda não revisados para telas
-  pequenas.
-- **Relatórios vazios**: seed é de maio/junho, filtro padrão de 30 dias, e os
-  gráficos de margem e giro dependem de negócio faturado que o seed não cria.
+- ~~**`/relatorios`, `/agendamentos` e `/equipe` em telas pequenas**~~ —
+  revisados em 22/09/2026 a 375px, sem rolagem horizontal da página: filtros
+  quebram linha, o calendário semanal rola dentro do próprio contêiner, a
+  legenda da pizza desce, e os números da equipe aparecem no cartão do membro.
+  De quebra: os drawers de agendamento e de membro recebiam a margem do
+  `space-y-*` da página e perdiam 20–24px do rodapé (os botões de ação ficavam
+  cortados no celular). Verificado com dados simulados no navegador, não com
+  a API real.
+- ~~**Erro engolido nas 4 telas do painel**~~ — resolvido em 22/09/2026: além
+  da carga principal (já com `ErroAoCarregar`), leads deixou de mandar a falha
+  só ao console, o histórico do lead e a contagem avisam quando falham, o CSV
+  não baixa mais o corpo de um erro como arquivo, e as ações de agendamento,
+  membro, meta e convite mostram o erro na tela em vez de `alert` ou silêncio.
+- ~~**Relatórios vazios**~~ — resolvido em 22/09/2026 no banco local: o
+  `prisma/seed.ts` agora cria, por loja, estoque com aquisição e custos, leads,
+  agendamentos, visualizações e 14 negócios em todos os status (7 faturados),
+  com datas relativas a hoje (últimos ~90 dias, metade nos últimos 30).
+  Reexecutar pula o que já existe; `SEED_DEMO_RESET=1` refaz a operação demo
+  com datas novas — sem isso ela envelhece e o filtro de 30 dias volta a ficar
+  vazio. O banco de produção **não** foi semeado.
 - **CVEs do Next** só têm correção na linha 15.x (breaking changes).
 
 ## Onde o plano de vendas está
@@ -88,5 +109,5 @@ Duas correções ao plano já registradas **dentro dele**:
 2. **Concluir o Google OAuth** no Console
 3. **Fase 3** do plano: consultas veiculares (placa/chassi) com cache por
    custo de chamada, e assinatura externa atrás da interface que já existe
-4. **Revisar responsividade** de `/relatorios`, `/agendamentos` e `/equipe`
+4. ~~**Revisar responsividade** de `/relatorios`, `/agendamentos` e `/equipe`~~ — feito em 22/09/2026
 5. **Seed com negócio faturado**, para os gráficos de margem e giro terem dado

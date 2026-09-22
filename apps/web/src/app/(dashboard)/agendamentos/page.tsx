@@ -9,7 +9,7 @@ import {
 import { api} from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
-import { ErroAoCarregar } from '@/components/ErroAoCarregar';
+import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 
 /* ── Tipos ─────────────────────────────────────────────── */
 interface Appointment {
@@ -65,6 +65,9 @@ export default function AgendamentosPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<unknown>(null);
+  // A lista de vendedores só alimenta filtro e atribuição: se falhar, a agenda
+  // ainda serve — mas o filtro vazio precisa dizer por quê.
+  const [erroMembros, setErroMembros] = useState(false);
 
   const [view, setView]       = useState<'list' | 'calendar'>('list');
   const [status, setStatus]   = useState('');
@@ -79,10 +82,11 @@ export default function AgendamentosPage() {
     if (!token) return;
     setLoading(true);
     setErro(null);
+    setErroMembros(false);
     try {
       const [r, m] = await Promise.all([
         api<{ items: Appointment[] }>('/appointments?limit=500', { token }),
-        api<Member[]>('/users', { token }).catch(() => []),
+        api<Member[]>('/users', { token }).catch(() => { setErroMembros(true); return [] as Member[]; }),
       ]);
       setAppts(r.items ?? []);
       setMembers((m ?? []).filter((x) => x.role !== 'customer'));
@@ -166,7 +170,7 @@ export default function AgendamentosPage() {
   const hasFilters = status || sellerId || type || q;
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-4 sm:p-6 space-y-5">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -183,7 +187,7 @@ export default function AgendamentosPage() {
               </button>
             ))}
           </div>
-          <button onClick={load} className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition">
+          <button onClick={load} disabled={loading} title="Atualizar" className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition">
             <RefreshCw size={14} className={cn(loading && 'animate-spin')} />
           </button>
         </div>
@@ -199,28 +203,30 @@ export default function AgendamentosPage() {
 
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative">
+        <div className="relative w-full sm:w-44">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar cliente…"
-            className="pl-9 pr-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 outline-none focus:ring-2 focus:ring-blue-500 w-44" />
+            className="pl-9 pr-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 outline-none focus:ring-2 focus:ring-blue-500 w-full" />
         </div>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className="px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">Todos status</option>
+        <select aria-label="Filtrar por status" value={status} onChange={(e) => setStatus(e.target.value)} className="flex-1 min-w-[6.5rem] sm:flex-none px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="">Status</option>
           {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
-        <select value={sellerId} onChange={(e) => setSellerId(e.target.value)} className="px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">Todos vendedores</option>
+        <select aria-label="Filtrar por vendedor" value={sellerId} onChange={(e) => setSellerId(e.target.value)} disabled={erroMembros}
+          title={erroMembros ? 'Não foi possível carregar a lista de vendedores' : undefined}
+          className="flex-1 min-w-[6.5rem] sm:flex-none px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60">
+          <option value="">{erroMembros ? 'Vendedores indisponíveis' : 'Vendedor'}</option>
           {members.map((m) => <option key={m.id} value={m.id}>{m.fullName}</option>)}
         </select>
-        <select value={type} onChange={(e) => setType(e.target.value)} className="px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">Todos tipos</option>
+        <select aria-label="Filtrar por tipo" value={type} onChange={(e) => setType(e.target.value)} className="flex-1 min-w-[6.5rem] sm:flex-none px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="">Tipo</option>
           {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
         {view === 'list' && (
-          <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 ml-auto">
+          <div className="flex w-full sm:w-auto bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 sm:ml-auto">
             {([['today', 'Hoje'], ['week', 'Semana'], ['month', 'Mês'], ['all', 'Tudo']] as const).map(([v, l]) => (
               <button key={v} onClick={() => setPeriod(v)}
-                className={cn('px-2.5 py-1.5 rounded-md text-xs font-semibold transition', period === v ? 'bg-white dark:bg-slate-900 shadow-sm' : 'text-slate-500')}>{l}</button>
+                className={cn('flex-1 sm:flex-none px-2.5 py-1.5 rounded-md text-xs font-semibold transition', period === v ? 'bg-white dark:bg-slate-900 shadow-sm' : 'text-slate-500')}>{l}</button>
             ))}
           </div>
         )}
@@ -255,7 +261,7 @@ export default function AgendamentosPage() {
       ) : (
         /* ── CALENDÁRIO SEMANAL ── */
         <div>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-1">
               <button onClick={() => setWeekOffset((w) => w - 1)} className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800"><ChevronLeft size={15} /></button>
               <button onClick={() => setWeekOffset(0)} className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800">Hoje</button>
@@ -263,7 +269,10 @@ export default function AgendamentosPage() {
             </div>
             <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">{weekRangeLabel}</span>
           </div>
-          <div className="grid grid-cols-7 gap-2">
+          {/* Sete colunas não cabem em 375px: no celular a semana rola dentro
+              do próprio contêiner, sem arrastar a página junto. */}
+          <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 pb-1">
+          <div className="grid grid-cols-7 gap-2 min-w-[44rem] lg:min-w-0">
             {week.map(({ date, items }) => {
               const isToday = sameDay(date, new Date());
               return (
@@ -288,6 +297,7 @@ export default function AgendamentosPage() {
                 </div>
               );
             })}
+          </div>
           </div>
         </div>
       )}
@@ -317,12 +327,12 @@ function Kpi({ Icon, label, value, accent }: { Icon: React.ElementType; label: s
 function Row({ appt, onClick }: { appt: Appointment; onClick: () => void }) {
   const v = appt.vehicle;
   return (
-    <button onClick={onClick} className="w-full flex items-center gap-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3 hover:border-blue-300 dark:hover:border-blue-700 transition text-left">
-      <div className="flex flex-col items-center justify-center w-14 shrink-0">
+    <button onClick={onClick} className="w-full flex items-center gap-2 sm:gap-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3 hover:border-blue-300 dark:hover:border-blue-700 transition text-left">
+      <div className="flex flex-col items-center justify-center w-12 sm:w-14 shrink-0">
         <span className="text-sm font-extrabold">{fmtTime(appt.scheduledStart)}</span>
         <span className={cn('mt-1 w-2 h-2 rounded-full', STATUS_DOT[appt.status])} />
       </div>
-      <div className="w-12 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 overflow-hidden shrink-0 flex items-center justify-center">
+      <div className="hidden min-[400px]:flex w-12 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 overflow-hidden shrink-0 items-center justify-center">
         {v?.images?.[0]
           // eslint-disable-next-line @next/next/no-img-element
           ? <img src={v.images[0].url} alt="" className="w-full h-full object-cover" />
@@ -356,18 +366,26 @@ function DetailDrawer({ appt, members, token, onClose, onUpdate }: {
   const [busy, setBusy] = useState(false);
   const [reschedule, setReschedule] = useState(false);
   const [newDt, setNewDt] = useState('');
+  const [erroAcao, setErroAcao] = useState('');
   const v = appt.vehicle;
 
-  async function patch(body: Record<string, unknown>) {
+  /** Devolve se deu certo — o reagendamento só fecha o campo quando salva. */
+  async function patch(body: Record<string, unknown>): Promise<boolean> {
     setBusy(true);
-    try { const u = await api<Appointment>(`/appointments/${appt.id}`, { token, method: 'PATCH', body }); onUpdate(u); }
-    catch (e) { alert(e instanceof Error ? e.message : 'Erro'); }
-    finally { setBusy(false); }
+    setErroAcao('');
+    try {
+      const u = await api<Appointment>(`/appointments/${appt.id}`, { token, method: 'PATCH', body });
+      onUpdate(u);
+      return true;
+    } catch (e) {
+      // Mostrado junto dos botões de ação, onde o usuário está olhando.
+      setErroAcao(textoDoErro(e));
+      return false;
+    } finally { setBusy(false); }
   }
   async function doReschedule() {
     if (!newDt) return;
-    await patch({ scheduledStart: new Date(newDt).toISOString() });
-    setReschedule(false);
+    if (await patch({ scheduledStart: new Date(newDt).toISOString() })) setReschedule(false);
   }
 
   const actions: { label: string; status: string; Icon: React.ElementType; cls: string }[] = [
@@ -379,8 +397,10 @@ function DetailDrawer({ appt, members, token, onClose, onUpdate }: {
 
   return (
     <>
-      <div onClick={onClose} className="fixed inset-0 z-[2000] bg-black/40 backdrop-blur-sm" />
-      <aside className="fixed top-0 right-0 z-[2001] h-full w-full max-w-md bg-white dark:bg-slate-950 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col">
+      <div onClick={onClose} className="fixed inset-0 !mt-0 z-[2000] bg-black/40 backdrop-blur-sm" />
+      {/* !mt-0: o drawer é filho do `space-y-5` da página, que lhe dava 20px de
+          margem e empurrava os botões de ação para fora da tela. */}
+      <aside className="fixed top-0 right-0 !mt-0 z-[2001] h-full w-full max-w-md bg-white dark:bg-slate-950 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col">
         <div className="flex items-center justify-between px-5 h-14 border-b border-slate-200 dark:border-slate-800 shrink-0">
           <div className="flex items-center gap-2">
             <span className={cn('w-2.5 h-2.5 rounded-full', STATUS_DOT[appt.status])} />
@@ -405,7 +425,7 @@ function DetailDrawer({ appt, members, token, onClose, onUpdate }: {
           {reschedule && (
             <div className="flex items-center gap-2 -mt-2">
               <input type="datetime-local" value={newDt} onChange={(e) => setNewDt(e.target.value)} style={{ colorScheme: 'light' }}
-                className="flex-1 px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 outline-none focus:ring-2 focus:ring-blue-500" />
+                className="flex-1 min-w-0 px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 outline-none focus:ring-2 focus:ring-blue-500" />
               <button onClick={doReschedule} disabled={busy || !newDt} className="px-3 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
                 {busy ? <Loader2 size={14} className="animate-spin" /> : 'Salvar'}
               </button>
@@ -435,7 +455,7 @@ function DetailDrawer({ appt, members, token, onClose, onUpdate }: {
               <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold">{appt.customer?.fullName?.charAt(0).toUpperCase()}</div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold truncate">{appt.customer?.fullName}</p>
-                <div className="flex items-center gap-3 text-xs text-slate-500">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 min-w-0">
                   {appt.customer?.email && <a href={`mailto:${appt.customer.email}`} className="flex items-center gap-1 hover:text-blue-500 truncate"><Mail size={11} /> {appt.customer.email}</a>}
                   {appt.customer?.phone && <a href={`tel:${appt.customer.phone}`} className="flex items-center gap-1 hover:text-blue-500"><Phone size={11} /> {appt.customer.phone}</a>}
                 </div>
@@ -446,7 +466,7 @@ function DetailDrawer({ appt, members, token, onClose, onUpdate }: {
           {/* Vendedor */}
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Vendedor responsável</p>
-            <select value={appt.salesperson?.id ?? ''} disabled={busy} onChange={(e) => patch({ salespersonId: e.target.value || null })}
+            <select value={appt.salesperson?.id ?? ''} disabled={busy} onChange={(e) => void patch({ salespersonId: e.target.value || null })}
               className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 outline-none focus:ring-2 focus:ring-blue-500">
               <option value="">Não atribuído</option>
               {members.map((m) => <option key={m.id} value={m.id}>{m.fullName}</option>)}
@@ -463,9 +483,14 @@ function DetailDrawer({ appt, members, token, onClose, onUpdate }: {
         </div>
 
         {/* Ações */}
+        {erroAcao && (
+          <p role="alert" className="border-t border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 px-4 py-2.5 text-xs text-rose-600 dark:text-rose-400 shrink-0">
+            Não foi possível salvar: {erroAcao}
+          </p>
+        )}
         <div className="border-t border-slate-200 dark:border-slate-800 p-4 grid grid-cols-2 gap-2 shrink-0">
           {actions.map((a) => (
-            <button key={a.status} onClick={() => patch({ status: a.status })} disabled={busy || appt.status === a.status}
+            <button key={a.status} onClick={() => void patch({ status: a.status })} disabled={busy || appt.status === a.status}
               className={cn('flex items-center justify-center gap-1.5 py-2.5 text-sm font-semibold rounded-lg transition disabled:opacity-40', a.cls)}>
               <a.Icon size={15} /> {a.label}
             </button>

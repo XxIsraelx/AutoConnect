@@ -136,9 +136,20 @@ export default function GraficosDeVenda() {
 
       {/* Gasto com consultas — o plano trata isto como requisito, não enfeite:
           sem ele a loja não sabe quanto gastou em consulta no mês. */}
+      {gasto.error && (
+        // O cartão só aparece quando há gasto; sem este aviso, uma falha aqui
+        // seria lida como "nenhuma consulta no mês".
+        <p className={`${CARTAO} lg:col-span-2 text-xs text-rose-600 dark:text-rose-400`}>
+          Não foi possível carregar o gasto com consultas veiculares.{' '}
+          <button onClick={() => void gasto.refetch()} className="underline hover:no-underline">
+            Tentar novamente
+          </button>
+        </p>
+      )}
+
       {gasto.data && gasto.data.chamadas > 0 && (
         <div className={`${CARTAO} lg:col-span-2`}>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-2">
               <Search size={15} className="text-slate-400" />
               <h2 className="text-sm font-semibold">Consultas veiculares no mês</h2>

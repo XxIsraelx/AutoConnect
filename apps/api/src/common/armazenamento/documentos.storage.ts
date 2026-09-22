@@ -1,4 +1,9 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { StorageClient } from '@supabase/storage-js';
 
@@ -21,7 +26,7 @@ export interface DocumentoArmazenado {
 const VALIDADE_MINUTOS = 10;
 
 @Injectable()
-export class DocumentosStorage {
+export class DocumentosStorage implements OnApplicationBootstrap {
   private readonly logger = new Logger(DocumentosStorage.name);
   private readonly cliente: StorageClient | null;
   private readonly bucket: string;
@@ -49,6 +54,31 @@ export class DocumentosStorage {
           'arquivados. O PDF do contrato segue sendo regerado sob demanda.',
       );
     }
+  }
+
+  /**
+   * Confere a chave na subida, sem travar o boot. Chave errada (a `anon` no
+   * lugar da `service_role`, ou de outro projeto) só apareceria no primeiro
+   * upload de contrato — que falha sem erro na tela, porque arquivar é
+   * opcional. O bucket é privado e sem policy: só a service role o enxerga, então
+   * `getBucket` dá certo exatamente quando a chave é a certa.
+   */
+  onApplicationBootstrap(): void {
+    if (!this.cliente) return;
+    void this.cliente.getBucket(this.bucket).then(
+      ({ error }) => {
+        if (error) {
+          this.logger.error(
+            `SUPABASE_SERVICE_ROLE_KEY não alcança o bucket "${this.bucket}": ` +
+              `${error.message}. Contratos não serão arquivados.`,
+          );
+        } else {
+          this.logger.log(`Bucket privado "${this.bucket}" acessível.`);
+        }
+      },
+      (erro: unknown) =>
+        this.logger.error(`Storage inalcançável na subida: ${String(erro)}`),
+    );
   }
 
   get configurado(): boolean {

@@ -18,7 +18,7 @@ SaaS multi-tenant para concessionárias de veículos. Objetivo: fechar o primeir
 | Upload de imagens | **Cloudinary** (direto do navegador) |
 | Geração de PDF | **pdfmake** (JS puro, sem Chromium — ver *Contrato*) |
 | Documentos privados | **Supabase Storage**, bucket `documentos` (URL assinada) |
-| Agendamento de jobs | `@nestjs/schedule` (cron in-process) |
+| Agendamento de jobs | `@nestjs/schedule` (cron in-process; cada execução passa por `executarEmUmaReplica`, advisory lock no Postgres) |
 | Auth | JWT (próprio) + Google OAuth |
 | Email | Resend ou Gmail SMTP (configurável por env) |
 | Monorepo | Turborepo + pnpm workspaces |
@@ -404,9 +404,14 @@ O porquê de cada regra: `docs/decisoes/vendas-e-contrato.md`.
 - Clientes (role `customer`) são redirecionados para `/perfil`, não acessam dashboard
 - Sidebar no layout do dashboard: polling de leads novos a cada 30s via `/tenant/stats`.
   No mobile ela vira gaveta (`fixed` + `translate-x`); a partir de `md` é coluna fixa.
-- ⚠ **Dívida conhecida:** 15 blocos `catch { /* ignora */ }` descartam o erro.
-  Em 4 telas isso engole o carregamento inteiro (relatórios, agendamentos,
-  equipe, leads) e a tela vazia fica indistinguível de "sem dados".
+- Falha de carga se mostra com `ErroAoCarregar` (`components/ErroAoCarregar.tsx`,
+  com "Tentar novamente"); falha de ação, inline com `textoDoErro`. Relatórios,
+  agendamentos, equipe e leads já seguem isso — nunca `catch {}` em tela nova.
+- ⚠ **Dívida conhecida:** restam 7 blocos `catch {}` sem aviso (5 deliberados:
+  script de tema, `buscar/visited.ts` ×2, CEP do cadastro ×2) e ~18
+  `.catch(() => {})`. Os que ainda enganam o usuário: `configuracoes` (carga
+  falha e o formulário abre com o padrão), mensagens do `chat`/`ChatDrawer`,
+  imagens em `veiculos/[id]`, salvar busca em `buscar/Sidebar.tsx`.
 
 ### Banco
 - Schema único (shared schema), isolamento por `tenant_id`
@@ -488,6 +493,5 @@ Tabela de módulos, pendências auditadas, fases do plano e próximos passos:
 **Bloqueiam uso real:** template de contrato sem revisão jurídica e ausência de
 fornecedor de consulta veicular.
 
-**Dívidas que afetam código novo:** crons in-process (duas réplicas = lembrete
-duplicado); API e banco em regiões diferentes (~0,6s por consulta); nenhuma
+**Dívidas que afetam código novo:** API e banco em regiões diferentes (~0,6s por consulta); nenhuma
 infraestrutura de feature flag.
