@@ -23,7 +23,7 @@
 | **Custo do veículo** | ✅ completo | ✅ completo | aquisição + preparação; base da margem |
 | **Contrato** | ✅ completo | ✅ completo | PDF determinístico, hash, assinatura interna |
 | **Consulta veicular** | ✅ estrutura | ✅ completo | cache, idempotência e custo; **falta fornecedor real** |
-| **Assinatura externa** | ✅ estrutura | ✅ completo | camada neutra, webhook com HMAC, provedor simulado e adaptador Clicksign (API 3.0, testado no sandbox); **falta cadastrar o webhook e ligar no Railway** ([decisão](../decisoes/2026-09-22%20assinatura%20externa.md)) |
+| **Assinatura externa** | ✅ estrutura | ✅ completo | camada neutra, webhook com HMAC, provedor simulado e adaptador Clicksign (API 3.0, testado no sandbox); **ligado em sandbox; falta assinatura de ponta a ponta e conta de produção** ([decisão](../decisoes/2026-09-22%20assinatura%20externa.md)) |
 
 ## Pendências conhecidas
 
@@ -35,15 +35,12 @@ Auditadas em 04/09/2026, contra o repositório.
   como ponto de partida.
 - ⚠ **Sem fornecedor de consulta veicular.** Depende de contrato comercial. A
   estrutura está pronta e a API recusa em voz alta enquanto não houver.
-- **Assinatura eletrônica externa desligada em produção.** Não bloqueia (a
-  assinatura interna segue valendo). O adaptador Clicksign (API 3.0) existe e
-  foi exercitado contra o sandbox em 22/09/2026 até a véspera da ativação.
-  Falta: cadastrar o webhook na Clicksign com os eventos da
-  [decisão](../decisoes/2026-09-22%20assinatura%20externa.md), pôr
-  `ASSINATURA_FORNECEDOR=clicksign` + `CLICKSIGN_*` + o secret no Railway, e
-  fazer uma assinatura de ponta a ponta no sandbox para confirmar o cabeçalho
-  do HMAC, o link do PDF assinado e o `signer.key` do webhook. Produção pede
-  conta paga (hoje é sandbox).
+- **Assinatura eletrônica externa ligada em produção, em SANDBOX** (22/09/2026):
+  webhook cadastrado com os 7 eventos, `ASSINATURA_FORNECEDOR=clicksign` no
+  Railway, boot confirma o adaptador e o webhook recusa HMAC forjado (401).
+  Falta: uma assinatura de ponta a ponta para confirmar o cabeçalho do HMAC, o
+  link do PDF assinado e o `signer.key` do webhook. Para ter validade: conta de
+  produção na Clicksign (URL, token e webhook novos) e revisão jurídica do contrato.
 
 **Da definição de pronto do plano, um item nunca foi cumprido**
 - **Feature flag.** O plano pede "feature nova atrás de flag até o piloto
@@ -116,7 +113,7 @@ Auditadas em 04/09/2026, contra o repositório.
 | 0 — Fundação (RLS, testes, CI) | ✅ portão fechado |
 | 1 — Negócio (`Deal`) | ✅ portão fechado |
 | 2 — Contrato | ✅ 4 de 5 (falta a revisão por advogado) |
-| 3 — Consultas veiculares e assinatura externa | 🟡 estrutura pronta nas duas; adaptador Clicksign escrito e testado no sandbox; falta fornecedor de consulta e ligar a Clicksign (webhook + Railway + conta de produção) |
+| 3 — Consultas veiculares e assinatura externa | 🟡 estrutura pronta nas duas; adaptador Clicksign escrito e testado no sandbox; Clicksign ligada em sandbox; falta fornecedor de consulta e conta de produção da Clicksign |
 | 4 — Crédito e F&I | ⬜ |
 | 5 — Obrigações fiscais | ⬜ |
 
@@ -137,7 +134,7 @@ Duas correções ao plano já registradas **dentro dele**:
 3. **Fase 3** do plano: estrutura pronta — consulta veicular com cache por
    custo de chamada e assinatura externa neutra (22/09/2026). Adaptador Clicksign
    escrito e testado no sandbox (22/09/2026). Falta contratar o fornecedor de
-   consulta e ligar a Clicksign: webhook cadastrado, variáveis no Railway,
-   uma assinatura de ponta a ponta no sandbox
+   consulta, validar uma assinatura de ponta a ponta no sandbox (Clicksign já
+   ligada em 22/09/2026) e contratar a conta de produção da Clicksign
 4. ~~**Revisar responsividade** de `/relatorios`, `/agendamentos` e `/equipe`~~ — feito em 22/09/2026
 5. ~~**Seed com negócio faturado**~~ — feito em 22/09/2026 (`SEED_DEMO_RESET=1` renova as datas)
