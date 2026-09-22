@@ -4,10 +4,12 @@ import { useState } from 'react';
 import { FileText, Download, PenLine, Ban, ShieldCheck, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
+import { assinaturaExternaViva } from '@autoconnect/shared';
 import {
   useContratos, useEmitirContrato, useAssinarContrato, useAnularContrato,
-  baixarPdf, type Contrato as ContratoTipo,
+  useCapacidadeAssinatura, baixarPdf, type Contrato as ContratoTipo,
 } from '../dados';
+import AssinaturaExterna from './AssinaturaExterna';
 
 const ROTULO: Record<ContratoTipo['status'], string> = {
   draft: 'Rascunho', issued: 'Emitido', signed: 'Assinado', voided: 'Anulado',
@@ -41,6 +43,9 @@ export default function Contrato({ dealId }: { dealId: string }) {
   const emitir = useEmitirContrato(dealId);
   const assinar = useAssinarContrato(dealId);
   const anular = useAnularContrato(dealId);
+  // Falha aqui não bloqueia a tela: sem a resposta, só o envio novo deixa de
+  // ser oferecido — a assinatura pelo sistema segue disponível.
+  const { data: capacidade } = useCapacidadeAssinatura();
 
   const [baixando, setBaixando] = useState<string | null>(null);
   const [erroDownload, setErroDownload] = useState<string | null>(null);
@@ -102,7 +107,11 @@ export default function Contrato({ dealId }: { dealId: string }) {
         <ul className="space-y-3">
           {contratos.map((c) => {
             const assinado = new Set(c.signatures.map((s) => s.role));
-            const podeAssinar = c.status === 'issued';
+            const externa = c.signatureRequests[0];
+            // Com envio vivo no provedor, o registro interno fica fora do
+            // cartão: a API o recusaria (as duas formas não se misturam).
+            const podeAssinar = c.status === 'issued' &&
+              !(externa && assinaturaExternaViva(externa.status));
 
             return (
               <li key={c.id} className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
@@ -147,9 +156,10 @@ export default function Contrato({ dealId }: { dealId: string }) {
                 {c.signatures.length > 0 && (
                   <ul className="mt-2 space-y-0.5">
                     {c.signatures.map((s) => (
-                      <li key={s.id} className="text-xs text-slate-500 flex items-center gap-1.5">
+                      <li key={s.id} className="text-xs text-slate-500 flex flex-wrap items-center gap-x-1.5">
                         <PenLine size={11} className="text-emerald-600 dark:text-emerald-400" />
                         {PAPEL[s.role]}: {s.signerName} · {data(s.signedAt)}
+                        {s.requestId && <span className="text-slate-400">· eletrônica</span>}
                       </li>
                     ))}
                   </ul>
@@ -185,6 +195,16 @@ export default function Contrato({ dealId }: { dealId: string }) {
                         </button>
                       ))}
                   </div>
+                )}
+
+                {(capacidade?.disponivel || externa) && (
+                  <AssinaturaExterna
+                    dealId={dealId}
+                    contrato={c}
+                    // Sem a resposta da capacidade, o envio não é oferecido,
+                    // mas um envio que já existe continua visível.
+                    capacidade={capacidade ?? { disponivel: false, provedor: null, simulado: false }}
+                  />
                 )}
 
                 {podeAnular && c.status !== 'voided' && (

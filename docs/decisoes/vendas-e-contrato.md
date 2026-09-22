@@ -92,6 +92,13 @@ Sem `CONSULTA_FORNECEDOR`, a API recusa com mensagem clara em vez de devolver
 "nada encontrado" — que viraria selo afirmando carro limpo com base em consulta
 que nunca aconteceu. O valor `simulado` é ignorado em produção.
 
+## Assinatura eletrônica externa
+
+Detalhes em [2026-09-22 assinatura externa](2026-09-22%20assinatura%20externa.md).
+Em uma linha: provedor atrás de interface neutra, webhook conferido por HMAC
+do corpo cru e aplicado de forma idempotente, um envio vivo por contrato, e
+assinatura interna e externa não se misturam no mesmo contrato.
+
 > ⚠ **O template padrão do código não foi revisado por advogado.** Está
 > declarado como ponto de partida. O portão da Fase 2 exige essa revisão antes
 > de qualquer cliente real emitir contrato.

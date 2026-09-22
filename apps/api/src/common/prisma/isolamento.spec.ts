@@ -31,6 +31,8 @@ const MODELOS_DE_TENANT = [
   'contractTemplate', 'dealContract', 'contractSignature', 'dealWarranty',
   // Consulta veicular: placa, chassi e quanto a loja gasta com fornecedor.
   'vehicleQuery',
+  // Assinatura externa: e-mail e CPF dos signatários e os webhooks crus.
+  'contractSignatureRequest', 'contractSignatureEvent', 'dealBuyer',
 ];
 
 /**
@@ -160,6 +162,9 @@ describe('isolamento por tenant — regra de arquitetura', () => {
     'modules/auth/auth.service.ts',
     'modules/tasks/tasks.service.ts',
     'common/strategies/google.strategy.ts',
+    // O webhook de assinatura chega sem loja: acha o tenant do envelope pela
+    // conexão privilegiada (só id e tenantId) e segue em withTenant.
+    'modules/contracts/assinatura/assinatura-externa.service.ts',
   ])('%s atravessa concessionárias pela conexão privilegiada, e isso é visível', (arquivo) => {
     const fonte = readFileSync(join(RAIZ, arquivo), 'utf8');
 

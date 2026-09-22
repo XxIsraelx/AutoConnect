@@ -33,6 +33,7 @@ com o código e lido pelo Claude quando o assunto aparece.
 - [Isolamento por tenant (RLS)](arquitetura/isolamento-por-tenant.md)
 - [Testes e CI — detalhes](arquitetura/testes-e-ci.md)
 - [Vendas e contrato — decisões](decisoes/vendas-e-contrato.md)
+  · [assinatura externa](decisoes/2026-09-22%20assinatura%20externa.md)
 - [Estado, pendências e próximos passos](planos/estado-e-pendencias.md)
 
 ## Como pedir algo ao Claude usando o cofre

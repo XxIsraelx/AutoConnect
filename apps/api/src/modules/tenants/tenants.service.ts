@@ -280,6 +280,7 @@ export class TenantsService {
       legalRepName?: string;
       legalRepCpf?: string;
       legalRepRole?: string;
+      legalRepEmail?: string;
     },
   ): Promise<unknown> {
     return this.prisma.withTenant(tenantId, (tx) =>

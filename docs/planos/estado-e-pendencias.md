@@ -23,6 +23,7 @@
 | **Custo do veículo** | ✅ completo | ✅ completo | aquisição + preparação; base da margem |
 | **Contrato** | ✅ completo | ✅ completo | PDF determinístico, hash, assinatura interna |
 | **Consulta veicular** | ✅ estrutura | ✅ completo | cache, idempotência e custo; **falta fornecedor real** |
+| **Assinatura externa** | ✅ estrutura | ✅ completo | camada neutra, webhook com HMAC, provedor simulado; **falta adaptador Clicksign** ([decisão](../decisoes/2026-09-22%20assinatura%20externa.md)) |
 
 ## Pendências conhecidas
 
@@ -34,11 +35,18 @@ Auditadas em 04/09/2026, contra o repositório.
   como ponto de partida.
 - ⚠ **Sem fornecedor de consulta veicular.** Depende de contrato comercial. A
   estrutura está pronta e a API recusa em voz alta enquanto não houver.
+- **Sem provedor de assinatura eletrônica.** Não bloqueia (a assinatura
+  interna segue valendo), mas a externa depende de conta e contrato com a
+  Clicksign. A camada está pronta, testada com o provedor simulado; falta o
+  adaptador — o que ele precisa está no fim da
+  [decisão](../decisoes/2026-09-22%20assinatura%20externa.md).
 
 **Da definição de pronto do plano, um item nunca foi cumprido**
 - **Feature flag.** O plano pede "feature nova atrás de flag até o piloto
   validar". Nada foi entregue atrás de flag — negócios, contrato e consulta
-  entraram direto. Não há infraestrutura de flag no projeto.
+  entraram direto. Não há infraestrutura de flag no projeto. A assinatura
+  externa usa a própria configuração como chave: sem `ASSINATURA_FORNECEDOR`,
+  a API responde 503 e a tela esconde a opção.
 
 **Dívidas de infraestrutura**
 - ~~**Crons in-process** duplicados com duas réplicas~~ — resolvido em
@@ -104,7 +112,7 @@ Auditadas em 04/09/2026, contra o repositório.
 | 0 — Fundação (RLS, testes, CI) | ✅ portão fechado |
 | 1 — Negócio (`Deal`) | ✅ portão fechado |
 | 2 — Contrato | ✅ 4 de 5 (falta a revisão por advogado) |
-| 3 — Consultas veiculares e assinatura externa | ⬜ |
+| 3 — Consultas veiculares e assinatura externa | 🟡 estrutura pronta nas duas; falta fornecedor de consulta e adaptador Clicksign (conta/contrato) |
 | 4 — Crédito e F&I | ⬜ |
 | 5 — Obrigações fiscais | ⬜ |
 
@@ -122,7 +130,9 @@ Duas correções ao plano já registradas **dentro dele**:
 
 1. **Revisão jurídica do template de contrato, dos Termos e da Política de Privacidade** — bloqueia uso real
 2. ~~Concluir o Google OAuth~~ — feito em 22/09/2026
-3. **Fase 3** do plano: consultas veiculares (placa/chassi) com cache por
-   custo de chamada, e assinatura externa atrás da interface que já existe
+3. **Fase 3** do plano: estrutura pronta — consulta veicular com cache por
+   custo de chamada e assinatura externa neutra (22/09/2026). Falta contratar
+   o fornecedor de consulta e escrever o adaptador Clicksign com conta de
+   sandbox
 4. ~~**Revisar responsividade** de `/relatorios`, `/agendamentos` e `/equipe`~~ — feito em 22/09/2026
 5. ~~**Seed com negócio faturado**~~ — feito em 22/09/2026 (`SEED_DEMO_RESET=1` renova as datas)

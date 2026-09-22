@@ -7,7 +7,8 @@
 As tabelas de venda e contrato (`deals`, `deal_payments`, `deal_status_events`,
 `trade_ins`, `vehicle_acquisitions`, `vehicle_costs`, `contract_templates`,
 `deal_contracts`, `contract_signatures`, `deal_warranties`, `deal_buyers`,
-`vehicle_queries`) seguem a mesma
+`vehicle_queries`, `contract_signature_requests`, `contract_signature_events`)
+seguem a mesma
 regra, e carregam o dado mais sensível do sistema: preço de compra, margem,
 contrato assinado e CPF de signatário.
 
@@ -41,6 +42,7 @@ Três casos têm tratamento explícito:
 |---|---|
 | Rotas públicas (catálogo, `/c/[slug]`, mapa) | Policy `leitura_publica` em `vehicles`, `vehicle_images`, `dealership_branches` e `tenants`, liberando só o que já está na vitrine — o filtro é `status = 'available'`, o mesmo que o `catalog.service` usa |
 | Super admin | `PrivilegedPrismaService` — conexão pela `DIRECT_URL`, dona das tabelas, que ignora RLS. Também é o caminho de `tenant_invites` e do login, que buscam antes de existir tenant |
+| Webhook de assinatura | Chega sem usuário nem loja. Depois de conferir o HMAC, uma leitura privilegiada por `(provider, external_id)` devolve só `id` e `tenant_id`; o resto roda em `withTenant` da loja dona ([decisão](../decisoes/2026-09-22%20assinatura%20externa.md)) |
 | Tabelas sem `tenant_id` | Catálogo global (`vehicle_brands`, `vehicle_models`, …) é leitura para todos e escrita só pelo dono; as do cliente isolam por `user_id` |
 | **Cliente atravessa concessionárias** | Ele agenda na loja A e conversa com a B. Policy `acesso_cliente` em `appointments`, `conversations` e `messages`, por `app.user_id` |
 | **Cliente não pertence a loja nenhuma** | `users.tenant_id` é NULL para clientes, então a policy de tenant os tornaria invisíveis. `acesso_proprio` (ele mesmo) + `cliente_relacionado` (a loja vê quem tem lead, agendamento ou conversa com ela — **não** a base inteira) |
@@ -66,8 +68,8 @@ tenant: o consolidado não vaza para dentro da tela de uma loja só.
 ## A conexão privilegiada
 
 `PrivilegedPrismaService` existe para as operações que não têm tenant a que se
-restringir: super admin, login (busca por e-mail antes de saber a loja) e
-convite por token. Ele **não** é `@Global`, ao contrário do `PrismaModule` —
+restringir: super admin, login (busca por e-mail antes de saber a loja),
+convite por token e webhook de assinatura (acha a loja do envelope). Ele **não** é `@Global`, ao contrário do `PrismaModule` —
 quem precisa atravessar concessionárias declara `PrivilegedPrismaModule` nos
 imports, e isso aparece no diff do PR.
 

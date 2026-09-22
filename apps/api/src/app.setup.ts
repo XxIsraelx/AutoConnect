@@ -1,6 +1,10 @@
 import type { INestApplication } from '@nestjs/common';
 import { ValidationPipe } from '@nestjs/common';
 import { ZodFilter } from './common/filters/zod.filter';
+import { corpoCru } from './common/middleware/corpo-cru';
+
+/** Rota do webhook de assinatura: precisa dos bytes exatos para o HMAC. */
+export const ROTA_WEBHOOK_ASSINATURA = '/api/v1/webhooks/assinatura';
 
 /**
  * Configuração da aplicação — prefixo, filtros, pipes e CORS.
@@ -11,6 +15,11 @@ import { ZodFilter } from './common/filters/zod.filter';
  * verde sobre um comportamento que ninguém roda de verdade.
  */
 export function configureApp(app: INestApplication): INestApplication {
+  // Antes do parser JSON do Nest (registrado no `init`), e só nesta rota: o
+  // HMAC do webhook é calculado sobre o corpo cru, e o JSON reserializado não
+  // bateria. As demais rotas seguem com o parser padrão.
+  app.use(ROTA_WEBHOOK_ASSINATURA, corpoCru(1024 * 1024));
+
   app.useGlobalFilters(new ZodFilter());
 
   app.useGlobalPipes(

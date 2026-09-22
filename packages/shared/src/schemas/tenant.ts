@@ -22,6 +22,8 @@ export const updateTenantSchema = z.object({
     .refine((v) => v === '' || cpfValido(v), 'CPF inválido — confira os dígitos.')
     .optional(),
   legalRepRole: z.string().max(60).optional(),
+  /** Para onde vai o convite da assinatura eletrônica em nome da loja. */
+  legalRepEmail: z.string().email('E-mail inválido.').max(160).optional(),
 });
 export type UpdateTenantInput = z.infer<typeof updateTenantSchema>;
 

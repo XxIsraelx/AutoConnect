@@ -20,6 +20,7 @@ import type {
 } from '@autoconnect/shared';
 import { DealStateService } from './deal-state.service';
 import { MarginService } from './margin.service';
+import { ContractsService } from '../contracts/contracts.service';
 
 const INCLUDE_DETALHE = {
   vehicle: {
@@ -56,6 +57,7 @@ export class DealsService {
     private readonly privilegiado: PrivilegedPrismaService,
     private readonly estado: DealStateService,
     private readonly margem: MarginService,
+    private readonly contratos: ContractsService,
   ) {}
 
   /**
@@ -292,13 +294,24 @@ export class DealsService {
   ) {
     const tenantId = this.tenantDe(escopo);
 
-    return this.prisma.withTenant(tenantId, async (tx) => {
+    const atualizado = await this.prisma.withTenant(tenantId, async (tx) => {
       const negocio = await tx.deal.findFirst({ where: { id, tenantId } });
       if (!negocio) throw new NotFoundException('Negócio não encontrado');
 
       await this.estado.transicionar(tx, negocio, destino, atorId, motivo);
       return tx.deal.findFirst({ where: { id, tenantId }, include: INCLUDE_DETALHE });
     });
+
+    // Negócio morto não segue com contrato em assinatura no provedor: o
+    // cliente receberia convite para assinar a compra de um carro que voltou
+    // ao estoque. Depois do commit, porque cancelar lá é ida à rede.
+    if (destino === 'canceled' || destino === 'rescinded') {
+      await this.contratos.cancelarEnviosDoNegocio(
+        tenantId, id, `Negócio ${destino === 'canceled' ? 'cancelado' : 'distratado'}`,
+      );
+    }
+
+    return atualizado;
   }
 
   async addPayment(escopo: Escopo, id: string, input: CreateDealPaymentInput) {

@@ -129,6 +129,11 @@ autoconnect/
 | `apps/web/.env` | **O Next** — ele não enxerga o da raiz |
 | `packages/db/.env` | **O Prisma CLI**, com precedência sobre a raiz |
 
+**`migrate deploy` usa a `DIRECT_URL`**, não a `DATABASE_URL`. Exportar só a
+`DATABASE_URL` do banco de teste faz o Prisma pegar a `DIRECT_URL` do
+`packages/db/.env` — que é **produção**. Exporte sempre as duas (já aconteceu
+em 22/09/2026 com `assinatura_externa`).
+
 **`NEXT_PUBLIC_*` é embutida no bundle durante o `next build`**, não lida em
 runtime. Alterar a variável na plataforma sem novo build não tem efeito: o app
 segue com o valor antigo (ou o fallback `localhost`, que no navegador do
@@ -196,6 +201,13 @@ O bucket é privado, sem policy nenhuma em `storage.objects`: só a *service
 role* alcança os arquivos. A rota `/object/public/` responde **404 "Bucket not
 found"** para ele — negação mais forte que 403, porque não confirma nem que o
 bucket existe.
+
+### Assinatura eletrônica externa
+
+```env
+ASSINATURA_FORNECEDOR=""        # vazio = desligada (503, opção some da tela); simulado = em memória, recusado em produção
+ASSINATURA_WEBHOOK_SECRET=""    # HMAC do webhook; sem ele nenhum provedor liga
+```
 
 ### Órfãs — presentes no `.env` mas sem nenhum código que as leia
 
@@ -280,7 +292,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 283 testes:
+são 360 testes:
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -320,8 +332,9 @@ Detalhes (o que cada e2e fixa, CI e drift): `docs/arquitetura/testes-e-ci.md`.
   (importar o Prisma arrastaria binários para o navegador). Ao mudar enum no
   `schema.prisma`, atualize a constante no shared — `paridade-enums.spec.ts`
   quebra se divergir. `INVITABLE_ROLES` é subconjunto deliberado.
-- **`apps/api/test/setup-e2e.ts` recusa rodar fora de banco local `_test` e
-  zera as credenciais de e-mail e do Supabase.** Não remova. Serviço externo
+- **`apps/api/test/setup-e2e.ts` recusa rodar fora de banco local `_test`,
+  zera as credenciais de e-mail e do Supabase e força a assinatura externa
+  `simulado`.** Não remova. Serviço externo
   novo com credencial no `.env` precisa ser desligado ali também.
 - O CI checa **drift** entre o banco migrado e o `schema.prisma`.
 
@@ -378,6 +391,12 @@ O porquê de cada regra: `docs/decisoes/vendas-e-contrato.md`.
   com escopo restrito. `textoDaGarantia` sempre declara a legal.
 - **Partes identificadas:** sem `DealBuyer` completo (CPF validado) e sem
   representante legal da loja, o contrato não é emitido.
+- **Assinatura externa:** provedor atrás de `ProvedorDeAssinatura`
+  (`contracts/assinatura/`), webhook `POST /webhooks/assinatura` conferido por
+  HMAC do **corpo cru** e aplicado de forma idempotente; um envio vivo por
+  contrato; interna e externa não se misturam (409). Único lookup privilegiado:
+  tenant do envelope no webhook. Falta o adaptador Clicksign —
+  `docs/decisoes/2026-09-22 assinatura externa.md`.
 - **Consulta veicular:** cobrada por chamada — cache antes de idempotência,
   idempotência antes da chamada; cache por concessionária; chamada ao
   fornecedor **fora** do `withTenant`. Sem `CONSULTA_FORNECEDOR`, recusa alto.
@@ -426,13 +445,13 @@ O porquê de cada regra: `docs/decisoes/vendas-e-contrato.md`.
   não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
   foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
   migrations (ver *Testes e CI*).
-- Migrations atuais (13): `init`, `trade_in_and_dealer_setting`,
+- Migrations atuais (14): `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
   `add_announcements_invites_alerts_searches_goals`,
   `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`,
   `deals_vendas_e_custos`, `sales_goal_meta_em_reais`,
   `contrato_garantia_assinatura`, `consultas_veiculares`,
-  `comprador_do_contrato`, `representante_legal`.
+  `comprador_do_contrato`, `representante_legal`, `assinatura_externa`.
 
 ---
 
@@ -490,7 +509,8 @@ consulta custa ~0,6s de ida e volta. Por isso a transação do cadastro usa
 Tabela de módulos, pendências auditadas, fases do plano e próximos passos:
 `docs/planos/estado-e-pendencias.md`. O plano que governa o trabalho é
 `docs/planos/plano-implementacao-vendas.md` (Fases 0 e 1 fechadas, Fase 2 com
-4 de 5; faltam 3, 4 e 5).
+4 de 5, Fase 3 com a estrutura pronta — faltam fornecedor de consulta e
+adaptador Clicksign; faltam 4 e 5).
 
 **Bloqueiam uso real:** template de contrato sem revisão jurídica e ausência de
 fornecedor de consulta veicular.

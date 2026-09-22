@@ -1,10 +1,12 @@
 import {
-  BadRequestException, ConflictException, Injectable, NotFoundException,
+  BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@autoconnect/db';
+import { Prisma, type DealContract } from '@autoconnect/db';
 import {
   validarGarantia, GARANTIA_LEGAL_DIAS, formatarCpf,
   qualificarComprador, qualificarVendedor,
+  ASSINATURA_EXTERNA_VIVAS,
+  type ProvedorDeAssinatura, type SignerRoleValue,
 } from '@autoconnect/shared';
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
@@ -12,17 +14,38 @@ import { ehGlobal, type Escopo } from '../../common/escopo';
 import { ContractPdfService } from './contract-pdf.service';
 import { DocumentosStorage } from '../../common/armazenamento/documentos.storage';
 import { TEMPLATE_PADRAO, type Bloco, type SnapshotContrato } from './blocos';
+import { PROVEDOR_DE_ASSINATURA } from './assinatura/provedor';
+
+/** Uma assinatura a gravar — interna (com ip/userAgent) ou externa (com ids do provedor). */
+export interface AssinaturaAGravar {
+  role: SignerRoleValue;
+  signerName: string;
+  signerDocument?: string | null;
+  signerUserId?: string;
+  ip?: string;
+  userAgent?: string;
+  requestId?: string;
+  externalSignerId?: string | null;
+  signedAt?: Date;
+}
+
+/** Solicitações vivas encerradas aqui e que ainda precisam ser canceladas no provedor. */
+type EncerradaAqui = { id: string; externalId: string | null };
 
 const brl = (d: Prisma.Decimal) =>
   d.toNumber().toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 @Injectable()
 export class ContractsService {
+  private readonly logger = new Logger(ContractsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly privilegiado: PrivilegedPrismaService,
     private readonly pdf: ContractPdfService,
     private readonly storage: DocumentosStorage,
+    @Inject(PROVEDOR_DE_ASSINATURA)
+    private readonly provedor: ProvedorDeAssinatura,
   ) {}
 
   private tenantDe(escopo: Escopo): string {
@@ -215,7 +238,20 @@ export class ContractsService {
     const ler = (tx: ScopedClient) =>
       tx.dealContract.findMany({
         where: { dealId, ...(ehGlobal(escopo) ? {} : { tenantId: escopo.tenantId }) },
-        include: { signatures: true, template: { select: { name: true, version: true } } },
+        include: {
+          signatures: true,
+          template: { select: { name: true, version: true } },
+          // A mais recente basta para a tela: é ela que diz se há envio vivo.
+          signatureRequests: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: {
+              id: true, status: true, provider: true, signers: true, sentAt: true,
+              completedAt: true, canceledAt: true, expiresAt: true, errorMessage: true,
+              signedHash: true,
+            },
+          },
+        },
         orderBy: { issuedAt: 'desc' },
       });
 
@@ -284,17 +320,62 @@ export class ContractsService {
         throw new ConflictException('Emita o contrato antes de assiná-lo.');
       }
 
+      // Assinaturas não se misturam: metade no sistema e metade no provedor
+      // deixaria o contrato com duas trilhas de evidência diferentes, e nenhuma
+      // das duas provaria sozinha o aceite das duas partes.
+      const externa = await tx.contractSignatureRequest.findFirst({
+        where: { contractId: id, tenantId, status: { in: [...ASSINATURA_EXTERNA_VIVAS] } },
+        select: { id: true },
+      });
+      if (externa) {
+        throw new ConflictException(
+          'Este contrato foi enviado para assinatura eletrônica. Cancele o envio ' +
+            'antes de registrar a assinatura no sistema.',
+        );
+      }
+
+      // Uma exceção de unicidade aborta a transação no Postgres; conferir antes
+      // mantém a resposta 409 limpa.
+      const jaTem = await tx.contractSignature.findFirst({
+        where: { contractId: id, role: dados.role }, select: { id: true },
+      });
+      if (jaTem) {
+        throw new ConflictException(`Este contrato já tem assinatura de "${dados.role}".`);
+      }
+
+      await this.gravarAssinaturas(tx, contrato, [dados]);
+
+      return tx.dealContract.findFirst({ where: { id }, include: { signatures: true } });
+    });
+  }
+
+  /**
+   * Grava assinaturas e fecha o contrato quando as duas partes assinaram.
+   *
+   * É o único lugar que decide "o contrato está assinado" — a assinatura
+   * interna e a conclusão vinda do provedor externo passam por aqui, para que
+   * a regra não exista em duas cópias.
+   */
+  async gravarAssinaturas(
+    tx: ScopedClient,
+    contrato: Pick<DealContract, 'id' | 'tenantId' | 'contentHash' | 'status'>,
+    assinaturas: AssinaturaAGravar[],
+  ): Promise<void> {
+    for (const a of assinaturas) {
       try {
         await tx.contractSignature.create({
           data: {
-            tenantId,
-            contractId: id,
-            role: dados.role,
-            signerUserId: dados.signerUserId,
-            signerName: dados.signerName,
-            signerDocument: dados.signerDocument,
-            ip: dados.ip,
-            userAgent: dados.userAgent,
+            tenantId: contrato.tenantId,
+            contractId: contrato.id,
+            role: a.role,
+            signerUserId: a.signerUserId,
+            signerName: a.signerName,
+            signerDocument: a.signerDocument ?? undefined,
+            ip: a.ip,
+            userAgent: a.userAgent,
+            requestId: a.requestId,
+            externalSignerId: a.externalSignerId ?? undefined,
+            signedAt: a.signedAt,
             // O hash do documento aceito. Se o contrato for reemitido, esta
             // assinatura deixa de casar — que é o comportamento correto.
             acceptedHash: contrato.contentHash,
@@ -302,37 +383,104 @@ export class ContractsService {
         });
       } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-          throw new ConflictException(`Este contrato já tem assinatura de "${dados.role}".`);
+          throw new ConflictException(`Este contrato já tem assinatura de "${a.role}".`);
         }
         throw e;
       }
+    }
 
-      const assinaturas = await tx.contractSignature.count({ where: { contractId: id } });
-      if (assinaturas >= 2 && contrato.status !== 'signed') {
-        await tx.dealContract.update({
-          where: { id },
-          data: { status: 'signed', signedAt: new Date() },
-        });
-      }
+    const total = await tx.contractSignature.count({ where: { contractId: contrato.id } });
+    if (total >= 2 && contrato.status !== 'signed') {
+      await tx.dealContract.update({
+        where: { id: contrato.id },
+        data: { status: 'signed', signedAt: new Date() },
+      });
+    }
+  }
 
-      return tx.dealContract.findFirst({ where: { id }, include: { signatures: true } });
+  /**
+   * Encerra, dentro da transação, os envios vivos para assinatura externa.
+   *
+   * Marca como cancelados **aqui** primeiro: a partir do commit, um webhook
+   * de conclusão que chegue atrasado cai em solicitação terminal e é ignorado.
+   * O cancelamento no provedor vem depois, fora da transação
+   * (`cancelarNoProvedor`) — ida à rede não segura conexão do pool.
+   */
+  private async encerrarEnviosVivos(
+    tx: ScopedClient,
+    tenantId: string,
+    filtro: { contractId: string } | { dealId: string },
+    motivo: string,
+  ): Promise<EncerradaAqui[]> {
+    const vivas = await tx.contractSignatureRequest.findMany({
+      where: {
+        tenantId,
+        status: { in: [...ASSINATURA_EXTERNA_VIVAS] },
+        ...('contractId' in filtro
+          ? { contractId: filtro.contractId }
+          : { contract: { dealId: filtro.dealId } }),
+      },
+      select: { id: true, externalId: true },
     });
+
+    if (vivas.length) {
+      await tx.contractSignatureRequest.updateMany({
+        where: { id: { in: vivas.map((v) => v.id) } },
+        data: { status: 'canceled', canceledAt: new Date(), cancelReason: motivo },
+      });
+    }
+    return vivas;
+  }
+
+  /**
+   * Melhor esforço: a decisão local (anular, cancelar o negócio) não depende
+   * de o provedor estar no ar. Se ele falhar, o envelope fica aberto lá, mas
+   * qualquer conclusão que vier dele é ignorada aqui — e o erro fica no log
+   * para alguém cancelar no painel do provedor.
+   */
+  private async cancelarNoProvedor(encerradas: EncerradaAqui[]): Promise<void> {
+    for (const e of encerradas) {
+      if (!e.externalId) continue;
+      try {
+        await this.provedor.cancelar(e.externalId);
+      } catch (erro) {
+        this.logger.error(
+          `Envelope ${e.externalId} (solicitação ${e.id}) não foi cancelado no provedor ` +
+            `"${this.provedor.nome}": ${(erro as Error).message}. Cancele no painel do provedor.`,
+        );
+      }
+    }
+  }
+
+  /** Negócio cancelado ou distratado: nenhum contrato dele segue em assinatura. */
+  async cancelarEnviosDoNegocio(tenantId: string, dealId: string, motivo: string): Promise<void> {
+    const encerradas = await this.prisma.withTenant(tenantId, (tx) =>
+      this.encerrarEnviosVivos(tx, tenantId, { dealId }, motivo),
+    );
+    await this.cancelarNoProvedor(encerradas);
   }
 
   async anular(escopo: Escopo, id: string, motivo: string) {
     const tenantId = this.tenantDe(escopo);
 
-    return this.prisma.withTenant(tenantId, async (tx) => {
+    const resultado = await this.prisma.withTenant(tenantId, async (tx) => {
       const contrato = await tx.dealContract.findFirst({ where: { id, tenantId } });
       if (!contrato) throw new NotFoundException('Contrato não encontrado');
       if (contrato.status === 'voided') {
         throw new ConflictException('Contrato já está anulado.');
       }
 
-      return tx.dealContract.update({
+      const encerradas = await this.encerrarEnviosVivos(
+        tx, tenantId, { contractId: id }, `Contrato anulado: ${motivo}`,
+      );
+      const anulado = await tx.dealContract.update({
         where: { id },
         data: { status: 'voided', voidedAt: new Date(), voidReason: motivo },
       });
+      return { anulado, encerradas };
     });
+
+    await this.cancelarNoProvedor(resultado.encerradas);
+    return resultado.anulado;
   }
 }

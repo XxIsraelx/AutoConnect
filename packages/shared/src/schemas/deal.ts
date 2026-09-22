@@ -138,6 +138,11 @@ export const dadosDoCompradorSchema = z.object({
   city: z.string().max(80).optional(),
   state: z.string().length(2).optional(),
   postalCode: z.string().max(9).optional(),
+  /**
+   * Para onde o provedor de assinatura eletrônica manda o convite. Opcional
+   * aqui: quem exige é o envio para assinatura, que recusa sem ele.
+   */
+  email: z.string().email('E-mail inválido.').max(160).optional(),
 });
 
 export type DadosDoCompradorInput = z.infer<typeof dadosDoCompradorSchema>;
@@ -226,6 +231,7 @@ export const representanteLegalSchema = z.object({
     .transform((v) => v.replace(/\D/g, ''))
     .refine(cpfValido, 'CPF inválido — confira os dígitos.'),
   legalRepRole: z.string().max(60).optional(),
+  legalRepEmail: z.string().email('E-mail inválido.').max(160).optional(),
 });
 
 export type RepresentanteLegalInput = z.infer<typeof representanteLegalSchema>;

@@ -35,6 +35,9 @@ export default function Comprador({
     addressLine: b?.addressLine ?? '', addressNumber: b?.addressNumber ?? '',
     neighborhood: b?.neighborhood ?? '', city: b?.city ?? '',
     state: b?.state ?? '', postalCode: b?.postalCode ?? '',
+    // O da conta vinculada como ponto de partida: é para onde o convite de
+    // assinatura eletrônica iria de qualquer forma.
+    email: b?.email ?? negocio.customer?.email ?? '',
   });
 
   const campo = 'text-sm bg-transparent border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1.5';
@@ -64,6 +67,7 @@ export default function Comprador({
             {b.fullName}
             <span className="text-slate-500"> · CPF {formatarCpf(b.cpf)}</span>
             {b.rg && <span className="text-slate-500"> · RG {b.rg}{b.rgIssuer ? ` ${b.rgIssuer}` : ''}</span>}
+            {b.email && <span className="block text-xs text-slate-400 mt-0.5 break-all">{b.email}</span>}
             {b.city && <span className="block text-xs text-slate-400 mt-0.5">
               {[b.addressLine, b.addressNumber].filter(Boolean).join(', ')}
               {b.neighborhood ? ` — ${b.neighborhood}` : ''} — {b.city}/{b.state}
@@ -88,6 +92,11 @@ export default function Comprador({
             <input value={form.maritalStatus ?? ''} onChange={set('maritalStatus')} placeholder="Estado civil" className={campo} />
             <input value={form.occupation ?? ''} onChange={set('occupation')} placeholder="Profissão" className={campo} />
             <input value={form.postalCode ?? ''} onChange={set('postalCode')} placeholder="CEP" className={campo} />
+            <input
+              value={form.email ?? ''} onChange={set('email')} type="email"
+              placeholder="E-mail (convite da assinatura eletrônica)"
+              className={`${campo} sm:col-span-2`}
+            />
           </div>
           <div className="grid gap-2 sm:grid-cols-[2fr_1fr]">
             <input value={form.addressLine ?? ''} onChange={set('addressLine')} placeholder="Logradouro" className={campo} />

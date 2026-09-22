@@ -8,6 +8,11 @@
  */
 /** @type {import('jest').Config} */
 module.exports = {
+  // Global, não por projeto: com `projects`, o `maxWorkers` do e2e é ignorado
+  // e os arquivos de integração rodavam em paralelo contra o mesmo banco — o
+  // teste de cron (que lê agendamentos de todas as lojas) quebrava quando outro
+  // arquivo apagava a sua loja no meio da consulta. Serial leva ~15s.
+  maxWorkers: 1,
   projects: [
     {
       displayName: 'api:unit',

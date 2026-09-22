@@ -7,3 +7,4 @@ export * from './domain/dinheiro';
 export * from './schemas/deal';
 export * from './domain/garantia';
 export * from './domain/consulta-veicular';
+export * from './domain/assinatura-externa';

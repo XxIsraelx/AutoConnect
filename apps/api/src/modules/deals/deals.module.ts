@@ -5,10 +5,13 @@ import { DealsService } from './deals.service';
 import { DealStateService } from './deal-state.service';
 import { MarginService } from './margin.service';
 import { PropostaChatService } from './proposta-chat.service';
+import { ContractsModule } from '../contracts/contracts.module';
 
 @Module({
   // Declarado nos imports para que atravessar concessionárias apareça no diff.
-  imports: [PrivilegedPrismaModule],
+  // ContractsModule: cancelar o negócio cancela o envio do contrato para
+  // assinatura externa.
+  imports: [PrivilegedPrismaModule, ContractsModule],
   controllers: [DealsController, VehicleCostController],
   providers: [DealsService, DealStateService, MarginService, PropostaChatService],
   // O gateway do chat usa o PropostaChatService para transformar a proposta

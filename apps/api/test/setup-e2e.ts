@@ -78,5 +78,12 @@ process.env.GMAIL_APP_PASSWORD = '';
 process.env.SUPABASE_URL = '';
 process.env.SUPABASE_SERVICE_ROLE_KEY = '';
 
+// E para a assinatura eletrônica: sobrescreve, não `??=`. No dia em que o
+// `.env` tiver a Clicksign configurada, a suíte criaria envelopes de verdade e
+// mandaria convite de assinatura para os e-mails fictícios dos testes. O
+// simulado roda em memória e não sai do processo.
+process.env.ASSINATURA_FORNECEDOR = 'simulado';
+process.env.ASSINATURA_WEBHOOK_SECRET = 'segredo-de-webhook-de-teste';
+
 /** Nome do banco de teste, para os testes afirmarem onde estão conectados. */
 export const BANCO_DE_TESTE = verificada.pathname.replace(/^\//, '');

@@ -181,35 +181,39 @@ model Tenant {
   /// contratos — pedir a cada venda seria digitação repetida e fonte de
   /// divergência. O contrato congela no snapshot, então trocar o
   /// representante depois não altera documento já emitido.
-  legalRepName String?  @map("legal_rep_name")
-  legalRepCpf  String?  @map("legal_rep_cpf")
+  legalRepName  String?  @map("legal_rep_name")
+  legalRepCpf   String?  @map("legal_rep_cpf")
   /// Cargo: sócio-administrador, procurador, gerente…
-  legalRepRole String?  @map("legal_rep_role")
-  settings     Json     @default("{}")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  legalRepRole  String?  @map("legal_rep_role")
+  /// Para onde o provedor de assinatura eletrônica manda o convite da loja.
+  legalRepEmail String?  @map("legal_rep_email")
+  settings      Json     @default("{}")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
-  subscription        TenantSubscription?
-  branches            DealershipBranch[]
-  users               User[]
-  invitations         UserInvitation[]
-  vehicles            Vehicle[]
-  leads               Lead[]
-  appointments        Appointment[]
-  conversations       Conversation[]
-  salesGoals          SalesGoal[]
-  deals               Deal[]
-  dealPayments        DealPayment[]
-  dealStatusEvents    DealStatusEvent[]
-  tradeIns            TradeIn[]
-  vehicleAcquisitions VehicleAcquisition[]
-  vehicleCosts        VehicleCost[]
-  contractTemplates   ContractTemplate[]
-  dealContracts       DealContract[]
-  contractSignatures  ContractSignature[]
-  dealWarranties      DealWarranty[]
-  vehicleQueries      VehicleQuery[]
-  dealBuyers          DealBuyer[]
+  subscription              TenantSubscription?
+  branches                  DealershipBranch[]
+  users                     User[]
+  invitations               UserInvitation[]
+  vehicles                  Vehicle[]
+  leads                     Lead[]
+  appointments              Appointment[]
+  conversations             Conversation[]
+  salesGoals                SalesGoal[]
+  deals                     Deal[]
+  dealPayments              DealPayment[]
+  dealStatusEvents          DealStatusEvent[]
+  tradeIns                  TradeIn[]
+  vehicleAcquisitions       VehicleAcquisition[]
+  vehicleCosts              VehicleCost[]
+  contractTemplates         ContractTemplate[]
+  dealContracts             DealContract[]
+  contractSignatures        ContractSignature[]
+  dealWarranties            DealWarranty[]
+  vehicleQueries            VehicleQuery[]
+  dealBuyers                DealBuyer[]
+  contractSignatureRequests ContractSignatureRequest[]
+  contractSignatureEvents   ContractSignatureEvent[]
 
   @@map("tenants")
 }
@@ -1164,10 +1168,11 @@ model DealContract {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
-  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  deal       Deal                @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  template   ContractTemplate    @relation(fields: [templateId], references: [id])
-  signatures ContractSignature[]
+  tenant            Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deal              Deal                       @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  template          ContractTemplate           @relation(fields: [templateId], references: [id])
+  signatures        ContractSignature[]
+  signatureRequests ContractSignatureRequest[]
 
   @@index([tenantId, dealId])
   @@map("deal_contracts")
@@ -1192,11 +1197,18 @@ model ContractSignature {
   /// correto, não um bug.
   acceptedHash String  @map("accepted_hash")
 
+  /// Assinatura feita no provedor externo: a evidência é a solicitação (com
+  /// os eventos crus do webhook) e o id do signatário lá — não ip/userAgent,
+  /// que o provedor guarda do lado dele. Nulo na assinatura interna.
+  requestId        String? @map("request_id") @db.Uuid
+  externalSignerId String? @map("external_signer_id")
+
   signedAt DateTime @default(now()) @map("signed_at") @db.Timestamptz()
 
-  tenant   Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  contract DealContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
-  signer   User?        @relation(fields: [signerUserId], references: [id])
+  tenant   Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contract DealContract              @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  signer   User?                     @relation(fields: [signerUserId], references: [id])
+  request  ContractSignatureRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
 
   @@unique([contractId, role])
   @@index([tenantId])
@@ -1324,6 +1336,10 @@ model DealBuyer {
   state         String? @db.Char(2)
   postalCode    String? @map("postal_code")
 
+  /// Para onde o provedor de assinatura eletrônica manda o convite. Sem ele,
+  /// o envio usa o e-mail da conta do cliente vinculado ao negócio.
+  email String?
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
@@ -1332,4 +1348,93 @@ model DealBuyer {
 
   @@index([tenantId])
   @@map("deal_buyers")
+}
+
+// ─────────────────────────────────────────────────────────
+// Assinatura eletrônica externa
+//
+// Mesma camada de anticorrupção da consulta veicular: o provedor entra por um
+// adaptador, e o que fica aqui é o vocabulário do domínio. A resposta vem por
+// webhook — assíncrona, repetida e fora de ordem —, então cada entrega é
+// guardada crua e a aplicação é idempotente.
+// ─────────────────────────────────────────────────────────
+
+enum SignatureRequestStatus {
+  pending
+  sent
+  completed
+  refused
+  expired
+  canceled
+  failed
+}
+
+/// Um envio do contrato para o provedor. No máximo um vivo por contrato
+/// (índice único parcial `contract_signature_requests_viva_idx`, só na
+/// migration — o Prisma não expressa índice parcial).
+model ContractSignatureRequest {
+  id         String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String                 @map("tenant_id") @db.Uuid
+  contractId String                 @map("contract_id") @db.Uuid
+  provider   String
+  /// Id do envelope no provedor. Nulo enquanto `pending` e em `failed`.
+  externalId String?                @map("external_id")
+  status     SignatureRequestStatus @default(pending)
+
+  /// Hash do PDF enviado. É o `contentHash` do contrato — guardado aqui para
+  /// que a solicitação prove sozinha o que foi mandado.
+  contentHash String    @map("content_hash")
+  /// Signatários com id externo, status e horário de cada um.
+  signers     Json
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz()
+
+  /// PDF assinado devolvido pelo provedor: chave no bucket privado (nula sem
+  /// armazenamento configurado) e SHA-256, conferido a cada download.
+  signedStorageKey String? @map("signed_storage_key")
+  signedHash       String? @map("signed_hash")
+
+  errorMessage String?   @map("error_message")
+  cancelReason String?   @map("cancel_reason")
+  sentAt       DateTime? @map("sent_at") @db.Timestamptz()
+  completedAt  DateTime? @map("completed_at") @db.Timestamptz()
+  canceledAt   DateTime? @map("canceled_at") @db.Timestamptz()
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant     Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contract   DealContract             @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  events     ContractSignatureEvent[]
+  signatures ContractSignature[]
+
+  @@unique([provider, externalId])
+  @@index([tenantId, contractId])
+  @@map("contract_signature_requests")
+}
+
+/// Cada entrega de webhook, crua. É a trilha de auditoria da assinatura
+/// externa e a trava de idempotência: `(request_id, event_key)` é único, então
+/// a mesma entrega repetida não é aplicada duas vezes.
+model ContractSignatureEvent {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String  @map("tenant_id") @db.Uuid
+  requestId  String  @map("request_id") @db.Uuid
+  /// Id do evento no provedor, ou o SHA-256 do corpo cru quando não houver.
+  eventKey   String  @map("event_key")
+  kind       String
+  /// Falso quando o evento chegou atrasado ou repetido e não mudou o estado.
+  applied    Boolean @default(false)
+  /// Evento normalizado, no vocabulário do domínio.
+  normalized Json
+  /// Corpo exatamente como chegou: permite reconferir o HMAC depois.
+  rawBody    String  @map("raw_body")
+
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz()
+
+  tenant  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  request ContractSignatureRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, eventKey])
+  @@index([tenantId])
+  @@map("contract_signature_events")
 }

@@ -42,6 +42,7 @@ interface TenantFull {
   legalRepName: string | null;
   legalRepCpf: string | null;
   legalRepRole: string | null;
+  legalRepEmail: string | null;
   acceptsTradeIn: boolean;
   branches: Branch[];
   subscription: { plan: string; status: string } | null;
@@ -199,7 +200,7 @@ export default function ConfiguracoesPage() {
   /* Forms separados para cada seção */
   const [tenantForm, setTenantForm] = useState({
     tradeName: '', primaryPhone: '', brandColor: '', websiteUrl: '', logoUrl: '',
-    legalRepName: '', legalRepCpf: '', legalRepRole: '',
+    legalRepName: '', legalRepCpf: '', legalRepRole: '', legalRepEmail: '',
     acceptsTradeIn: false,
   });
   const [branchForm, setBranchForm] = useState({
@@ -234,6 +235,7 @@ export default function ConfiguracoesPage() {
           legalRepName: t.legalRepName ?? '',
           legalRepCpf:  t.legalRepCpf  ?? '',
           legalRepRole: t.legalRepRole ?? '',
+          legalRepEmail: t.legalRepEmail ?? '',
           logoUrl:      t.logoUrl      ?? '',
           acceptsTradeIn: t.acceptsTradeIn ?? false,
         });
@@ -282,6 +284,7 @@ export default function ConfiguracoesPage() {
           legalRepName: tenantForm.legalRepName || undefined,
           legalRepCpf:  tenantForm.legalRepCpf  || undefined,
           legalRepRole: tenantForm.legalRepRole || undefined,
+          legalRepEmail: tenantForm.legalRepEmail || undefined,
         }),
       });
       setTenant(updated);
@@ -384,7 +387,7 @@ export default function ConfiguracoesPage() {
             {/* Representante legal — quem assina os contratos pela loja. Sem
                 ele a emissão do contrato é recusada, porque o documento não
                 diria quem se obrigou. */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Representante legal" hint="quem assina os contratos pela loja">
                 <input className={input} value={tenantForm.legalRepName}
                        onChange={e => setT('legalRepName', e.target.value)}
@@ -399,6 +402,13 @@ export default function ConfiguracoesPage() {
                 <input className={input} value={tenantForm.legalRepRole}
                        onChange={e => setT('legalRepRole', e.target.value)}
                        placeholder="sócio-administrador" />
+              </Field>
+              {/* Para onde vai o convite da assinatura eletrônica em nome da
+                  loja. Sem ele o envio para o provedor é recusado. */}
+              <Field label="E-mail do representante" hint="recebe o convite da assinatura eletrônica">
+                <input className={input} type="email" value={tenantForm.legalRepEmail}
+                       onChange={e => setT('legalRepEmail', e.target.value)}
+                       placeholder="representante@loja.com.br" />
               </Field>
             </div>
 

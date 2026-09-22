@@ -3,7 +3,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, API_URL, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
-import type { DealStatusValue, PaymentKindValue } from '@autoconnect/shared';
+import type {
+  AssinaturaExternaStatus, DealStatusValue, PaymentKindValue, SignatarioRegistrado,
+} from '@autoconnect/shared';
 
 /**
  * Camada de dados de `/negocios`.
@@ -40,6 +42,7 @@ export interface DealResumo {
     nationality: string | null; maritalStatus: string | null; occupation: string | null;
     addressLine: string | null; addressNumber: string | null; neighborhood: string | null;
     city: string | null; state: string | null; postalCode: string | null;
+    email: string | null;
   } | null;
   statusEvents: {
     id: string; fromStatus: DealStatusValue; toStatus: DealStatusValue;
@@ -161,7 +164,31 @@ export interface Contrato {
     role: 'customer' | 'dealer';
     signerName: string;
     signedAt: string;
+    /** Preenchido quando a assinatura veio do provedor externo. */
+    requestId: string | null;
   }[];
+  /** A solicitação de assinatura externa mais recente, se houver. */
+  signatureRequests: SolicitacaoResumo[];
+}
+
+export interface SolicitacaoResumo {
+  id: string;
+  status: AssinaturaExternaStatus;
+  provider: string;
+  signers: SignatarioRegistrado[];
+  sentAt: string | null;
+  completedAt: string | null;
+  canceledAt: string | null;
+  expiresAt: string | null;
+  errorMessage: string | null;
+  signedHash: string | null;
+}
+
+export interface CapacidadeAssinatura {
+  disponivel: boolean;
+  provedor: string | null;
+  /** Provedor simulado (só fora de produção): a tela oferece os botões de simulação. */
+  simulado: boolean;
 }
 
 export function useContratos(dealId: string) {
@@ -211,6 +238,60 @@ export function useAnularContrato(dealId: string) {
   });
 }
 
+/* ── Assinatura eletrônica externa ────────────────────────── */
+
+/**
+ * Há provedor configurado? Sem ele a opção some da tela — é a chave de
+ * liga/desliga da funcionalidade, lida da API em vez de uma variável do build.
+ */
+export function useCapacidadeAssinatura() {
+  const token = useToken();
+  return useQuery({
+    queryKey: ['assinatura-externa-capacidade'],
+    queryFn: () => api<CapacidadeAssinatura>('/contracts/assinatura-externa/capacidade', { token }),
+    enabled: Boolean(token),
+    staleTime: 5 * 60_000,
+  });
+}
+
+function useMutacaoDeAssinatura<V>(dealId: string, fn: (v: V, token?: string) => Promise<unknown>) {
+  const token = useToken();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: V) => fn(v, token),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['contratos', dealId] });
+      // Envio, cancelamento e conclusão entram na timeline do negócio.
+      qc.invalidateQueries({ queryKey: ['negocio', dealId] });
+    },
+  });
+}
+
+export function useEnviarParaAssinatura(dealId: string) {
+  return useMutacaoDeAssinatura(dealId, (contratoId: string, token) =>
+    api(`/contracts/${contratoId}/assinatura-externa`, { method: 'POST', token, body: {} }));
+}
+
+export function useCancelarAssinatura(dealId: string) {
+  return useMutacaoDeAssinatura(dealId, (contratoId: string, token) =>
+    api(`/contracts/${contratoId}/assinatura-externa/cancelar`, { method: 'POST', token, body: {} }));
+}
+
+export function useSimularAssinatura(dealId: string) {
+  return useMutacaoDeAssinatura(
+    dealId,
+    (v: { contratoId: string; acao: 'assinar' | 'recusar'; papel: 'customer' | 'dealer' }, token) =>
+      api(`/contracts/${v.contratoId}/assinatura-externa/simular`, {
+        method: 'POST', token, body: { acao: v.acao, papel: v.papel },
+      }),
+  );
+}
+
+/** PDF devolvido pelo provedor, conferido pela API contra o hash da conclusão. */
+export function baixarPdfAssinado(contratoId: string, token: string): Promise<void> {
+  return abrirPdf(`/contracts/${contratoId}/assinatura-externa/pdf`, token);
+}
+
 /**
  * Baixa o PDF.
  *
@@ -218,8 +299,12 @@ export function useAnularContrato(dealId: string) {
  * link cru devolveria 401. Busca-se o arquivo com o token, e o blob é aberto
  * em aba nova — o object URL é revogado depois para não vazar memória.
  */
-export async function baixarPdf(contratoId: string, token: string): Promise<void> {
-  const res = await fetch(`${API_URL}/api/v1/contracts/${contratoId}/pdf`, {
+export function baixarPdf(contratoId: string, token: string): Promise<void> {
+  return abrirPdf(`/contracts/${contratoId}/pdf`, token);
+}
+
+async function abrirPdf(caminho: string, token: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/v1${caminho}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -299,6 +384,7 @@ export interface Comprador {
   city?: string | null;
   state?: string | null;
   postalCode?: string | null;
+  email?: string | null;
 }
 
 export function useSalvarComprador(dealId: string) {
