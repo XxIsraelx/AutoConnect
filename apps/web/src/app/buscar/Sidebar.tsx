@@ -12,6 +12,7 @@ import {
   BookmarkPlus, Trash2, Clock, ChevronDown,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import { useAuthStore } from '@/store/auth';
 import CompareDrawer from './CompareDrawer';
 import { getOpenStatus, getOpenHoursList } from '@/lib/businessHours';
@@ -202,10 +203,12 @@ function AlertModal({
   const [target, setTarget] = useState(String(Math.round(current * 0.9)));
   const [saving, setSaving] = useState(false);
   const [done, setDone]     = useState(false);
+  const [erro, setErro]     = useState<string | null>(null);
 
   async function submit() {
     if (!token) { window.location.href = '/entrar'; return; }
     setSaving(true);
+    setErro(null);
     try {
       await api('/catalog/price-alerts', {
         method: 'POST', token,
@@ -213,7 +216,9 @@ function AlertModal({
       });
       setDone(true);
       setTimeout(onClose, 1400);
-    } catch {
+    } catch (e) {
+      // Antes o botão só voltava ao normal: parecia que o clique não pegou.
+      setErro(textoDoErro(e));
       setSaving(false);
     }
   }
@@ -253,6 +258,9 @@ function AlertModal({
                            text-sm txt-forte outline-none focus:border-amber-500"
               />
             </div>
+            {erro && (
+              <p className="text-xs text-rose-400 mb-3">Não foi possível criar o alerta. {erro}</p>
+            )}
             <div className="flex gap-2">
               <button onClick={onClose}
                 className="flex-1 py-2.5 text-sm font-medium txt-fraco border borda rounded-xl hover:sup-tenue">
@@ -496,14 +504,18 @@ function DealerDetail({
   const [vehicles, setVehicles] = useState<PublicVehicle[]>([]);
   const [loadingV, setLoadingV] = useState(true);
   const [total, setTotal]       = useState(0);
+  const [erroV, setErroV]       = useState<unknown>(null);
+  const [tentativaV, setTentativaV] = useState(0);
 
   useEffect(() => {
     setLoadingV(true);
+    setErroV(null);
     api<VehiclesPage>(`/catalog/vehicles?tenantId=${pin.tenant.id}&limit=8`)
       .then(data => { setVehicles(data.items); setTotal(data.total); })
-      .catch(() => setVehicles([]))
+      // Antes a falha virava "Esta concessionária ainda não tem veículos".
+      .catch((e) => { setVehicles([]); setTotal(0); setErroV(e); })
       .finally(() => setLoadingV(false));
-  }, [pin.tenant.id]);
+  }, [pin.tenant.id, tentativaV]);
 
   const hoursList = getOpenHoursList(pin.businessHours);
 
@@ -612,6 +624,8 @@ function DealerDetail({
 
         {loadingV ? (
           <div className="space-y-2.5">{[1,2,3].map(i => <VehicleSkeleton key={i} />)}</div>
+        ) : erroV ? (
+          <ErroAoCarregar erro={erroV} onTentarNovamente={() => setTentativaV(n => n + 1)} contexto="os veículos" />
         ) : vehicles.length === 0 ? (
           <div className="flex flex-col items-center py-12 text-center">
             <div className="w-16 h-16 rounded-2xl sup-fraca flex items-center justify-center mb-3">
@@ -708,6 +722,11 @@ export default function Sidebar({
   const [vehicleTotal, setVehicleTotal]     = useState(0);
   const [vehicleSkip, setVehicleSkip]       = useState(0);
   const [loadingMore, setLoadingMore]       = useState(false);
+  const [vehicleErro, setVehicleErro]       = useState<unknown>(null);
+  const [vehicleRetry, setVehicleRetry]     = useState(0);
+  const [erroMais, setErroMais]             = useState<string | null>(null);
+  const [erroMarca, setErroMarca]           = useState<string | null>(null);
+  const [brandRetry, setBrandRetry]         = useState(0);
 
   // Filtros de veículo
   const emptyVFilters = {
@@ -724,6 +743,7 @@ export default function Sidebar({
   const [compareOpen, setCompareOpen] = useState(false);
   const [saved, setSaved]           = useState<SavedSearch[]>([]);
   const [savedOpen, setSavedOpen]   = useState(false);
+  const [erroSalvas, setErroSalvas] = useState<string | null>(null);
   const [alertVehicle, setAlertVehicle] = useState<PublicVehicle | null>(null);
 
   const VEHICLE_PAGE = 12;
@@ -742,6 +762,8 @@ export default function Sidebar({
   }, [onSelect]);
 
   /* ── Carrega marcas ──────────────────────────────────────── */
+  // Falha aqui só esconde o filtro opcional de marca (ele não renderiza com a
+  // lista vazia); nenhum resultado fica errado por isso.
   useEffect(() => {
     api<PublicBrand[]>('/catalog/brands').then(setBrands).catch(() => {});
   }, []);
@@ -749,11 +771,16 @@ export default function Sidebar({
   /* ── Carrega favoritos + buscas salvas (se logado) ───────── */
   const loadSaved = useCallback(() => {
     if (!token) return;
-    api<SavedSearch[]>('/catalog/saved-searches', { token }).then(setSaved).catch(() => {});
+    api<SavedSearch[]>('/catalog/saved-searches', { token })
+      .then((r) => { setSaved(r); setErroSalvas(null); })
+      // Sem isto o painel dizia "Nenhuma busca salva ainda".
+      .catch((e) => setErroSalvas(`Não foi possível carregar suas buscas salvas. ${textoDoErro(e)}`));
   }, [token]);
 
   useEffect(() => {
     if (!token) { setFavIds(new Set()); setSaved([]); return; }
+    // Só pinta os corações dos já favoritados. Se falhar, o coração aparece
+    // vazio e favoritar de novo é idempotente na API — nada se perde.
     api<string[]>('/catalog/favorites/ids', { token })
       .then((ids) => setFavIds(new Set(ids))).catch(() => {});
     loadSaved();
@@ -784,7 +811,15 @@ export default function Sidebar({
       if (isFav) next.delete(v.id); else next.add(v.id);
       return next;
     });
-    api(`/catalog/favorites/${v.id}`, { method: isFav ? 'DELETE' : 'POST', token }).catch(() => {});
+    // Otimista; se a API recusar, desfaz — antes o coração ficava marcado
+    // num favorito que nunca foi salvo.
+    api(`/catalog/favorites/${v.id}`, { method: isFav ? 'DELETE' : 'POST', token }).catch(() => {
+      setFavIds((prev) => {
+        const next = new Set(prev);
+        if (isFav) next.add(v.id); else next.delete(v.id);
+        return next;
+      });
+    });
   }
 
   /* ── Comparar ────────────────────────────────────────────── */
@@ -803,13 +838,16 @@ export default function Sidebar({
       if (!brandFilter) onMatchingTenantsChange(null);
       return;
     }
+    setErroMarca(null);
     api<VehiclesPage>(`/catalog/vehicles?brandId=${brandFilter}&limit=200`)
       .then(data => {
         const ids = new Set(data.items.map(v => v.tenantId));
         onMatchingTenantsChange(ids);
       })
-      .catch(() => onMatchingTenantsChange(null));
-  }, [brandFilter, searchMode, onMatchingTenantsChange]);
+      // Sem filtro aplicado aparecem todas as lojas, como se todas tivessem a
+      // marca escolhida — por isso o aviso junto do select.
+      .catch((e) => { onMatchingTenantsChange(null); setErroMarca(textoDoErro(e)); });
+  }, [brandFilter, searchMode, onMatchingTenantsChange, brandRetry]);
 
   /* ── Notifica raio para o MapClient ──────────────────────── */
   useEffect(() => {
@@ -836,6 +874,8 @@ export default function Sidebar({
     }
     const timer = setTimeout(() => {
       setVehicleLoading(true);
+      setVehicleErro(null);
+      setErroMais(null);
       api<VehiclesPage>(`/catalog/vehicles?${buildVehicleParams(0)}`)
         .then(data => {
           setVehicleResults(data.items);
@@ -845,17 +885,22 @@ export default function Sidebar({
           const ids = new Set(data.items.map(v => v.tenantId));
           onMatchingTenantsChange(ids);
         })
-        .catch(() => { setVehicleResults([]); setVehicleTotal(0); onMatchingTenantsChange(null); })
+        // Antes a falha caía em "Nenhum veículo encontrado".
+        .catch((e) => {
+          setVehicleResults([]); setVehicleTotal(0); onMatchingTenantsChange(null);
+          setVehicleErro(e);
+        })
         .finally(() => setVehicleLoading(false));
     }, 350);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vehicleQuery, vFilters, searchMode, hasVehicleCriteria]);
+  }, [vehicleQuery, vFilters, searchMode, hasVehicleCriteria, vehicleRetry]);
 
   /* ── Carregar mais (scroll infinito) ─────────────────────── */
   const loadMoreVehicles = useCallback(() => {
     if (loadingMore || vehicleResults.length >= vehicleTotal) return;
     setLoadingMore(true);
+    setErroMais(null);
     api<VehiclesPage>(`/catalog/vehicles?${buildVehicleParams(vehicleSkip)}`)
       .then(data => {
         const combined = [...vehicleResults, ...data.items];
@@ -863,7 +908,7 @@ export default function Sidebar({
         setVehicleSkip(prev => prev + data.items.length);
         onMatchingTenantsChange(new Set(combined.map(v => v.tenantId)));
       })
-      .catch(() => {})
+      .catch((e) => setErroMais(textoDoErro(e)))
       .finally(() => setLoadingMore(false));
   }, [loadingMore, vehicleResults, vehicleTotal, vehicleSkip, buildVehicleParams, onMatchingTenantsChange]);
 
@@ -879,8 +924,12 @@ export default function Sidebar({
       vFilters.category, vFilters.fuel,
       vFilters.maxPrice ? `até ${Number(vFilters.maxPrice).toLocaleString('pt-BR')}` : '',
     ].filter(Boolean).join(' ') || 'Minha busca';
-    await api('/catalog/saved-searches', { method: 'POST', token, body: { name, filters } }).catch(() => {});
-    loadSaved();
+    try {
+      await api('/catalog/saved-searches', { method: 'POST', token, body: { name, filters } });
+      loadSaved();
+    } catch (e) {
+      setErroSalvas(`Não foi possível salvar a busca. ${textoDoErro(e)}`);
+    }
   }
 
   function applySavedSearch(s: SavedSearch) {
@@ -894,13 +943,22 @@ export default function Sidebar({
     setVFilters(f);
     setSavedOpen(false);
     setVFiltersOpen(true);
+    // Só zera o contador de "novos"; a busca já foi aplicada. Se falhar, o
+    // selo reaparece na próxima carga — nada que o usuário precise saber.
     if (token) api(`/catalog/saved-searches/${s.id}/viewed`, { method: 'PATCH', token }).then(loadSaved).catch(() => {});
   }
 
   async function deleteSavedSearch(id: string) {
     if (!token) return;
     setSaved(prev => prev.filter(s => s.id !== id));
-    await api(`/catalog/saved-searches/${id}`, { method: 'DELETE', token }).catch(() => {});
+    try {
+      await api(`/catalog/saved-searches/${id}`, { method: 'DELETE', token });
+    } catch (e) {
+      // Otimista: se falhou, a busca volta para a lista em vez de sumir só
+      // até o próximo carregamento.
+      setErroSalvas(`Não foi possível excluir a busca. ${textoDoErro(e)}`);
+      loadSaved();
+    }
   }
 
   /* ── Resetar ao mudar de modo ────────────────────────────── */
@@ -1170,6 +1228,14 @@ export default function Sidebar({
                       <option value="">Todas as marcas</option>
                       {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </select>
+                    {erroMarca && brandFilter && (
+                      <p className="text-[11px] text-rose-400 mt-1.5">
+                        Filtro de marca não aplicado — mostrando todas as lojas. {erroMarca}{' '}
+                        <button onClick={() => setBrandRetry(n => n + 1)} className="font-semibold underline">
+                          Tentar novamente
+                        </button>
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -1282,9 +1348,18 @@ export default function Sidebar({
                     </button>
                   )}
                 </div>
+                {token && erroSalvas && (
+                  <p className="text-[11px] text-rose-400 px-1 py-1">
+                    {erroSalvas}{' '}
+                    <button onClick={() => { setErroSalvas(null); loadSaved(); }} className="font-semibold underline">
+                      Tentar novamente
+                    </button>
+                  </p>
+                )}
                 {!token ? (
                   <p className="text-[11px] txt-tenue px-1 py-2">Entre para salvar buscas.</p>
                 ) : saved.length === 0 ? (
+                  erroSalvas ? null :
                   <p className="text-[11px] txt-tenue px-1 py-2">Nenhuma busca salva ainda.</p>
                 ) : saved.map(s => (
                   <div key={s.id} className="flex items-center gap-2 group rounded-lg hover:sup-tenue px-2 py-1.5">
@@ -1432,7 +1507,10 @@ export default function Sidebar({
                 </p>
               </div>
             )}
-            {!vehicleLoading && vehicleSearched && vehicleResults.length === 0 && (
+            {!vehicleLoading && hasVehicleCriteria && !!vehicleErro && (
+              <ErroAoCarregar erro={vehicleErro} onTentarNovamente={() => setVehicleRetry(n => n + 1)} contexto="os veículos" />
+            )}
+            {!vehicleLoading && !vehicleErro && vehicleSearched && vehicleResults.length === 0 && (
               <div className="flex flex-col items-center py-16 text-center px-4">
                 <div className="w-16 h-16 rounded-2xl sup-tenue flex items-center justify-center mb-4">
                   <Search size={28} className="text-slate-300 dark:text-white/15" />
@@ -1477,6 +1555,11 @@ export default function Sidebar({
                     {loadingMore ? <><Loader2 size={13} className="animate-spin" /> Carregando…</>
                                  : `Carregar mais (${vehicleTotal - vehicleResults.length})`}
                   </button>
+                )}
+                {erroMais && (
+                  <p className="text-[11px] text-rose-400 text-center mt-1.5">
+                    Não foi possível carregar mais veículos. {erroMais}
+                  </p>
                 )}
               </>
             )}

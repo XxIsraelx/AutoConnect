@@ -63,6 +63,10 @@ export default function HeaderActions() {
   const [searches, setSearches] = useState<SavedSearch[]>([]);
   const [convs, setConvs]       = useState<Conversation[]>([]);
   const [loading, setLoading]   = useState(true);
+  // Qual busca falhou. Cada painel vira "não foi possível carregar" em vez do
+  // vazio — antes "Nenhum favorito" ou "Tudo em dia!" aparecia mesmo com a
+  // API fora, e o cliente achava que tinha perdido os favoritos.
+  const [falhas, setFalhas]     = useState<Set<'fav' | 'alerts' | 'searches' | 'convs'>>(new Set());
 
   const [panel, setPanel]   = useState<null | 'fav' | 'notif' | 'chat'>(null);
   const [activeConv, setActiveConv] = useState<Conversation | null>(null);
@@ -70,13 +74,16 @@ export default function HeaderActions() {
 
   const load = useCallback(() => {
     if (!token || !isCustomer) return;
+    const f = new Set<'fav' | 'alerts' | 'searches' | 'convs'>();
+    // Cada chamada falha sozinha: um painel quebrado não esvazia os outros.
     Promise.all([
-      api<Favorite[]>('/catalog/favorites', { token }).catch(() => []),
-      api<PriceAlert[]>('/catalog/price-alerts', { token }).catch(() => []),
-      api<SavedSearch[]>('/catalog/saved-searches', { token }).catch(() => []),
-      api<{ items: Conversation[] }>('/conversations', { token }).catch(() => ({ items: [] })),
-    ]).then(([f, a, s, c]) => {
-      setFavs(f); setAlerts(a); setSearches(s); setConvs(c.items ?? []);
+      api<Favorite[]>('/catalog/favorites', { token }).catch(() => { f.add('fav'); return []; }),
+      api<PriceAlert[]>('/catalog/price-alerts', { token }).catch(() => { f.add('alerts'); return []; }),
+      api<SavedSearch[]>('/catalog/saved-searches', { token }).catch(() => { f.add('searches'); return []; }),
+      api<{ items: Conversation[] }>('/conversations', { token }).catch(() => { f.add('convs'); return { items: [] }; }),
+    ]).then(([fv, a, s, c]) => {
+      setFavs(fv); setAlerts(a); setSearches(s); setConvs(c.items ?? []);
+      setFalhas(f);
     }).finally(() => setLoading(false));
   }, [token, isCustomer]);
 
@@ -96,6 +103,7 @@ export default function HeaderActions() {
   const unread = convs.reduce((s, c) => s + (c.unreadCountCustomer ?? 0), 0);
   const reached = alerts.filter((a) => Number(a.vehicle.price) <= Number(a.targetPrice));
   const newSearch = searches.filter((s) => s.newCount > 0);
+  const falhaNotif = falhas.has('alerts') || falhas.has('searches') || falhas.has('convs');
   const notifCount = reached.length + newSearch.length + convs.filter((c) => (c.unreadCountCustomer ?? 0) > 0).length;
 
   const toggle = (p: 'fav' | 'notif' | 'chat') => setPanel((cur) => (cur === p ? null : p));
@@ -107,7 +115,9 @@ export default function HeaderActions() {
         <IconBtn Icon={Heart} count={favs.length} active={panel === 'fav'} onClick={() => toggle('fav')} />
         {panel === 'fav' && (
           <Dropdown title="Favoritos" footerHref="/perfil" footerLabel="Ver todos no perfil">
-            {favs.length === 0
+            {falhas.has('fav')
+              ? <Falha onRetry={load} />
+              : favs.length === 0
               ? <Empty text="Nenhum favorito ainda" />
               : favs.slice(0, 6).map((f) => (
                 <Link key={f.vehicle.id} href={`/catalogo/${f.vehicle.tenantId}`} onClick={() => setPanel(null)}
@@ -129,8 +139,9 @@ export default function HeaderActions() {
         <IconBtn Icon={Bell} count={notifCount} active={panel === 'notif'} onClick={() => toggle('notif')} />
         {panel === 'notif' && (
           <Dropdown title="Notificações">
+            {falhaNotif && <Falha onRetry={load} />}
             {notifCount === 0 ? (
-              <Empty text="Tudo em dia! Sem novidades." />
+              falhaNotif ? null : <Empty text="Tudo em dia! Sem novidades." />
             ) : (
               <>
                 {reached.map((a) => (
@@ -175,6 +186,7 @@ export default function HeaderActions() {
         {panel === 'chat' && (
           <Dropdown title="Conversas" footerHref="/perfil" footerLabel="Ver no perfil">
             {loading ? <div className="py-6 flex justify-center"><Loader2 size={18} className="animate-spin text-slate-500" /></div>
+              : falhas.has('convs') ? <Falha onRetry={load} />
               : convs.length === 0 ? <Empty text="Nenhuma conversa ainda" />
               : convs.map((c) => {
                 const last = c.messages[0];
@@ -247,4 +259,13 @@ function Thumb({ v }: { v: SmallVehicle }) {
 }
 function Empty({ text }: { text: string }) {
   return <p className="text-xs txt-tenue text-center py-6 px-3">{text}</p>;
+}
+
+function Falha({ onRetry }: { onRetry: () => void }) {
+  return (
+    <p className="text-xs text-rose-400 text-center py-4 px-3">
+      Não foi possível carregar.{' '}
+      <button onClick={onRetry} className="font-semibold underline">Tentar novamente</button>
+    </p>
+  );
 }

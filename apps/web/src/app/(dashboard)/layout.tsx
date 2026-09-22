@@ -63,7 +63,11 @@ function useLeadsBadge(token: string | null) {
       setBadge(leads);
       setApptBadge(appts);
       setChatBadge(msgs);
-    } catch { /* ignora erros silenciosamente */ }
+    } catch {
+      // Polling de fundo a cada 30s só para os badges da sidebar. Falhar mantém
+      // o último número, e cada tela carrega (e mostra o erro de) seus dados.
+      // Avisar aqui repetiria o erro a cada ciclo.
+    }
   }, [token, prev]);
 
   useEffect(() => {
@@ -123,6 +127,7 @@ function useAnnouncement() {
   useEffect(() => {
     api<Announcement | null>('/admin/announcements/active', {})
       .then((data) => { if (data) setAnn(data); })
+      // Aviso global é opcional: sem ele a faixa simplesmente não aparece.
       .catch(() => null);
   }, []);
 

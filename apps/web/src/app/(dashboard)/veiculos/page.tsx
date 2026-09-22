@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Plus, Search, Car, FileSpreadsheet, Eye, Heart } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
+import { ErroAoCarregar } from '@/components/ErroAoCarregar';
 import { cn } from '@/lib/utils';
 import VehicleImportModal from '@/components/VehicleImportModal';
 
@@ -51,15 +52,18 @@ export default function VehiclesPage() {
   const [loading, setLoading] = useState(true);
   const [showImport, setShowImport] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [erro, setErro] = useState<unknown>(null);
 
   useEffect(() => {
     if (!token) return;
     setLoading(true);
+    setErro(null);
     const params = new URLSearchParams({ page: String(page), perPage: '20', status: 'available' });
     if (q) params.set('q', q);
     api<VehicleList>(`/vehicles?${params}`, { token })
       .then(setData)
-      .catch(console.error)
+      // Antes ia só para o console e a tela dizia "Nenhum veículo cadastrado".
+      .catch((e) => { setData(null); setErro(e); })
       .finally(() => setLoading(false));
   }, [token, page, q, refreshKey]);
 
@@ -70,7 +74,7 @@ export default function VehiclesPage() {
         <div>
           <h1 className="text-2xl font-bold">Veículos</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            {data ? `${data.meta.total} veículos cadastrados` : 'Carregando…'}
+            {data ? `${data.meta.total} veículos cadastrados` : erro ? '—' : 'Carregando…'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -118,6 +122,8 @@ export default function VehiclesPage() {
         <div className="flex items-center justify-center h-48">
           <p className="text-slate-400 text-sm">Carregando veículos…</p>
         </div>
+      ) : erro ? (
+        <ErroAoCarregar erro={erro} onTentarNovamente={() => setRefreshKey((k) => k + 1)} contexto="os veículos" />
       ) : data && data.items.length > 0 ? (
         <>
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">

@@ -26,6 +26,7 @@ export default function ImpersonatePage() {
       setSession(token, user);
       router.replace('/dashboard');
     } catch {
+      // Parâmetro `user` malformado: não há sessão para gravar.
       router.replace('/login');
     }
   }, [params, router, setSession]);

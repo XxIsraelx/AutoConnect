@@ -82,7 +82,7 @@ export default function CustomerSignupPage() {
         }));
       }
     } catch {
-      // ignora erros de CEP
+      // ViaCEP é só autopreenchimento: se falhar, o endereço é digitado à mão.
     } finally {
       setLoadingCep(false);
     }

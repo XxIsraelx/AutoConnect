@@ -10,7 +10,7 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
 import ProposalBubble, { getProposal } from '@/components/chat/ProposalBubble';
-import { textoDoErro } from '@/components/ErroAoCarregar';
+import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 
 /* ── Tipos ─────────────────────────────────────────────── */
 interface Conversation {
@@ -105,6 +105,8 @@ export default function ChatPage() {
   const [loadingConvs,  setLoadingConvs]  = useState(true);
   const [erroConvs,     setErroConvs]     = useState<unknown>(null);
   const [loadingMsgs,   setLoadingMsgs]   = useState(false);
+  const [erroMsgs,      setErroMsgs]      = useState<unknown>(null);
+  const [tentativaMsgs, setTentativaMsgs] = useState(0);
   const [sending,       setSending]       = useState(false);
   const [typingUsers,   setTypingUsers]   = useState<Set<string>>(new Set());
   const [showProposal,  setShowProposal]  = useState(false);
@@ -161,11 +163,15 @@ export default function ChatPage() {
   useEffect(() => {
     if (!activeId || !token) { setMessages([]); return; }
     setLoadingMsgs(true);
+    setErroMsgs(null);
     api<Message[]>(`/conversations/${activeId}/messages`, { token })
       .then(setMessages)
-      .catch(() => null)
+      // Antes o erro era engolido: ficavam na tela as mensagens da conversa
+      // anterior, ou "Nenhuma mensagem ainda" — como se o cliente não tivesse
+      // escrito nada.
+      .catch((err) => { setMessages([]); setErroMsgs(err); })
       .finally(() => setLoadingMsgs(false));
-  }, [activeId, token]);
+  }, [activeId, token, tentativaMsgs]);
 
   /* Socket.io */
   useEffect(() => {
@@ -348,6 +354,12 @@ export default function ChatPage() {
                 <div className="flex items-center justify-center h-full text-slate-400">
                   <Loader2 size={20} className="animate-spin" />
                 </div>
+              ) : erroMsgs ? (
+                <ErroAoCarregar
+                  erro={erroMsgs}
+                  onTentarNovamente={() => setTentativaMsgs((n) => n + 1)}
+                  contexto="as mensagens"
+                />
               ) : messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
                   <AlertCircle size={24} />

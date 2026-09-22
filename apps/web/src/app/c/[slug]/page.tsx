@@ -19,14 +19,17 @@ interface Dealer {
   }[];
 }
 
+/**
+ * `null` só quando a API diz que a loja não existe (404). Antes qualquer falha
+ * — rede, 5xx — também virava `null`, e a página de uma loja real respondia
+ * "não encontrada" ao cliente dela. Agora a falha sobe para o `error.tsx`, que
+ * oferece tentar de novo.
+ */
 async function fetchDealer(slug: string): Promise<Dealer | null> {
-  try {
-    const res = await fetch(`${API}/catalog/slug/${slug}`, { next: { revalidate: 60 } });
-    if (!res.ok) return null;
-    return res.json() as Promise<Dealer>;
-  } catch {
-    return null;
-  }
+  const res = await fetch(`${API}/catalog/slug/${slug}`, { next: { revalidate: 60 } });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Falha ao buscar a concessionária (HTTP ${res.status})`);
+  return res.json() as Promise<Dealer>;
 }
 
 /* ── generateMetadata (SSR) ─────────────────────────────── */

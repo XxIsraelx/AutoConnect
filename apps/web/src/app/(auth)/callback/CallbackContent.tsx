@@ -28,6 +28,8 @@ export default function AuthCallbackPage() {
         setSession(token, user);
         router.replace(redirect);
       })
+      // Token do Google sem usuário válido: a sessão não é gravada e a pessoa
+      // volta ao login, onde pode tentar de novo — não há o que exibir aqui.
       .catch(() => router.replace('/login'));
   }, [params, router, setSession]);
 

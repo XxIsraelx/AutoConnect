@@ -28,7 +28,10 @@ const SCRIPT_TEMA = `
       (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
     document.documentElement.classList.toggle('dark', escuro);
     document.documentElement.style.colorScheme = escuro ? 'dark' : 'light';
-  } catch (e) {}
+  } catch (e) {
+    // localStorage bloqueado (modo privado, cookies desligados): só perde a
+    // aplicação antecipada do tema. Deixar o erro subir não ajudaria ninguém.
+  }
 })();
 `;
 

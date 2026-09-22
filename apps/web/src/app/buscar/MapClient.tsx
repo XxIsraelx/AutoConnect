@@ -320,6 +320,8 @@ function ClusterLayer({ pins, selectedId, matchingTenantIds, onSelect }: Cluster
             previewCache.current.set(pin.tenant.id, v);
             marker.setTooltipContent(tooltipHtml(pin, v));
           })
+          // Prévia do tooltip é enfeite: sem ela o tooltip fica só com a loja.
+          // Guardar null evita refazer a chamada a cada hover.
           .catch(() => previewCache.current.set(pin.tenant.id, null));
       });
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
+import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import CustoDoVeiculo from './CustoDoVeiculo';
 import ConsultaVeicular from './ConsultaVeicular';
 import NegocioDoVeiculo from './NegocioDoVeiculo';
@@ -81,20 +82,27 @@ function ImageManager({ vehicleId }: { vehicleId: string }) {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string[]>([]);
   const [error, setError]       = useState<string | null>(null);
+  const [erroCarga, setErroCarga] = useState<unknown>(null);
   const inputRef                = useRef<HTMLInputElement>(null);
 
   // Carrega imagens do veículo
-  useEffect(() => {
+  const carregar = useCallback(() => {
     if (!token) return;
+    setLoading(true);
+    setErroCarga(null);
     api<VehicleDetail>(`/vehicles/${vehicleId}`, { token })
       .then(v => setImages(v.images.sort((a, b) => {
         if (a.isCover && !b.isCover) return -1;
         if (!a.isCover && b.isCover) return 1;
         return a.position - b.position;
       })))
-      .catch(() => setImages([]))
+      // Antes virava "sem fotos": a próxima foto enviada saía marcada como
+      // capa (isFirst) por cima da capa real. Com erro, o upload fica oculto.
+      .catch(setErroCarga)
       .finally(() => setLoading(false));
   }, [vehicleId, token]);
+
+  useEffect(() => { carregar(); }, [carregar]);
 
   async function handleFiles(files: FileList | File[]) {
     if (!token) return;
@@ -168,6 +176,8 @@ function ImageManager({ vehicleId }: { vehicleId: string }) {
           <Loader2 size={14} className="animate-spin" />
           Carregando imagens…
         </div>
+      ) : erroCarga ? (
+        <ErroAoCarregar erro={erroCarga} onTentarNovamente={carregar} contexto="as fotos" />
       ) : (
         <>
           {/* Grid de imagens existentes */}
@@ -296,13 +306,30 @@ function brl(v: number | null | undefined) {
 function PriceHistory({ vehicleId }: { vehicleId: string }) {
   const token = useAuthStore((s) => s.token);
   const [events, setEvents] = useState<PriceEvent[] | null>(null);
+  const [erro, setErro] = useState<unknown>(null);
+  const [tentativa, setTentativa] = useState(0);
 
   useEffect(() => {
     if (!token) return;
+    setErro(null);
     api<PriceEvent[]>(`/vehicles/${vehicleId}/history`, { token })
       .then((all) => setEvents(all.filter((e) => e.eventType === 'price_change')))
-      .catch(() => setEvents([]));
-  }, [vehicleId, token]);
+      // A seção some quando não há mudança de preço; sem este aviso, uma
+      // falha ficaria idêntica a "o preço nunca mudou".
+      .catch(setErro);
+  }, [vehicleId, token, tentativa]);
+
+  if (erro) {
+    return (
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
+        <h2 className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+          <History size={16} className="text-slate-400" />
+          Histórico de preço
+        </h2>
+        <ErroAoCarregar erro={erro} onTentarNovamente={() => setTentativa((n) => n + 1)} contexto="o histórico de preço" />
+      </section>
+    );
+  }
 
   if (!events || events.length === 0) return null;
 
@@ -364,6 +391,10 @@ export default function EditVehiclePage() {
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
+  const [erroVeiculo, setErroVeiculo] = useState<unknown>(null);
+  const [erroCatalogo, setErroCatalogo] = useState<string | null>(null);
+  const [tentativa, setTentativa] = useState(0);
+  const [tentativaCatalogo, setTentativaCatalogo] = useState(0);
 
   const [form, setForm] = useState({
     brandId: '', modelId: '', versionName: '',
@@ -372,9 +403,18 @@ export default function EditVehiclePage() {
     price: '', promoPrice: '', description: '',
   });
 
+  // Sem a lista de marcas o <select> não tem a opção salva e o "required"
+  // barra o envio sem explicar por quê — então o motivo aparece no form.
+  // Efeito separado do veículo: tentar de novo aqui não apaga o que foi editado.
+  useEffect(() => {
+    setErroCatalogo(null);
+    api<Brand[]>('/catalog/brands').then(setBrands)
+      .catch((e) => setErroCatalogo(textoDoErro(e)));
+  }, [tentativaCatalogo]);
+
   useEffect(() => {
     if (!token) return;
-    api<Brand[]>('/catalog/brands').then(setBrands).catch(console.error);
+    setErroVeiculo(null);
     api<VehicleDetail>(`/vehicles/${params.id}`, { token }).then((v) => {
       setVehicle(v);
       setForm({
@@ -384,13 +424,15 @@ export default function EditVehiclePage() {
         transmission: v.transmission ?? '', condition: v.condition, status: v.status,
         price: v.price, promoPrice: v.promoPrice ?? '', description: v.description ?? '',
       });
-    }).catch(console.error);
-  }, [token, params.id]);
+    // Antes ia só para o console e a tela ficava no spinner para sempre.
+    }).catch(setErroVeiculo);
+  }, [token, params.id, tentativa]);
 
   useEffect(() => {
     if (!form.brandId) { setModels([]); return; }
-    api<Model[]>(`/catalog/brands/${form.brandId}/models`).then(setModels).catch(console.error);
-  }, [form.brandId]);
+    api<Model[]>(`/catalog/brands/${form.brandId}/models`).then(setModels)
+      .catch((e) => setErroCatalogo(textoDoErro(e)));
+  }, [form.brandId, tentativaCatalogo]);
 
   function set(field: string, value: string | number) {
     setForm((f) => {
@@ -439,6 +481,17 @@ export default function EditVehiclePage() {
       setError(err instanceof Error ? err.message : 'Erro ao excluir');
       setDeleting(false);
     }
+  }
+
+  if (erroVeiculo) {
+    return (
+      <div className="p-6 max-w-3xl mx-auto">
+        <Link href="/veiculos" className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700">
+          <ChevronLeft size={16} /> Voltar para veículos
+        </Link>
+        <ErroAoCarregar erro={erroVeiculo} onTentarNovamente={() => setTentativa((n) => n + 1)} contexto="o veículo" />
+      </div>
+    );
   }
 
   if (!vehicle) {
@@ -496,6 +549,14 @@ export default function EditVehiclePage() {
               </select>
             </div>
           </div>
+          {erroCatalogo && (
+            <p className="text-xs text-red-500 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg px-3 py-2">
+              Não foi possível carregar marcas e modelos: {erroCatalogo}{' '}
+              <button type="button" onClick={() => setTentativaCatalogo((n) => n + 1)} className="font-medium underline">
+                Tentar novamente
+              </button>
+            </p>
+          )}
           <div>
             <label className="block text-sm font-medium mb-1.5">Versão</label>
             <input type="text" value={form.versionName} onChange={(e) => set('versionName', e.target.value)}

@@ -7,7 +7,7 @@ import {
   Eye, Bookmark, MessageSquare, Pencil, KeyRound, Camera, X, Check,
   MapPin, Phone, Mail, Clock, Sparkles, ChevronRight, LogOut,
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { useRouter } from 'next/navigation';
 import ChatDrawer from '@/components/ChatDrawer';
@@ -585,15 +585,23 @@ function EditProfileModal({ profile, token, onClose, onSaved }: { profile: FullP
     postalCode: profile.customerProfile?.postalCode ?? '',
   });
   const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const input = 'w-full rounded-xl sup-base border borda px-3 py-2.5 text-sm txt-forte outline-none focus:border-blue-500 transition';
 
   async function save() {
     setSaving(true);
+    setErr('');
     try {
       const p = await api<FullProfile>('/users/me', { token, method: 'PATCH', body: form });
       onSaved(p);
-    } catch { setSaving(false); }
+    } catch (e) {
+      // Antes o botão só voltava ao normal e o modal seguia aberto, sem dizer
+      // que nada foi salvo (ex.: CPF recusado pela validação).
+      const campos = e instanceof ApiError ? e.fieldErrors.map((f) => f.message) : [];
+      setErr(campos.length > 0 ? campos.join(' ') : textoDoErro(e));
+      setSaving(false);
+    }
   }
 
   return (
@@ -610,6 +618,7 @@ function EditProfileModal({ profile, token, onClose, onSaved }: { profile: FullP
           <Labeled label="CEP"><input value={form.postalCode} onChange={(e) => set('postalCode', e.target.value)} className={input} /></Labeled>
         </div>
       </div>
+      {err && <p className="text-xs text-rose-400 mt-3">{err}</p>}
       <div className="flex gap-2 mt-5">
         <button onClick={onClose} className="flex-1 py-2.5 text-sm font-medium txt-fraco border borda rounded-xl hover:sup-tenue">Cancelar</button>
         <button onClick={save} disabled={saving} className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-bold bg-blue-600 hover:bg-blue-500 rounded-xl transition disabled:opacity-50">

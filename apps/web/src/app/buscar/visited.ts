@@ -9,6 +9,7 @@ export function getVisited(): Set<string> {
     const raw = window.localStorage.getItem(KEY);
     return new Set(raw ? (JSON.parse(raw) as string[]) : []);
   } catch {
+    // localStorage bloqueado ou JSON corrompido: sem marcas de "visitada".
     return new Set();
   }
 }

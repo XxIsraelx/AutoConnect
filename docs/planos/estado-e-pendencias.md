@@ -50,14 +50,32 @@ Auditadas em 04/09/2026, contra o repositório.
   Fixado em `test/cron-uma-replica.e2e-spec.ts`.
 - **API e banco em regiões diferentes** (`us-east4` ↔ `sa-east-1`), ~0,6s por
   consulta.
-- **`SUPABASE_SERVICE_ROLE_KEY` no Railway**: definida, mas a validade da chave
-  nunca foi verificada de forma independente — chave errada só falha no upload.
+- ~~**`SUPABASE_SERVICE_ROLE_KEY` no Railway**~~ — verificada em 22/09/2026: o
+  `DocumentosStorage` confere a chave na subida (`getBucket` no bucket privado)
+  e o deploy de produção logou `Bucket privado "documentos" acessível.` Chave
+  errada passa a aparecer como erro no log de boot.
 
 **Menores**
-- **Google OAuth em produção**: falta registrar o redirect URI e publicar o app
-  no Console.
-- **Um `catch` silencioso deliberado** em `SeloProcedencia`: falha no selo não
-  pode virar erro na tela de venda. Está comentado no código.
+- **Google OAuth em produção** (conferido em 22/09/2026): o redirect URI de
+  produção **já está registrado** — o Google aceita o fluxo sem
+  `redirect_uri_mismatch`, e os domínios do Railway estão autorizados. Falta
+  **publicar o app**: está em "Testando" com 0 usuários de teste, então hoje
+  ninguém entra com Google. O botão "Publicar app" fica bloqueado até o
+  Branding ter links de **página inicial, Política de Privacidade e Termos de
+  Serviço** — e o web não tem essas páginas. Escopos só `email profile`
+  (não sensíveis): publicar não exige verificação do Google.
+- **`catch` silenciosos deliberados** (~20): `SeloProcedencia`, autopreenchimento
+  de CEP/CNPJ, `localStorage`, prévia do tooltip no mapa, polling dos badges da
+  sidebar, "visto recentemente", corações de favorito. Nenhum esconde dado
+  que o usuário esperaria ver; cada um tem o porquê comentado no código.
+- ~~**Erro engolido no resto do app**~~ — resolvido em 22/09/2026:
+  `configuracoes` não abre mais o formulário com valores padrão quando a carga
+  falha (salvar sobrescreveria a configuração real); chat e `ChatDrawer`,
+  `veiculos` (lista, edição, fotos, histórico de preço, marcas/modelos, FIPE
+  no cadastro), `/buscar` (busca de veículos, estoque da loja, filtro de marca,
+  buscas salvas, alerta de preço, favorito otimista, painéis do cabeçalho),
+  catálogo público (veículo, loja, estoque), editar perfil e `/c/[slug]` (5xx
+  deixou de virar 404) mostram a falha.
 - ~~**`/relatorios`, `/agendamentos` e `/equipe` em telas pequenas**~~ —
   revisados em 22/09/2026 a 375px, sem rolagem horizontal da página: filtros
   quebram linha, o calendário semanal rola dentro do próprio contêiner, a
@@ -106,7 +124,7 @@ Duas correções ao plano já registradas **dentro dele**:
 ## Próximos passos sugeridos
 
 1. **Revisão jurídica do template de contrato** — bloqueia uso real
-2. **Concluir o Google OAuth** no Console
+2. **Concluir o Google OAuth**: páginas de privacidade e termos (LGPD, revisão jurídica), links no Branding e "Publicar app"
 3. **Fase 3** do plano: consultas veiculares (placa/chassi) com cache por
    custo de chamada, e assinatura externa atrás da interface que já existe
 4. ~~**Revisar responsividade** de `/relatorios`, `/agendamentos` e `/equipe`~~ — feito em 22/09/2026

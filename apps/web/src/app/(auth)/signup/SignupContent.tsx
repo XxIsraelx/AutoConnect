@@ -276,6 +276,8 @@ export default function SignupPage() {
         };
       });
     } catch {
+      // BrasilAPI fora do ar: só não autopreenche. O CNPJ não é recusado por
+      // isso, e a pessoa segue digitando os campos à mão.
       setCnpjStatus('idle');
     }
   }, []);
@@ -301,7 +303,9 @@ export default function SignupPage() {
           state:        ou(data.uf,         f.state),
         }));
       }
-    } catch { /* ignora */ }
+    } catch {
+      // ViaCEP é só autopreenchimento: se falhar, o endereço é digitado à mão.
+    }
     finally { setLoadingCep(false); }
   }
 

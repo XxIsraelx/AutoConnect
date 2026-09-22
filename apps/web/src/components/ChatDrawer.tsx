@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { io, Socket } from 'socket.io-client';
 import { Loader2, X, Send } from 'lucide-react';
 import { api } from '@/lib/api';
+import { ErroAoCarregar } from '@/components/ErroAoCarregar';
 import ProposalBubble, { getProposal } from '@/components/chat/ProposalBubble';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
@@ -39,10 +40,23 @@ export default function ChatDrawer({
   const socketRef = useRef<Socket | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    api<ChatMessage[]>(`/conversations/${conversationId}/messages`, { token })
-      .then(setMessages).catch(() => {}).finally(() => setLoading(false));
+  const [erro, setErro] = useState<unknown>(null);
+  const [tentativa, setTentativa] = useState(0);
 
+  // Histórico separado do socket: "Tentar novamente" rebusca só as mensagens,
+  // sem derrubar a conexão em tempo real.
+  useEffect(() => {
+    setLoading(true);
+    setErro(null);
+    api<ChatMessage[]>(`/conversations/${conversationId}/messages`, { token })
+      .then(setMessages)
+      // Engolir o erro mostrava "Nenhuma mensagem ainda. Diga olá!" numa
+      // conversa que tem histórico.
+      .catch(setErro)
+      .finally(() => setLoading(false));
+  }, [conversationId, token, tentativa]);
+
+  useEffect(() => {
     const socket = io(`${API_URL.replace('/api/v1', '')}/chat`, { auth: { token }, transports: ['websocket'] });
     socketRef.current = socket;
     socket.on('conversation:message', (m: ChatMessage) => setMessages((p) => [...p, m]));
@@ -84,6 +98,12 @@ export default function ChatDrawer({
         <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
           {loading ? (
             <div className="flex justify-center pt-10"><Loader2 size={22} className="animate-spin text-slate-500" /></div>
+          ) : erro ? (
+            <ErroAoCarregar
+              erro={erro}
+              onTentarNovamente={() => setTentativa((n) => n + 1)}
+              contexto="as mensagens"
+            />
           ) : messages.length === 0 ? (
             <p className="text-center text-xs txt-tenue pt-10">Nenhuma mensagem ainda. Diga olá! 👋</p>
           ) : messages.map((m) => {

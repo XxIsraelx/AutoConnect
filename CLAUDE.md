@@ -405,13 +405,15 @@ O porquê de cada regra: `docs/decisoes/vendas-e-contrato.md`.
 - Sidebar no layout do dashboard: polling de leads novos a cada 30s via `/tenant/stats`.
   No mobile ela vira gaveta (`fixed` + `translate-x`); a partir de `md` é coluna fixa.
 - Falha de carga se mostra com `ErroAoCarregar` (`components/ErroAoCarregar.tsx`,
-  com "Tentar novamente"); falha de ação, inline com `textoDoErro`. Relatórios,
-  agendamentos, equipe e leads já seguem isso — nunca `catch {}` em tela nova.
-- ⚠ **Dívida conhecida:** restam 7 blocos `catch {}` sem aviso (5 deliberados:
-  script de tema, `buscar/visited.ts` ×2, CEP do cadastro ×2) e ~18
-  `.catch(() => {})`. Os que ainda enganam o usuário: `configuracoes` (carga
-  falha e o formulário abre com o padrão), mensagens do `chat`/`ChatDrawer`,
-  imagens em `veiculos/[id]`, salvar busca em `buscar/Sidebar.tsx`.
+  com "Tentar novamente"); falha de ação, inline com `textoDoErro`. Todas as
+  telas seguem isso — nunca `catch {}` em tela nova. Formulário que edita dado
+  existente **não renderiza** se a carga falhou (ver `configuracoes`): aberto
+  com os valores padrão, "Salvar" gravaria o padrão por cima dos dados reais.
+- `catch` silencioso só quando a falha não esconde nada que o usuário esperaria
+  ver (autopreenchimento de CEP/CNPJ, `localStorage`, `SeloProcedencia`, prévia
+  do tooltip no mapa, polling dos badges, "visto recentemente"). Restam ~20,
+  todos com o porquê comentado na linha — `catch` novo sem aviso precisa do
+  mesmo comentário.
 
 ### Banco
 - Schema único (shared schema), isolamento por `tenant_id`

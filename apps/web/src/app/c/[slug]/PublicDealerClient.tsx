@@ -119,17 +119,23 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
     if (!token) return;
     api<string[]>('/catalog/favorites/ids', { token })
       .then((ids) => setFavorites(new Set(ids)))
+      // Só pinta os corações; favoritar de novo é idempotente na API.
       .catch(() => null);
   }, [token]);
 
   async function toggleFavorite(vehicleId: string) {
     if (!token) return;
-    if (favorites.has(vehicleId)) {
-      await api(`/catalog/favorites/${vehicleId}`, { token, method: 'DELETE' });
-      setFavorites((prev) => { const next = new Set(prev); next.delete(vehicleId); return next; });
-    } else {
-      await api(`/catalog/favorites/${vehicleId}`, { token, method: 'POST' });
-      setFavorites((prev) => new Set([...prev, vehicleId]));
+    try {
+      if (favorites.has(vehicleId)) {
+        await api(`/catalog/favorites/${vehicleId}`, { token, method: 'DELETE' });
+        setFavorites((prev) => { const next = new Set(prev); next.delete(vehicleId); return next; });
+      } else {
+        await api(`/catalog/favorites/${vehicleId}`, { token, method: 'POST' });
+        setFavorites((prev) => new Set([...prev, vehicleId]));
+      }
+    } catch {
+      // O coração só muda depois do sucesso: na falha ele fica como estava, o
+      // que já é o retorno certo. O catch evita a promise rejeitada solta.
     }
   }
 

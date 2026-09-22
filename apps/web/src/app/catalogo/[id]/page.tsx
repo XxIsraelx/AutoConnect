@@ -17,6 +17,8 @@ async function fetchDealerMeta(tenantId: string): Promise<DealerMeta | null> {
     if (!res.ok) return null;
     return res.json() as Promise<DealerMeta>;
   } catch {
+    // Só alimenta o <title> e a descrição; sem isso cai no título genérico
+    // e a página em si (client) carrega e trata o próprio erro.
     return null;
   }
 }

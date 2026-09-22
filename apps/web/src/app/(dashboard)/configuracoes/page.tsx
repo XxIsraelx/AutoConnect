@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Building2, Phone, Globe, Palette, MapPin,
   Mail, Hash, Check, Loader2, AlertCircle, Save, Clock, Repeat,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
+import { ErroAoCarregar } from '@/components/ErroAoCarregar';
 import {
   type BusinessHours, defaultBusinessHours, hasBusinessHours, WEEKDAYS_LONG,
 } from '@/lib/businessHours';
@@ -193,6 +194,7 @@ export default function ConfiguracoesPage() {
 
   const [tenant, setTenant]   = useState<TenantFull | null>(null);
   const [loading, setLoading] = useState(true);
+  const [erro, setErro]       = useState<unknown>(null);
 
   /* Forms separados para cada seção */
   const [tenantForm, setTenantForm] = useState({
@@ -217,8 +219,10 @@ export default function ConfiguracoesPage() {
   }
 
   /* Carrega dados */
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!token) return;
+    setLoading(true);
+    setErro(null);
     api<{ tenant: TenantFull }>('/tenant/me', { token })
       .then(({ tenant: t }) => {
         setTenant(t);
@@ -250,13 +254,19 @@ export default function ConfiguracoesPage() {
           setHours(hasBusinessHours(b.businessHours) ? b.businessHours : defaultBusinessHours());
         }
       })
-      .catch(() => {})
+      // Sem os dados reais o formulário abriria com os valores padrão, e um
+      // "Salvar" sobrescreveria a configuração da loja com eles. Por isso o
+      // erro substitui o formulário inteiro (ver o render abaixo).
+      .catch((err) => { setTenant(null); setErro(err); })
       .finally(() => setLoading(false));
   }, [token]);
 
+  useEffect(() => { load(); }, [load]);
+
   async function saveTenant(e: React.FormEvent) {
     e.preventDefault();
-    if (!token) return;
+    // Sem o tenant carregado o form tem só os valores padrão: nunca salvar.
+    if (!token || !tenant) return;
     setSavingTenant(true);
     try {
       const updated = await api<TenantFull>('/tenant/me', {
@@ -317,6 +327,20 @@ export default function ConfiguracoesPage() {
     return (
       <div className="p-8 flex items-center justify-center h-64">
         <Loader2 size={24} className="animate-spin text-slate-400" />
+      </div>
+    );
+  }
+
+  if (erro || !tenant) {
+    return (
+      <div className="p-8 max-w-3xl">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Configurações</h1>
+        <ErroAoCarregar
+          erro={erro ?? new Error('Os dados da concessionária não vieram na resposta.')}
+          onTentarNovamente={load}
+          carregando={loading}
+          contexto="as configurações da concessionária"
+        />
       </div>
     );
   }

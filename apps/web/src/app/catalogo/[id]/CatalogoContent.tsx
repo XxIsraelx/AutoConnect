@@ -11,9 +11,9 @@ import {
   Fuel, Gauge, Settings2, DoorOpen,
   Heart, MessageCircle, Calculator, Scale, CalendarPlus, Repeat, ArrowRight, Check, AlertCircle,
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
-import { textoDoErro } from '@/components/ErroAoCarregar';
+import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import ChatDrawer from '@/components/ChatDrawer';
 import ScheduleModal, { type ScheduleBranch } from '@/components/ScheduleModal';
 import TradeInModal from '@/components/TradeInModal';
@@ -610,6 +610,8 @@ function VehicleDrawer({
   const user  = useAuthStore(s => s.user);
   const [vehicle, setVehicle]   = useState<PublicVehicleDetail | null>(null);
   const [loading, setLoading]   = useState(true);
+  const [erroVeiculo, setErroVeiculo] = useState<unknown>(null);
+  const [tentativa, setTentativa] = useState(0);
   const [imgIdx, setImgIdx]     = useState(0);
   const [showCalc, setShowCalc] = useState(false);
   const [showLead, setShowLead] = useState(false);
@@ -640,15 +642,22 @@ function VehicleDrawer({
 
   useEffect(() => {
     setLoading(true);
+    setErroVeiculo(null);
     setImgIdx(0);
     setShowCalc(false);
     api<PublicVehicleDetail>(`/catalog/vehicles/${vehicleId}`)
       .then(setVehicle)
-      .catch(() => setVehicle(null))
+      // 404 é "não encontrado" de verdade; qualquer outra falha não pode dizer
+      // isso ao cliente, que desistiria de um carro que está à venda.
+      .catch((e) => {
+        setVehicle(null);
+        if (!(e instanceof ApiError && e.status === 404)) setErroVeiculo(e);
+      })
       .finally(() => setLoading(false));
-    // registra "visto recentemente" para clientes logados
+    // "Visto recentemente" é histórico de conveniência do cliente: se não
+    // registrar, só deixa de aparecer na lista dele. Não vale interromper.
     if (token) api(`/catalog/views/${vehicleId}`, { method: 'POST', token }).catch(() => {});
-  }, [vehicleId, token]);
+  }, [vehicleId, token, tentativa]);
 
   const imgs = vehicle?.images ?? [];
 
@@ -716,7 +725,13 @@ function VehicleDrawer({
           </div>
         )}
 
-        {!loading && !vehicle && (
+        {!loading && !vehicle && !!erroVeiculo && (
+          <div className="flex-1 flex items-center justify-center">
+            <ErroAoCarregar erro={erroVeiculo} onTentarNovamente={() => setTentativa(n => n + 1)} contexto="o veículo" />
+          </div>
+        )}
+
+        {!loading && !vehicle && !erroVeiculo && (
           <div className="flex-1 flex items-center justify-center p-8 text-center">
             <div>
               <Car size={48} className="text-slate-300 dark:text-white/10 mx-auto mb-3" />
@@ -1015,6 +1030,9 @@ export default function CatalogoContent() {
 
   const [dealer, setDealer]               = useState<PublicDealer | null>(null);
   const [loadingDealer, setLoadingDealer] = useState(true);
+  const [erroDealer, setErroDealer]       = useState<unknown>(null);
+  const [tentativaDealer, setTentativaDealer] = useState(0);
+  const [erroVeiculos, setErroVeiculos]   = useState<unknown>(null);
 
   const [vehicles, setVehicles]           = useState<PublicVehicle[]>([]);
   const [total, setTotal]                 = useState(0);
@@ -1048,16 +1066,26 @@ export default function CatalogoContent() {
 
   /* ── Carrega dealer ──────────────────────────────────────── */
   useEffect(() => {
+    setLoadingDealer(true);
+    setErroDealer(null);
     api<PublicDealer>(`/catalog/dealer/${tenantId}`)
       .then(setDealer)
-      .catch(() => setDealer(null))
+      // Antes o cabeçalho ficava com "??" e sem nome, sem dizer por quê.
+      .catch((e) => { setDealer(null); setErroDealer(e); })
       .finally(() => setLoadingDealer(false));
+  }, [tenantId, tentativaDealer]);
+
+  // Só alimenta o filtro opcional de marca; se falhar, o filtro fica vazio e
+  // nenhum resultado fica errado.
+  useEffect(() => {
     api<PublicBrand[]>('/catalog/brands').then(setBrands).catch(() => {});
-  }, [tenantId]);
+  }, []);
 
   /* ── Carrega favoritos (se logado) ─────────────────────── */
   useEffect(() => {
     if (!user || !token) return;
+    // Só pinta os corações; se falhar, aparecem vazios e favoritar de novo é
+    // idempotente na API.
     api<string[]>('/catalog/favorites/ids', { token })
       .then(ids => setFavIds(new Set(ids)))
       .catch(() => {});
@@ -1105,6 +1133,7 @@ export default function CatalogoContent() {
         const detail = await api<PublicVehicleDetail>(`/catalog/vehicles/${vehicle.id}`);
         setCompareVehicles(prev => [...prev, detail]);
       } catch {
+        // Desfaz a marcação: o veículo visivelmente não entra no comparador.
         setCompareIds(prev => { const n = new Set(prev); n.delete(vehicle.id); return n; });
       }
     }
@@ -1125,6 +1154,7 @@ export default function CatalogoContent() {
     if (condition)      qParams.set('condition', condition);
 
     setLoadingV(true);
+    setErroVeiculos(null);
     api<VehiclesPage>(`/catalog/vehicles?${qParams}`)
       .then(data => {
         if (resetPage) {
@@ -1134,7 +1164,8 @@ export default function CatalogoContent() {
         }
         setTotal(data.total);
       })
-      .catch(() => {})
+      // Antes a falha aparecia como "Sem veículos publicados".
+      .catch((e) => { if (resetPage) { setVehicles([]); setTotal(0); } setErroVeiculos(e); })
       .finally(() => setLoadingV(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, search, brandId, condition, page]);
@@ -1160,9 +1191,10 @@ export default function CatalogoContent() {
     if (condition)      qParams.set('condition', condition);
 
     setLoadingV(true);
+    setErroVeiculos(null);
     api<VehiclesPage>(`/catalog/vehicles?${qParams}`)
       .then(data => { setVehicles(prev => [...prev, ...data.items]); setTotal(data.total); })
-      .catch(() => {})
+      .catch((e) => { setPage(page); setErroVeiculos(e); })
       .finally(() => setLoadingV(false));
   }
 
@@ -1242,6 +1274,12 @@ export default function CatalogoContent() {
           </a>
         </div>
       </header>
+
+      {!loadingDealer && !dealer && !!erroDealer && (
+        <div className="max-w-6xl mx-auto px-4">
+          <ErroAoCarregar erro={erroDealer} onTentarNovamente={() => setTentativaDealer(n => n + 1)} contexto="a concessionária" />
+        </div>
+      )}
 
       {/* ── HERO DA CONCESSIONÁRIA ────────────────────── */}
       {!loadingDealer && dealer && (
@@ -1401,7 +1439,11 @@ export default function CatalogoContent() {
           </div>
         )}
 
-        {!loadingV && vehicles.length === 0 && (
+        {!loadingV && !!erroVeiculos && vehicles.length === 0 && (
+          <ErroAoCarregar erro={erroVeiculos} onTentarNovamente={() => fetchVehicles(true)} contexto="os veículos" />
+        )}
+
+        {!loadingV && !erroVeiculos && vehicles.length === 0 && (
           <div className="flex flex-col items-center py-24 text-center">
             <div className="w-20 h-20 rounded-2xl sup-tenue flex items-center justify-center mb-4">
               <Car size={36} className="text-slate-300 dark:text-white/15" />
@@ -1461,6 +1503,11 @@ export default function CatalogoContent() {
               {loadingV && Array.from({ length: 4 }).map((_, i) => <VehicleCardSkeleton key={`sk-${i}`} />)}
             </div>
 
+            {!!erroVeiculos && vehicles.length > 0 && !loadingV && (
+              <p className="text-center text-xs text-rose-400 mt-8">
+                Não foi possível carregar mais veículos. {textoDoErro(erroVeiculos)}
+              </p>
+            )}
             {vehicles.length < total && !loadingV && (
               <div className="flex justify-center mt-10">
                 <button

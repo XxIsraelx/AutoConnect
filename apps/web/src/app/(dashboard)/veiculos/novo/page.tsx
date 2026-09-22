@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
+import { textoDoErro } from '@/components/ErroAoCarregar';
 
 /* ── Tipos ───────────────────────────────────────────────── */
 interface Brand { id: string; name: string }
@@ -339,17 +340,25 @@ export default function NewVehiclePage() {
   }
 
   /* carrega marcas */
+  // Com a lista vazia por erro, o Combobox oferecia "criar" uma marca que já
+  // existe — duplicando o catálogo global. Por isso a falha aparece no passo 1.
+  const [erroCatalogo, setErroCatalogo] = useState<string | null>(null);
+  const [tentativaCatalogo, setTentativaCatalogo] = useState(0);
   useEffect(() => {
-    api<Brand[]>('/catalog/brands').then(setBrands).catch(console.error);
-  }, []);
+    setErroCatalogo(null);
+    api<Brand[]>('/catalog/brands').then(setBrands)
+      .catch((e) => setErroCatalogo(textoDoErro(e)));
+  }, [tentativaCatalogo]);
 
   /* carrega modelos ao escolher marca */
   useEffect(() => {
     if (!form.brandId) { setModels([]); return; }
     setLoadingModels(true);
     api<Model[]>(`/catalog/brands/${form.brandId}/models`)
-      .then(setModels).catch(console.error).finally(() => setLoadingModels(false));
-  }, [form.brandId]);
+      .then(setModels)
+      .catch((e) => setErroCatalogo(textoDoErro(e)))
+      .finally(() => setLoadingModels(false));
+  }, [form.brandId, tentativaCatalogo]);
 
   /* criar marca/modelo */
   async function createBrand(name: string) {
@@ -368,6 +377,7 @@ export default function NewVehiclePage() {
   /* consulta FIPE ao entrar no passo de preço */
   const [fipe, setFipe] = useState<FipeEstimate | null>(null);
   const [fipeLoading, setFipeLoading] = useState(false);
+  const [erroFipe, setErroFipe] = useState(false);
   const fipeKey = `${form.brandName}|${form.modelName}|${form.versionName}|${form.yearModel}|${form.fuel}`;
   const fipeFetchedKey = useRef('');
 
@@ -378,6 +388,7 @@ export default function NewVehiclePage() {
     fipeFetchedKey.current = fipeKey;
 
     setFipeLoading(true);
+    setErroFipe(false);
     const qs = new URLSearchParams({
       brandName: form.brandName,
       modelName: form.modelName,
@@ -387,7 +398,8 @@ export default function NewVehiclePage() {
     });
     api<FipeEstimate>(`/fipe/estimate?${qs}`, { token })
       .then(setFipe)
-      .catch(() => setFipe(null))
+      // Sem o aviso o card sumia, e a ausência parecia "sem referência".
+      .catch(() => { setFipe(null); setErroFipe(true); })
       .finally(() => setFipeLoading(false));
   }, [step, token, fipeKey, form.brandName, form.modelName, form.versionName, form.yearModel, form.fuel]);
 
@@ -523,6 +535,15 @@ export default function NewVehiclePage() {
               onCreate={createModel}
             />
           </div>
+          {erroCatalogo && (
+            <p className="text-sm text-red-500 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg px-3 py-2">
+              Não foi possível carregar marcas e modelos: {erroCatalogo} Não crie uma marca nova
+              antes de conferir — ela pode já existir.{' '}
+              <button type="button" onClick={() => setTentativaCatalogo((n) => n + 1)} className="font-medium underline">
+                Tentar novamente
+              </button>
+            </p>
+          )}
 
           <Field label="Versão / Trim" hint="Opcional — ex: 1.0 Turbo Comfortline">
             <input type="text" value={form.versionName}
@@ -658,6 +679,11 @@ export default function NewVehiclePage() {
       {step === 3 && (
         <div className="space-y-5">
           <FipeCard fipe={fipe} loading={fipeLoading} enteredPrice={brlToNumber(form.price)} />
+          {erroFipe && !fipeLoading && (
+            <p className="text-xs text-slate-500">
+              Não foi possível consultar a tabela FIPE agora. O preço pode ser salvo mesmo assim.
+            </p>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Preço de tabela *">
