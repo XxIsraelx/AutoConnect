@@ -1,5 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit, Logger } from '@nestjs/common';
 import { PrismaClient } from '@autoconnect/db';
+import { CONEXOES_APP, comLimiteDeConexoes } from './limite-de-conexoes';
 
 /**
  * Cliente dentro de uma transação com o contexto de isolamento já definido.
@@ -22,6 +23,12 @@ export type ScopedClient = Omit<
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
+
+  constructor() {
+    super({
+      datasources: { db: { url: comLimiteDeConexoes(process.env.DATABASE_URL, CONEXOES_APP) } },
+    });
+  }
 
   async onModuleInit() {
     await this.$connect();

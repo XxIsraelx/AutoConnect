@@ -1,5 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit, Logger } from '@nestjs/common';
 import { PrismaClient } from '@autoconnect/db';
+import { CONEXOES_PRIVILEGIADO, comLimiteDeConexoes } from './limite-de-conexoes';
 
 /**
  * Conexão que atravessa concessionárias — deliberadamente, e em um lugar só.
@@ -29,7 +30,12 @@ export class PrivilegedPrismaService extends PrismaClient implements OnModuleIni
       datasources: {
         // DIRECT_URL é a conexão dona das tabelas. Quando a DATABASE_URL passar
         // a apontar para `autoconnect_app`, é esta que segue enxergando tudo.
-        db: { url: process.env.DIRECT_URL ?? process.env.DATABASE_URL },
+        db: {
+          url: comLimiteDeConexoes(
+            process.env.DIRECT_URL ?? process.env.DATABASE_URL,
+            CONEXOES_PRIVILEGIADO,
+          ),
+        },
       },
     });
   }
