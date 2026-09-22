@@ -239,126 +239,41 @@ pnpm exec turbo run build --filter=@autoconnect/web
 
 ## Isolamento por tenant
 
-### A regra
+Detalhes e o porquê de cada caso: `docs/arquitetura/isolamento-por-tenant.md`.
 
-As tabelas de venda e contrato (`deals`, `deal_payments`, `deal_status_events`,
-`trade_ins`, `vehicle_acquisitions`, `vehicle_costs`, `contract_templates`,
-`deal_contracts`, `contract_signatures`, `deal_warranties`, `deal_buyers`,
-`vehicle_queries`) seguem a mesma
-regra, e carregam o dado mais sensível do sistema: preço de compra, margem,
-contrato assinado e CPF de signatário.
-
-**Todo acesso a tabela com `tenant_id` passa por `withTenant`.** Todo acesso a
-tabela do consumidor final (`customer_favorites`, `customer_profiles`,
-`price_alerts`, `saved_searches`, `user_sessions`) passa por `withUser`.
+**Todo acesso a tabela com `tenant_id` passa por `withTenant`.** Tabela do
+consumidor final (`customer_favorites`, `customer_profiles`, `price_alerts`,
+`saved_searches`, `user_sessions`) passa por `withUser`.
 
 ```ts
 // certo
 return this.prisma.withTenant(tenantId, (tx) => tx.lead.findMany());
 
-// errado — roda sem contexto; quando a aplicação conectar como
-// autoconnect_app, não enxerga linha nenhuma
+// errado — roda sem contexto; sob autoconnect_app não enxerga linha nenhuma
 return this.prisma.lead.findMany({ where: { tenantId } });
 ```
-
-Os dois métodos abrem transação e definem `app.tenant_id` / `app.user_id` via
-`set_config(..., true)`, que é a forma **parametrizável** — a versão anterior
-interpolava o id na string SQL.
-
-### Como as policies funcionam
-
-Cada tabela com `tenant_id` tem `tenant_isolation`, comparando a coluna com
-`current_setting('app.tenant_id', true)`. Quando a variável não foi definida, a
-função devolve `NULL`, a comparação vira `NULL` e a policy trata como falso:
-**esquecer de setar o tenant fecha tudo, não abre tudo.**
-
-Três casos têm tratamento explícito:
-
-| Caso | Solução |
-|---|---|
-| Rotas públicas (catálogo, `/c/[slug]`, mapa) | Policy `leitura_publica` em `vehicles`, `vehicle_images`, `dealership_branches` e `tenants`, liberando só o que já está na vitrine — o filtro é `status = 'available'`, o mesmo que o `catalog.service` usa |
-| Super admin | `PrivilegedPrismaService` — conexão pela `DIRECT_URL`, dona das tabelas, que ignora RLS. Também é o caminho de `tenant_invites` e do login, que buscam antes de existir tenant |
-| Tabelas sem `tenant_id` | Catálogo global (`vehicle_brands`, `vehicle_models`, …) é leitura para todos e escrita só pelo dono; as do cliente isolam por `user_id` |
-| **Cliente atravessa concessionárias** | Ele agenda na loja A e conversa com a B. Policy `acesso_cliente` em `appointments`, `conversations` e `messages`, por `app.user_id` |
-| **Cliente não pertence a loja nenhuma** | `users.tenant_id` é NULL para clientes, então a policy de tenant os tornaria invisíveis. `acesso_proprio` (ele mesmo) + `cliente_relacionado` (a loja vê quem tem lead, agendamento ou conversa com ela — **não** a base inteira) |
-
-### Escopo da requisição
-
-Controllers não passam `tenantId` para os services: passam um `Escopo`, criado
-por `escopoDa(req.user)` em `common/escopo.ts`.
-
-| Situação | Escopo | Consulta |
-|---|---|---|
-| Usuário com concessionária | `{ tipo: 'tenant' }` | `withTenant` |
-| **Super admin sem loja selecionada** | `{ tipo: 'global' }` | conexão privilegiada, sem filtro |
-| Qualquer outro papel sem loja | — | `ForbiddenException` |
-
-O tipo existe para que `null` **não** possa significar "vê tudo". Um `tenantId`
-perdido no meio do caminho vira erro alto, e não uma consulta sem filtro — que
-é como um bug comum viraria vazamento entre concessionárias.
-
-Super admin **impersonando** tem `tenantId` no token e portanto escopo de
-tenant: o consolidado não vaza para dentro da tela de uma loja só.
-
-### A conexão privilegiada
-
-`PrivilegedPrismaService` existe para as operações que não têm tenant a que se
-restringir: super admin, login (busca por e-mail antes de saber a loja) e
-convite por token. Ele **não** é `@Global`, ao contrário do `PrismaModule` —
-quem precisa atravessar concessionárias declara `PrivilegedPrismaModule` nos
-imports, e isso aparece no diff do PR.
-
-Não use para acesso comum a dado de concessionária.
-
-### O que garante que a regra continue valendo
-
-`common/prisma/isolamento.spec.ts` varre o código e falha se um arquivo novo
-acessar tabela de tenant fora de `withTenant`. Os módulos ainda não migrados
-estão numa lista de pendências explícita, com o motivo de cada um — a lista só
-pode encolher, e o teste também falha se alguém deixar nela um módulo já
-migrado.
-
-### Os quatro acessos
 
 | Método | Quando | Define |
 |---|---|---|
 | `withTenant(tenantId, fn)` | dado da concessionária | `app.tenant_id` |
 | `withUser(userId, fn)` | dado do consumidor final | `app.user_id` |
-| `withTenantAndUser(t, u, fn)` | cliente agindo dentro de uma loja (captura de lead, registro de visita) | ambos |
+| `withTenantAndUser(t, u, fn)` | cliente agindo dentro de uma loja (lead, visita) | ambos |
 | `withPublic(fn)` | catálogo, mapa, `/c/[slug]` | **nada**, de propósito |
 
-`withPublic` roda sem contexto: sobra apenas a policy `leitura_publica`. Existe
-para que "esta consulta é pública" seja uma decisão escrita, não a ausência de
-uma decisão.
-
-### Ligar a fiscalização em produção
-
-> **Estado em 10/09/2026:** o banco de produção já mostra a aplicação
-> conectando como `autoconnect_app` (conexões pelo Supavisor desde o deploy das
-> 17:39 UTC; o papel tem senha e nenhuma data de expiração). Ou seja, o RLS
-> **já fiscaliza em produção**. Dois caminhos rodavam sem contexto e quebraram
-> em silêncio com isso — importação em lote (500) e gráfico de leads por dia
-> (vazio) —, e `isolamento.spec.ts` agora recusa `this.prisma.$transaction` e
-> SQL cru pelo cliente comum, o padrão pelo qual os dois escaparam.
-
-Todo o código já opera sob RLS — o CI prova isso rodando a suíte de integração
-conectada como `autoconnect_app`. Falta só a troca de configuração:
-
-1. `ALTER ROLE autoconnect_app PASSWORD '<senha>'` (a senha **não** está na
-   migration: segredo não entra em arquivo versionado). Evite os caracteres
-   `@ # / : ? & %`, que quebram a URL.
-2. No Railway, apontar **`DATABASE_URL`** para `autoconnect_app` e manter
-   **`DIRECT_URL`** como o dono (`postgres`), que é a conexão privilegiada.
-
-Reverter é trocar a `DATABASE_URL` de volta.
-
-Enquanto isso não acontece, a aplicação conecta como dona das tabelas e o RLS
-fica inerte — nada quebra, e o isolamento continua sendo o `where: { tenantId }`
-de sempre, mantido de propósito como primeira linha de defesa.
-
-Também **não** usamos `FORCE ROW LEVEL SECURITY` — com ele o próprio dono
-passaria a ser filtrado, e migrations, seed e a conexão privilegiada parariam
-de enxergar dados.
+- **O RLS já fiscaliza em produção** (a app conecta como `autoconnect_app` desde
+  10/09/2026). Esquecer o contexto **fecha tudo** — a consulta volta vazia ou
+  quebra, sem erro claro.
+- Controllers passam um `Escopo` (`escopoDa(req.user)`, em `common/escopo.ts`),
+  não `tenantId`. Super admin sem loja = `{ tipo: 'global' }`; qualquer outro
+  papel sem loja = `ForbiddenException`. `null` nunca significa "vê tudo".
+- `PrivilegedPrismaService` (ignora RLS) só para super admin, login e convite
+  por token. Não é `@Global`: quem usa declara `PrivilegedPrismaModule`.
+- `common/prisma/isolamento.spec.ts` falha se código novo acessar tabela de
+  tenant fora de `withTenant`, usar `this.prisma.$transaction` ou SQL cru pelo
+  cliente comum. A lista de pendências dele só pode encolher.
+- Tabela nova com `tenant_id` precisa de policy na migration —
+  `rls-policies.e2e-spec.ts` quebra sem ela.
+- Nunca `FORCE ROW LEVEL SECURITY`: o dono passaria a ser filtrado.
 
 ---
 
@@ -393,85 +308,22 @@ pnpm exec turbo run typecheck lint test
 O `--env-file /dev/null` é obrigatório: o Compose lê o `.env` da raiz sozinho e
 é mais estrito que o dotenv do Node — uma linha sem `=` aborta o comando.
 
-### Enums: Prisma e Zod
+Detalhes (o que cada e2e fixa, CI e drift): `docs/arquitetura/testes-e-ci.md`.
 
-Os schemas Zod do `@autoconnect/shared` **repetem** as listas dos enums do
-Prisma, em constantes exportadas (`LEAD_SOURCES`, `VEHICLE_CONDITIONS`, …).
-
-A repetição é deliberada: `@autoconnect/db` é `export * from '@prisma/client'` e
-o `@autoconnect/shared` é dependência do `apps/web` — importar um do outro
-arrastaria o Prisma e seus binários nativos para o bundle do navegador.
-
-O preço é a chance de divergirem, e `paridade-enums.spec.ts` é o que a elimina:
-compara cada lista com o enum real e quebra o CI. Ao adicionar valor a um enum
-no `schema.prisma`, atualize a constante correspondente no shared.
-
-> `INVITABLE_ROLES` é a exceção: um **subconjunto** deliberado de `UserRole`,
-> porque convidar `super_admin` ou `customer` pela tela da equipe seria
-> escalada de privilégio. O teste dele afirma subconjunto, não igualdade.
-
-### Onde cada teste mora
-
-| Caminho | Tipo | Roda com |
-|---|---|---|
-| `apps/api/src/**/*.spec.ts` | unitário, sem banco | `jest.config.js` (project `api:unit`) |
-| `apps/api/test/*.e2e-spec.ts` | integração, Postgres real | `test/jest-e2e.config.js` |
-| `packages/shared/src/**/*.spec.ts` | domínio puro | `packages/shared/jest.config.js` |
-
-Os testes de isolamento usam `test/helpers/tenant-fixture.ts`, que cria duas
-concessionárias completas. O helper `comoApp()` roda a consulta com
-`SET LOCAL ROLE autoconnect_app` — a conexão dona ignora RLS e passaria verde
-sem provar nada.
-
-| Arquivo | O que fixa |
-|---|---|
-| `rls-policies.e2e-spec.ts` | Cobertura: toda tabela com `tenant_id` tem policy. **Tabela nova sem policy quebra o CI sozinha** |
-| `rls-isolation.e2e-spec.ts` | O isolamento no banco, incluindo falhar fechado sem contexto |
-| `tenant-leak.e2e-spec.ts` | O contrato HTTP: **404, não 403** — 403 confirmaria que o recurso existe |
-| `deals-invariantes.e2e-spec.ts` | Um veículo, um negócio vivo — índice único parcial exercido no banco |
-| `deals.e2e-spec.ts` | O fluxo do negócio por HTTP, papéis e vazamento |
-| `proposta-chat.e2e-spec.ts` | A proposta do chat virando negócio (falha em silêncio por desenho) |
-| `chat-gateway.e2e-spec.ts` | O gateway pelo WebSocket — o evento é `conversation:send`, não `message:send` |
-| `contrato-imutavel.e2e-spec.ts` | Contrato emitido não muda: trigger no banco |
-| `contrato.e2e-spec.ts` | Emissão, hash, assinatura e anulação por HTTP |
-| `rls-caminhos.e2e-spec.ts` | Importação em lote e gráfico de leads por dia — rodavam sem contexto e ficavam cegos sob RLS |
-
-O `jest.config.js` da API roda os dois *projects*, para que um único `test`
-cubra unitário e integração — teste fora do comando do portão não é rodado por
-ninguém.
-
-### Trava contra rodar em produção
-
-`apps/api/test/setup-e2e.ts` **recusa** iniciar se a `DATABASE_URL` não for um
-host local com banco terminado em `_test`. Sem isso, um teste que escreve
-rodaria contra o Supabase de produção, que é justamente o que o `.env` da raiz
-aponta. A trava não é opcional — não a remova para "testar contra dados reais".
-
-O mesmo arquivo **zera `RESEND_API_KEY`, `GMAIL_USER` e `GMAIL_APP_PASSWORD`**:
-a API lê o `.env` da raiz, e com o Gmail preenchido ali a suíte mandava e-mail
-de verdade (convite, agendamento, troca) e abria SMTP a cada boot do Nest — o
-portão ficou lento e vermelho.
-
-E zera **`SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`**, pelo mesmo motivo:
-com a chave no `.env`, cada rodada gravava ~10 PDFs de contrato fictício no
-bucket `documentos` de **produção** — 272 arquivos órfãos acumulados em pastas
-de lojas que os testes criam e apagam. Regra geral: todo serviço externo com
-credencial no `.env` precisa ser desligado aqui.
-
-### CI
-
-`.github/workflows/ci.yml` roda em todo push na `main` e em todo PR: instala,
-gera o client do Prisma, aplica as migrations em banco limpo, **checa drift** e
-roda o portão.
-
-O passo de drift compara o banco recém-migrado com o `schema.prisma` e falha se
-divergirem — é a rede contra o acidente do `prisma db push`, que já custou 5
-colunas e 5 tabelas aqui. Usa `--from-url` e não `--from-migrations`: a segunda
-forma acusa falsamente as quatro extensões (`citext`, `pg_trgm`, `pgcrypto`,
-`postgis`) como ausentes.
-
-> Os scripts `db:push` (raiz) e `push` (`packages/db`) **foram removidos**. Para
-> alterar o schema, sempre `prisma migrate dev`.
+- **Unitário** em `apps/api/src/**/*.spec.ts`, **integração** (Postgres real) em
+  `apps/api/test/*.e2e-spec.ts`, **domínio** em `packages/shared/src/**/*.spec.ts`.
+  Um `test` roda tudo.
+- Teste de isolamento usa `test/helpers/tenant-fixture.ts` e `comoApp()`
+  (`SET LOCAL ROLE autoconnect_app`) — a conexão dona ignora RLS e passaria
+  verde sem provar nada.
+- **Enums:** os schemas Zod do shared repetem os enums do Prisma, de propósito
+  (importar o Prisma arrastaria binários para o navegador). Ao mudar enum no
+  `schema.prisma`, atualize a constante no shared — `paridade-enums.spec.ts`
+  quebra se divergir. `INVITABLE_ROLES` é subconjunto deliberado.
+- **`apps/api/test/setup-e2e.ts` recusa rodar fora de banco local `_test` e
+  zera as credenciais de e-mail e do Supabase.** Não remova. Serviço externo
+  novo com credencial no `.env` precisa ser desligado ali também.
+- O CI checa **drift** entre o banco migrado e o `schema.prisma`.
 
 ---
 
@@ -507,99 +359,29 @@ fixa isso.
 
 ## Vendas e contrato
 
-### Dinheiro nunca é `number`
+O porquê de cada regra: `docs/decisoes/vendas-e-contrato.md`.
 
-`Decimal(14,2)` no banco, `Prisma.Decimal` no cálculo, **string** no JSON. No
-front, `formatarBRL` do `@autoconnect/shared` formata a partir da string, sem
-passar por ponto flutuante. `0.1 + 0.2` não é `0.3`, e um centavo numa comissão
-vira ligação do vendedor.
-
-`packages/shared/src/domain/dinheiro.ts` faz aritmética em centavos inteiros
-(`bigint`) para quem precisa somar no navegador.
-
-### Um veículo, um negócio vivo
-
-Índice único parcial `deals_veiculo_negocio_vivo_idx`, com
-`WHERE status NOT IN ('canceled','rescinded')`. A checagem no service não
-resolveria: entre o `SELECT` que confere e o `INSERT` que grava cabe outra
-transação, e o resultado é o mesmo carro vendido duas vezes, descoberto na
-entrega.
-
-Se `DEAL_TERMINAL_STATUSES` mudar, **este índice muda junto** — há teste que
-liga as duas listas.
-
-### A máquina de estados mora no `shared`
-
-`DEAL_TRANSITIONS` é consultada pelo front (para decidir quais botões mostrar) e
-pelo back (para recusar). Duas cópias da regra produz um botão que abre diálogo
-e termina em 409. Transição inválida é **409, não 400**: o pedido é bem formado,
-o estado é que conflita.
-
-Assimetria deliberada: antes de `signed` o negócio é **cancelado**; depois dela,
-**distratado**. São eventos jurídicos diferentes.
-
-### Contrato
-
-Três garantias, e uma armadilha medida:
-
-1. **Template versionado por tenant.** Editar cria versão nova; o contrato
-   aponta para a versão exata que usou.
-2. **Snapshot, não join.** Se o preço do veículo mudar, o contrato assinado não
-   muda junto.
-3. **Hash na emissão**, e o download **regenera** o PDF do snapshot e confere o
-   hash antes de entregar. Não bate, não sai.
-
-⚠ **O pdfmake não é determinístico por padrão** — ele carimba o relógio na data
-de criação, e o mesmo contrato gera bytes diferentes a cada execução. Medido,
-não suposto. `ContractPdfService.gerar()` recebe `emitidoEm` e o usa como data
-de criação; sem isso o hash não prova nada. Fontes Helvetica embutidas no
-pdfkit: nenhum arquivo de fonte no deploy.
-
-Contrato que saiu de `draft` é **imutável por trigger no banco**
-(`contrato_emitido_e_imutavel`), não só por regra de service — ali é uma linha
-que alguém remove sem perceber, e o efeito só aparece quando um cliente
-contesta a assinatura.
-
-### Garantia: a cláusula que não se deve conseguir escrever
-
-`validarGarantia` recusa emitir contrato em que a garantia contratual apareça
-como **redução** da legal de 90 dias, que cobre o veículo inteiro (CDC art. 26,
-II + art. 51, I). A regra é específica: prazo curto **sem** restrição de escopo
-passa — o que se recusa é prazo menor **combinado** com escopo restrito, que é
-o disfarce clássico ("3 meses de motor e câmbio").
-
-`textoDaGarantia` sempre declara a legal, mesmo havendo contratual: omiti-la é
-o que torna a cláusula abusiva.
-
-### As duas partes precisam estar identificadas
-
-O contrato recusa emissão sem qualificação do **comprador** (`DealBuyer`:
-nome, CPF validado por dígitos, RG, endereço) e sem **representante legal** da
-loja (`Tenant.legalRepName/Cpf/Role`, configurado uma vez). Um documento que
-diz "portador(a) do documento ____" parece contrato e não identifica quem se
-obrigou.
-
-O comprador fica no negócio, não no perfil do cliente: a loja não escreve em
-`customer_profiles` (isolado por `app.user_id`), e o contrato precisa do dado
-como estava na emissão.
-
-### Consulta veicular
-
-Cache antes de idempotência, idempotência antes da chamada — **cada consulta é
-cobrada por chamada**. TTL por tipo (débito 24h, leilão 90 dias) e cache por
-concessionária: compartilhar revelaria que a concorrente consultou aquela placa.
-
-A chamada ao fornecedor fica **fora** do `withTenant`: relançar erro dentro da
-transação desfazia por rollback o próprio registro da falha, e a loja veria
-cobrança na fatura sem correspondente no sistema.
-
-Sem `CONSULTA_FORNECEDOR`, a API recusa com mensagem clara em vez de devolver
-"nada encontrado" — que viraria selo afirmando carro limpo com base em consulta
-que nunca aconteceu. O valor `simulado` é ignorado em produção.
-
-> ⚠ **O template padrão do código não foi revisado por advogado.** Está
-> declarado como ponto de partida. O portão da Fase 2 exige essa revisão antes
-> de qualquer cliente real emitir contrato.
+- **Dinheiro nunca é `number`.** `Decimal(14,2)` no banco, `Prisma.Decimal` no
+  cálculo, string no JSON, `formatarBRL` no front, `domain/dinheiro.ts`
+  (centavos em `bigint`) para somar no navegador.
+- **Um veículo, um negócio vivo:** índice único parcial
+  `deals_veiculo_negocio_vivo_idx`. Se `DEAL_TERMINAL_STATUSES` mudar, o índice
+  muda junto.
+- **Máquina de estados em `DEAL_TRANSITIONS` (shared)**, usada pelo front e
+  pelo back. Transição inválida é **409**. Antes de `signed` se **cancela**,
+  depois se **distrata**.
+- **Contrato:** template versionado por tenant, snapshot (não join), hash na
+  emissão e conferido no download. `ContractPdfService.gerar()` recebe
+  `emitidoEm` — o pdfmake não é determinístico sem isso. Fora de `draft`, é
+  imutável por trigger (`contrato_emitido_e_imutavel`).
+- **Garantia:** `validarGarantia` recusa prazo menor que 90 dias **combinado**
+  com escopo restrito. `textoDaGarantia` sempre declara a legal.
+- **Partes identificadas:** sem `DealBuyer` completo (CPF validado) e sem
+  representante legal da loja, o contrato não é emitido.
+- **Consulta veicular:** cobrada por chamada — cache antes de idempotência,
+  idempotência antes da chamada; cache por concessionária; chamada ao
+  fornecedor **fora** do `withTenant`. Sem `CONSULTA_FORNECEDOR`, recusa alto.
+- ⚠ **O template de contrato não foi revisado por advogado.**
 
 ---
 
@@ -647,30 +429,6 @@ que nunca aconteceu. O valor `simulado` é ignorado em produção.
 
 ---
 
-## Estado atual de cada módulo
-
-| Módulo | Backend | Frontend | Observações |
-|---|---|---|---|
-| Auth | ✅ completo | ✅ completo | JWT + Google OAuth + reset senha + verificação email |
-| Tenants/Filiais | ✅ completo | ✅ configurações | CRUD completo |
-| Usuários/Perfil | ✅ completo | ✅ completo | perfil completo implementado |
-| Equipe | ✅ completo | ✅ completo | convites por email com token |
-| Veículos | ✅ completo | ✅ completo | CRUD + upload imagens + busca |
-| Catálogo (marcas/modelos) | ✅ completo | ✅ público | página pública do veículo |
-| Leads | ✅ completo | ✅ completo | kanban, timeline, interações, stats |
-| Agendamentos | ✅ completo | ✅ completo | **última página trabalhada** |
-| Chat | ✅ completo | ✅ completo | Socket.IO tempo real |
-| Mapa | ✅ completo | ✅ completo | dark theme, pins animados, sidebar |
-| Dashboard | ✅ completo | ✅ completo | KPIs, GalaxyMap |
-| Admin | ✅ completo | ✅ completo | impersonation, announcements |
-| Página pública concessionária | ✅ | ✅ | `/c/[slug]` com chat iniciado pelo cliente |
-| **Negócios (`Deal`)** | ✅ completo | ✅ completo | máquina de estados, pagamento composto, margem em `Decimal` |
-| **Custo do veículo** | ✅ completo | ✅ completo | aquisição + preparação; base da margem |
-| **Contrato** | ✅ completo | ✅ completo | PDF determinístico, hash, assinatura interna |
-| **Consulta veicular** | ✅ estrutura | ✅ completo | cache, idempotência e custo; **falta fornecedor real** |
-
----
-
 ## Deploy (produção)
 
 | | URL | Região |
@@ -701,43 +459,6 @@ consulta custa ~0,6s de ida e volta. Por isso a transação do cadastro usa
 
 ---
 
-## Pendências conhecidas
-
-Auditadas em 04/09/2026, contra o repositório.
-
-**Bloqueiam uso real**
-- ⚠ **Template de contrato não revisado por advogado.** O sistema emite
-  documento com efeito jurídico a partir de um template declarado no código
-  como ponto de partida.
-- ⚠ **Sem fornecedor de consulta veicular.** Depende de contrato comercial. A
-  estrutura está pronta e a API recusa em voz alta enquanto não houver.
-
-**Da definição de pronto do plano, um item nunca foi cumprido**
-- **Feature flag.** O plano pede "feature nova atrás de flag até o piloto
-  validar". Nada foi entregue atrás de flag — negócios, contrato e consulta
-  entraram direto. Não há infraestrutura de flag no projeto.
-
-**Dívidas de infraestrutura**
-- **Crons in-process** (`@nestjs/schedule`): com duas réplicas no Railway, todo
-  lembrete sai **duas vezes**. Passa hoje porque roda uma instância só.
-- **API e banco em regiões diferentes** (`us-east4` ↔ `sa-east-1`), ~0,6s por
-  consulta.
-- **`SUPABASE_SERVICE_ROLE_KEY` no Railway**: definida, mas a validade da chave
-  nunca foi verificada de forma independente — chave errada só falha no upload.
-
-**Menores**
-- **Google OAuth em produção**: falta registrar o redirect URI e publicar o app
-  no Console.
-- **Um `catch` silencioso deliberado** em `SeloProcedencia`: falha no selo não
-  pode virar erro na tela de venda. Está comentado no código.
-- **`/relatorios`, `/agendamentos` e `/equipe`** ainda não revisados para telas
-  pequenas.
-- **Relatórios vazios**: seed é de maio/junho, filtro padrão de 30 dias, e os
-  gráficos de margem e giro dependem de negócio faturado que o seed não cria.
-- **CVEs do Next** só têm correção na linha 15.x (breaking changes).
-
----
-
 ## Documentação — cofre Obsidian em `docs/`
 
 `docs/` é um cofre do Obsidian, versionado. Índice em `docs/Início.md`.
@@ -754,34 +475,19 @@ Auditadas em 04/09/2026, contra o repositório.
 - Nada de segredo no cofre: `ACESSOS.md` fica na raiz, fora dele.
 - `docs/.obsidian/workspace*.json` é gitignored; o resto da config é versionado.
 
-## Onde o plano de vendas está
-
-`docs/planos/plano-implementacao-vendas.md` governa o trabalho. Estado em 03/09/2026:
-
-| Fase | Estado |
-|---|---|
-| 0 — Fundação (RLS, testes, CI) | ✅ portão fechado |
-| 1 — Negócio (`Deal`) | ✅ portão fechado |
-| 2 — Contrato | ✅ 4 de 5 (falta a revisão por advogado) |
-| 3 — Consultas veiculares e assinatura externa | ⬜ |
-| 4 — Crédito e F&I | ⬜ |
-| 5 — Obrigações fiscais | ⬜ |
-
-Duas correções ao plano já registradas **dentro dele**:
-
-- O achado nº 9 estava errado: `login`/`entrar` e `signup`/`cadastrar` não são
-  duplicatas, são quatro fluxos para dois públicos. Só `settings` e `team` eram
-  resíduo (diretórios vazios, removidos).
-- O portão da Fase 2 pede que a URL crua devolva 403; ela devolve **404 "Bucket
-  not found"**, que é negação mais forte.
 
 ---
 
-## Próximos passos sugeridos
+## Estado do projeto
 
-1. **Revisão jurídica do template de contrato** — bloqueia uso real
-2. **Concluir o Google OAuth** no Console
-3. **Fase 3** do plano: consultas veiculares (placa/chassi) com cache por
-   custo de chamada, e assinatura externa atrás da interface que já existe
-4. **Revisar responsividade** de `/relatorios`, `/agendamentos` e `/equipe`
-5. **Seed com negócio faturado**, para os gráficos de margem e giro terem dado
+Tabela de módulos, pendências auditadas, fases do plano e próximos passos:
+`docs/planos/estado-e-pendencias.md`. O plano que governa o trabalho é
+`docs/planos/plano-implementacao-vendas.md` (Fases 0 e 1 fechadas, Fase 2 com
+4 de 5; faltam 3, 4 e 5).
+
+**Bloqueiam uso real:** template de contrato sem revisão jurídica e ausência de
+fornecedor de consulta veicular.
+
+**Dívidas que afetam código novo:** crons in-process (duas réplicas = lembrete
+duplicado); API e banco em regiões diferentes (~0,6s por consulta); nenhuma
+infraestrutura de feature flag.

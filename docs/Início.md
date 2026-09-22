@@ -30,6 +30,10 @@ com o código e lido pelo Claude quando o assunto aparece.
 - [Funcionalidades do produto](produto/features.md)
 - [MVP e arquitetura](produto/mvp-and-architecture.md)
 - [Design do banco](arquitetura/database-design.md) · [diagrama ER](arquitetura/erd.mermaid)
+- [Isolamento por tenant (RLS)](arquitetura/isolamento-por-tenant.md)
+- [Testes e CI — detalhes](arquitetura/testes-e-ci.md)
+- [Vendas e contrato — decisões](decisoes/vendas-e-contrato.md)
+- [Estado, pendências e próximos passos](planos/estado-e-pendencias.md)
 
 ## Como pedir algo ao Claude usando o cofre
 
