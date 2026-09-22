@@ -125,4 +125,4 @@ Duas correções ao plano já registradas **dentro dele**:
 3. **Fase 3** do plano: consultas veiculares (placa/chassi) com cache por
    custo de chamada, e assinatura externa atrás da interface que já existe
 4. ~~**Revisar responsividade** de `/relatorios`, `/agendamentos` e `/equipe`~~ — feito em 22/09/2026
-5. **Seed com negócio faturado**, para os gráficos de margem e giro terem dado
+5. ~~**Seed com negócio faturado**~~ — feito em 22/09/2026 (`SEED_DEMO_RESET=1` renova as datas)
