@@ -22,6 +22,13 @@ export interface DocumentoArmazenado {
   chave: string;
 }
 
+export interface VerificacaoDoBucket {
+  status: 'up' | 'down' | 'off';
+  bucket: string;
+  latenciaMs?: number;
+  detalhe?: string;
+}
+
 /** Minutos de validade da URL assinada. Curto porque o link circula por email. */
 const VALIDADE_MINUTOS = 10;
 
@@ -65,20 +72,45 @@ export class DocumentosStorage implements OnApplicationBootstrap {
    */
   onApplicationBootstrap(): void {
     if (!this.cliente) return;
-    void this.cliente.getBucket(this.bucket).then(
-      ({ error }) => {
-        if (error) {
-          this.logger.error(
-            `SUPABASE_SERVICE_ROLE_KEY não alcança o bucket "${this.bucket}": ` +
-              `${error.message}. Contratos não serão arquivados.`,
-          );
-        } else {
-          this.logger.log(`Bucket privado "${this.bucket}" acessível.`);
-        }
-      },
-      (erro: unknown) =>
-        this.logger.error(`Storage inalcançável na subida: ${String(erro)}`),
-    );
+    void this.verificar().then((v) => {
+      if (v.status === 'up') {
+        this.logger.log(`Bucket privado "${this.bucket}" acessível.`);
+      } else {
+        this.logger.error(
+          `SUPABASE_SERVICE_ROLE_KEY não alcança o bucket "${this.bucket}": ` +
+            `${v.detalhe}. Contratos não serão arquivados.`,
+        );
+      }
+    });
+  }
+
+  /**
+   * O mesmo `getBucket` da subida, sob demanda — é o que o painel de sistema
+   * do super admin mostra. `off` é ausência deliberada de configuração; `down`
+   * é configurado e falhando. Nunca lança, e a mensagem nunca leva a chave.
+   */
+  async verificar(): Promise<VerificacaoDoBucket> {
+    if (!this.cliente) return { status: 'off', bucket: this.bucket };
+
+    const t0 = Date.now();
+    try {
+      const { error } = await Promise.race([
+        this.cliente.getBucket(this.bucket),
+        new Promise<never>((_, falhar) =>
+          setTimeout(() => falhar(new Error('sem resposta em 3s')), 3000).unref(),
+        ),
+      ]);
+      const latenciaMs = Date.now() - t0;
+      return error
+        ? { status: 'down', bucket: this.bucket, latenciaMs, detalhe: error.message }
+        : { status: 'up', bucket: this.bucket, latenciaMs };
+    } catch (erro) {
+      return {
+        status: 'down',
+        bucket: this.bucket,
+        detalhe: erro instanceof Error ? erro.message : String(erro),
+      };
+    }
   }
 
   get configurado(): boolean {

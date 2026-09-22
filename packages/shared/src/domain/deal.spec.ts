@@ -2,6 +2,7 @@ import {
   DEAL_STATUSES,
   DEAL_TRANSITIONS,
   DEAL_TERMINAL_STATUSES,
+  DEAL_FATURADO_STATUSES,
   canTransition,
   isDealTerminal,
   isDealEditable,
@@ -76,6 +77,18 @@ describe('máquina de estados do negócio', () => {
     // preso a um negócio morto.
     const semSaida = DEAL_STATUSES.filter((s) => DEAL_TRANSITIONS[s].length === 0);
     expect(new Set(semSaida)).toEqual(new Set(DEAL_TERMINAL_STATUSES));
+  });
+
+  it('faturado é o invoiced e o que só vem depois dele, nunca um terminal', () => {
+    // Relatório de venda e painel do super admin somam por esta lista. Um
+    // estado anterior ao faturamento aqui contaria margem estimada como
+    // realizada.
+    for (const s of DEAL_FATURADO_STATUSES) {
+      expect(isDealTerminal(s)).toBe(false);
+      expect(isDealEditable(s)).toBe(false);
+    }
+    expect(DEAL_FATURADO_STATUSES).toContain('invoiced');
+    expect(DEAL_TRANSITIONS.signed).toContain('invoiced');
   });
 
   it('valor só é editável antes da assinatura', () => {

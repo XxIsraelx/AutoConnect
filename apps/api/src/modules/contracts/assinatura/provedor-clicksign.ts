@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import type {
   CabecalhosHttp, EnvelopeCriado, EventoDeAssinatura, NovoEnvelope,
-  ProvedorDeAssinatura, SignerRoleValue, TipoEventoAssinatura,
+  ProvedorDeAssinatura, SignerRoleValue, TipoEventoAssinatura, VerificacaoDoProvedor,
 } from '@autoconnect/shared';
 import { CABECALHO_HMAC, CABECALHO_HMAC_ALTERNATIVO, hmacConfere, sha256Hex } from './hmac';
 
@@ -133,6 +133,8 @@ function detalhesDoErro(corpo: unknown): string {
 export class ProvedorClicksign implements ProvedorDeAssinatura {
   readonly nome = 'clicksign';
   readonly disponivel = true;
+  /** Conta de homologação: assinatura colhida ali não tem validade jurídica. */
+  readonly sandbox: boolean;
 
   private readonly logger = new Logger('Clicksign');
   private readonly base: string;
@@ -143,19 +145,50 @@ export class ProvedorClicksign implements ProvedorDeAssinatura {
     this.base = `${cfg.apiUrl.replace(/\/+$/, '')}/api/v3`;
     this.timeoutMs = cfg.timeoutMs ?? TIMEOUT_PADRAO_MS;
     this.fetch = cfg.fetch ?? ((...a: Parameters<typeof fetch>) => globalThis.fetch(...a));
+    this.sandbox = /sandbox/i.test(cfg.apiUrl);
+  }
+
+  /**
+   * Prova que o token vale sem criar nada: lista um envelope só, com 3s de
+   * teto. É o que o painel de sistema chama — leitura, barata, e a mensagem de
+   * erro (a mesma de `erroHttp`) nunca carrega o token.
+   */
+  async verificar(): Promise<VerificacaoDoProvedor> {
+    const t0 = Date.now();
+    const rotulo = 'GET /envelopes';
+    try {
+      const resp = await this.comTimeout(
+        `${this.base}/envelopes?page%5Bsize%5D=1`,
+        { method: 'GET', headers: { Authorization: this.cfg.token, Accept: TIPO_JSONAPI } },
+        rotulo,
+        3000,
+      );
+      const latenciaMs = Date.now() - t0;
+      if (resp.ok) return { ok: true, latenciaMs };
+      let corpo: unknown;
+      try { corpo = await resp.json(); } catch { corpo = undefined; }
+      return { ok: false, latenciaMs, detalhe: this.erroHttp(rotulo, resp.status, corpo).message };
+    } catch (e) {
+      return { ok: false, detalhe: (e as Error).message };
+    }
   }
 
   /* ── HTTP ────────────────────────────────────────────────────── */
 
-  private async comTimeout(url: string, init: RequestInit, rotulo: string): Promise<Response> {
+  private async comTimeout(
+    url: string,
+    init: RequestInit,
+    rotulo: string,
+    timeoutMs = this.timeoutMs,
+  ): Promise<Response> {
     const controle = new AbortController();
-    const relogio = setTimeout(() => controle.abort(), this.timeoutMs);
+    const relogio = setTimeout(() => controle.abort(), timeoutMs);
     try {
       return await this.fetch(url, { ...init, signal: controle.signal });
     } catch (e) {
       if (controle.signal.aborted) {
         throw new GatewayTimeoutException(
-          `Clicksign não respondeu em ${Math.round(this.timeoutMs / 1000)}s (${rotulo}).`,
+          `Clicksign não respondeu em ${Math.round(timeoutMs / 1000)}s (${rotulo}).`,
         );
       }
       throw new BadGatewayException(`Falha de rede ao chamar a Clicksign (${rotulo}): ${(e as Error).message}`);

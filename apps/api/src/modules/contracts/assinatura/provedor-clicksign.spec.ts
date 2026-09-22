@@ -447,6 +447,39 @@ describe('ProvedorClicksign.interpretarWebhook', () => {
 
 /* ── Utilitários e fábrica ───────────────────────────────────── */
 
+describe('ProvedorClicksign.verificar — painel de sistema', () => {
+  it('lista um envelope só (leitura) e responde ok', async () => {
+    const { provedor, linhas } = falso([[/^GET \/envelopes\?page%5Bsize%5D=1$/, () => json(200, { data: [] })]]);
+
+    const v = await provedor.verificar();
+
+    expect(v.ok).toBe(true);
+    expect(linhas()).toEqual(['GET /envelopes?page%5Bsize%5D=1']);
+  });
+
+  it('credencial recusada vira ok=false com a causa — e sem o token', async () => {
+    const { provedor } = falso([[/^GET \/envelopes/, () => json(401, { errors: [{ detail: 'inválido' }] })]]);
+
+    const v = await provedor.verificar();
+
+    expect(v.ok).toBe(false);
+    expect(v.detalhe).toMatch(/credencial/);
+    expect(JSON.stringify(v)).not.toContain(TOKEN);
+  });
+
+  it('falha de rede não lança', async () => {
+    const { provedor } = falso([[/^GET \/envelopes/, () => { throw new Error('ECONNREFUSED'); }]]);
+
+    await expect(provedor.verificar()).resolves.toMatchObject({ ok: false });
+  });
+
+  it('marca sandbox pela URL', () => {
+    expect(falso([]).provedor.sandbox).toBe(true);
+    const producao = new ProvedorClicksign({ apiUrl: 'https://app.clicksign.com', token: 't', segredoWebhook: 's' });
+    expect(producao.sandbox).toBe(false);
+  });
+});
+
 describe('cpfFormatado', () => {
   it('formata 11 dígitos e ignora o resto', () => {
     expect(cpfFormatado('52998224725')).toBe('529.982.247-25');

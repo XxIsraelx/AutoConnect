@@ -63,6 +63,13 @@ export class EmailService implements OnApplicationBootstrap {
     }
   }
 
+  /** Qual provedor está montado — para o painel de sistema. Não testa nada. */
+  get provedor(): 'resend' | 'gmail' | null {
+    if (this.resend) return 'resend';
+    if (this.smtp) return 'gmail';
+    return null;
+  }
+
   /**
    * Testa o provedor ao subir, sem segurar a inicialização.
    *

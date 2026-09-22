@@ -57,3 +57,12 @@ export const updateBranchSchema = createBranchSchema
   .partial();
 
 export type UpdateBranchInput = z.infer<typeof updateBranchSchema>;
+
+/**
+ * Planos de assinatura. Repete o enum `SubscriptionPlan` do Prisma —
+ * `paridade-enums.spec.ts` quebra se divergirem. O painel do super admin usa a
+ * lista para os botões de plano e a API para recusar plano inexistente (antes
+ * o valor ia cru para o Prisma e voltava como 500).
+ */
+export const SUBSCRIPTION_PLANS = ['trial', 'starter', 'pro', 'enterprise'] as const;
+export type SubscriptionPlanValue = (typeof SUBSCRIPTION_PLANS)[number];

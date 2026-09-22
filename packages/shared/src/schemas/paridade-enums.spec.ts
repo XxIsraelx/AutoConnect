@@ -13,6 +13,7 @@ import {
   VehicleQueryKind,
   VehicleQueryStatus,
   SignatureRequestStatus,
+  SubscriptionPlan,
 } from '@autoconnect/db';
 import { LEAD_SOURCES, LEAD_STATUSES } from './lead';
 import { VEHICLE_CONDITIONS } from './vehicle';
@@ -27,6 +28,7 @@ import {
 import { CONTRACT_STATUSES, SIGNER_ROLES } from '../domain/garantia';
 import { TIPOS_CONSULTA, CONSULTA_STATUSES } from '../domain/consulta-veicular';
 import { ASSINATURA_EXTERNA_STATUSES } from '../domain/assinatura-externa';
+import { SUBSCRIPTION_PLANS } from './tenant';
 
 /**
  * Os schemas Zod repetem listas que também existem como enum no Prisma. A
@@ -97,6 +99,10 @@ describe('paridade entre os enums do Prisma e os schemas Zod', () => {
     expect(conjunto(ASSINATURA_EXTERNA_STATUSES)).toEqual(
       conjunto(Object.values(SignatureRequestStatus)),
     );
+  });
+
+  it('SubscriptionPlan', () => {
+    expect(conjunto(SUBSCRIPTION_PLANS)).toEqual(conjunto(Object.values(SubscriptionPlan)));
   });
 
   it('os papéis conviáveis são um subconjunto de UserRole, não a lista inteira', () => {

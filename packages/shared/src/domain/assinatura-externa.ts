@@ -109,6 +109,22 @@ export interface ProvedorDeAssinatura {
   cancelar(idExterno: string): Promise<void>;
   baixarAssinado(idExterno: string): Promise<Uint8Array>;
   interpretarWebhook(cabecalhos: CabecalhosHttp, corpoCru: Uint8Array): EventoDeAssinatura;
+  /**
+   * Conta de homologação: a assinatura colhida ali não tem validade jurídica.
+   * O painel do super admin mostra isso em destaque.
+   */
+  readonly sandbox?: boolean;
+  /**
+   * Chamada barata e só de leitura que prova que a credencial vale. Usada pelo
+   * painel de sistema — nunca devolve o token, nem na mensagem de erro.
+   */
+  verificar?(): Promise<VerificacaoDoProvedor>;
+}
+
+export interface VerificacaoDoProvedor {
+  ok: boolean;
+  latenciaMs?: number;
+  detalhe?: string;
 }
 
 /* ── Máquina de estados ───────────────────────────────────────── */

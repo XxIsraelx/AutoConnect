@@ -5,11 +5,16 @@ import { AdminService } from './admin.service';
 import { AdminController } from './admin.controller';
 import { EmailModule } from '../../common/email/email.module';
 import { PrivilegedPrismaModule } from '../../common/prisma/privileged-prisma.module';
+import { ContractsModule } from '../contracts/contracts.module';
+import { ConsultasModule } from '../consultas/consultas.module';
 
 @Module({
   imports: [
     EmailModule,
     PrivilegedPrismaModule,
+    // Só para o painel de sistema saber qual provedor está montado.
+    ContractsModule,
+    ConsultasModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

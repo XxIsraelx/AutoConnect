@@ -2,9 +2,47 @@ import {
   Body, Controller, Delete, ForbiddenException,
   Get, Param, ParseUUIDPipe, Patch, Post, Query, Req,
 } from '@nestjs/common';
-import { AdminService } from './admin.service';
+import { z } from 'zod';
+import { SUBSCRIPTION_PLANS } from '@autoconnect/shared';
+import { AdminService, PAPEIS_FILTRAVEIS } from './admin.service';
 import { Public } from '../../common/decorators/public.decorator';
 import type { AuthenticatedRequest } from '../../common/middleware/tenant.middleware';
+
+/**
+ * Todo corpo e query passa por Zod: antes vinham só anotados em TypeScript, e
+ * um `plan` inexistente ia cru para o Prisma e voltava como 500.
+ */
+const pagina = z.coerce.number().int().min(1).max(10_000).default(1);
+
+const criarConviteSchema = z.object({
+  email: z.string().trim().email('E-mail inválido.').max(160).optional(),
+  note: z.string().trim().max(300).optional(),
+  expiresInDays: z.number().int().min(1).max(90).optional(),
+});
+
+const planoSchema = z.object({ plan: z.enum(SUBSCRIPTION_PLANS) });
+
+const estenderTrialSchema = z.object({ days: z.number().int().min(1).max(365) });
+
+const avisoSchema = z.object({
+  message: z.string().trim().min(1, 'Escreva a mensagem.').max(500),
+  type: z.enum(['info', 'warning', 'critical']).default('info'),
+  expiresAt: z
+    .string()
+    .refine((v) => !Number.isNaN(Date.parse(v)), 'Data inválida.')
+    .nullish(),
+});
+
+const usuariosQuery = z.object({
+  role: z.enum(PAPEIS_FILTRAVEIS).optional().or(z.literal('').transform(() => undefined)),
+  search: z.string().trim().max(100).optional(),
+  page: pagina,
+});
+
+const auditoriaQuery = z.object({
+  action: z.string().trim().max(80).optional(),
+  page: pagina,
+});
 
 @Controller('admin')
 export class AdminController {
@@ -30,10 +68,10 @@ export class AdminController {
   @Post('invites')
   createInvite(
     @Req() req: AuthenticatedRequest,
-    @Body() body: { email?: string; note?: string; expiresInDays?: number },
+    @Body() body: unknown,
   ) {
     this.guard(req);
-    return this.admin.createInvite(body);
+    return this.admin.createInvite(criarConviteSchema.parse(body));
   }
 
   @Get('invites')
@@ -72,20 +110,20 @@ export class AdminController {
   changePlan(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { plan: string },
+    @Body() body: unknown,
   ) {
     this.guard(req);
-    return this.admin.changePlan(id, body.plan);
+    return this.admin.changePlan(id, planoSchema.parse(body).plan);
   }
 
   @Patch('tenants/:id/extend-trial')
   extendTrial(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { days: number },
+    @Body() body: unknown,
   ) {
     this.guard(req);
-    return this.admin.extendTrial(id, body.days);
+    return this.admin.extendTrial(id, estenderTrialSchema.parse(body).days);
   }
 
   @Patch('tenants/:id/toggle')
@@ -111,12 +149,10 @@ export class AdminController {
   @Get('users')
   listUsers(
     @Req() req: AuthenticatedRequest,
-    @Query('role') role?: string,
-    @Query('search') search?: string,
-    @Query('page') page?: string,
+    @Query() query: unknown,
   ): Promise<unknown[]> {
     this.guard(req);
-    return this.admin.listUsers({ role, search, page: page ? +page : 1 });
+    return this.admin.listUsers(usuariosQuery.parse(query));
   }
 
   @Patch('users/:id/suspend')
@@ -136,10 +172,10 @@ export class AdminController {
   @Post('announcements')
   createAnnouncement(
     @Req() req: AuthenticatedRequest,
-    @Body() body: { message: string; type?: string; expiresAt?: string | null },
+    @Body() body: unknown,
   ) {
     this.guard(req);
-    return this.admin.createAnnouncement(body);
+    return this.admin.createAnnouncement(avisoSchema.parse(body));
   }
 
   @Get('announcements')
@@ -169,11 +205,10 @@ export class AdminController {
   @Get('audit')
   getAudit(
     @Req() req: AuthenticatedRequest,
-    @Query('page') page?: string,
-    @Query('action') action?: string,
+    @Query() query: unknown,
   ) {
     this.guard(req);
-    return this.admin.getAuditLog({ page: page ? +page : 1, action });
+    return this.admin.getAuditLog(auditoriaQuery.parse(query));
   }
 
   /* ── Status do sistema ─────────────────────────────────────── */

@@ -30,6 +30,10 @@ describe('DocumentosStorage', () => {
     it('baixar devolve null', async () => {
       await expect(storage.baixar('t1/c/1.pdf')).resolves.toBeNull();
     });
+
+    it('verificar diz "off" — ausência deliberada, não queda', async () => {
+      await expect(storage.verificar()).resolves.toMatchObject({ status: 'off' });
+    });
   });
 
   describe('com credencial', () => {
@@ -77,5 +81,24 @@ describe('DocumentosStorage', () => {
     await storage.guardar('tenant-abc', 'contratos/hash.pdf', Buffer.from('x'));
 
     expect(chamadas[0].chave).toBe('tenant-abc/contratos/hash.pdf');
+  });
+
+  it('verificar: bucket inalcançável é "down" com a causa; alcançável é "up"', async () => {
+    const storage = new DocumentosStorage(
+      config({ SUPABASE_URL: 'https://e.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'k' }),
+    );
+    const falso = (error: { message: string } | null) => {
+      (storage as unknown as { cliente: unknown }).cliente = {
+        getBucket: () => Promise.resolve({ data: error ? null : {}, error }),
+      };
+    };
+
+    falso({ message: 'Bucket not found' });
+    await expect(storage.verificar()).resolves.toMatchObject({
+      status: 'down', detalhe: 'Bucket not found', bucket: 'documentos',
+    });
+
+    falso(null);
+    await expect(storage.verificar()).resolves.toMatchObject({ status: 'up' });
   });
 });

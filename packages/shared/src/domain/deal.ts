@@ -98,6 +98,13 @@ export function canTransition(from: DealStatusValue, to: DealStatusValue): boole
  */
 export const DEAL_TERMINAL_STATUSES = ['canceled', 'rescinded'] as const;
 
+/**
+ * Negócio faturado — o que conta como venda realizada em relatório. É o
+ * `invoiced` e tudo o que só se alcança depois dele. Antes disso a margem é
+ * estimativa; depois, é o valor congelado no faturamento.
+ */
+export const DEAL_FATURADO_STATUSES = ['invoiced', 'documentation', 'delivered'] as const;
+
 export function isDealTerminal(status: DealStatusValue): boolean {
   return (DEAL_TERMINAL_STATUSES as readonly string[]).includes(status);
 }

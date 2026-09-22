@@ -16,6 +16,6 @@ import { FORNECEDOR_DE_CONSULTA, fornecedorConfigurado } from './fornecedor';
       useFactory: fornecedorConfigurado,
     },
   ],
-  exports: [ConsultasService],
+  exports: [ConsultasService, FORNECEDOR_DE_CONSULTA],
 })
 export class ConsultasModule {}

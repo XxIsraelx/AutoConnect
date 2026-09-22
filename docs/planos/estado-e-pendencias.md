@@ -17,7 +17,7 @@
 | Chat | ✅ completo | ✅ completo | Socket.IO tempo real |
 | Mapa | ✅ completo | ✅ completo | dark theme, pins animados, sidebar |
 | Dashboard | ✅ completo | ✅ completo | KPIs, GalaxyMap |
-| Admin | ✅ completo | ✅ completo | impersonation, announcements |
+| Admin | ✅ completo | ✅ completo | impersonation, announcements; desde 22/09/2026 mostra vendas da plataforma (faturado 30 dias/mês em `Decimal`, margem, negócios por grupo, contratos interno × eletrônico, envios de assinatura), **gasto com consulta veicular do mês** (o que a plataforma paga), métricas por loja (faturado, gasto, representante legal, última atividade — em `groupBy`, sem N+1) e sistema com `up`/`down`/`off` (bucket privado, provedor de assinatura, consulta, e-mail, Google, crons da réplica). Corpos e queries em Zod; tela responsiva a 375px, uma aba por arquivo, erro de carga com `ErroAoCarregar` por aba |
 | Página pública concessionária | ✅ | ✅ | `/c/[slug]` com chat iniciado pelo cliente |
 | **Negócios (`Deal`)** | ✅ completo | ✅ completo | máquina de estados, pagamento composto, margem em `Decimal` |
 | **Custo do veículo** | ✅ completo | ✅ completo | aquisição + preparação; base da margem |
