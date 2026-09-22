@@ -56,14 +56,11 @@ Auditadas em 04/09/2026, contra o repositório.
   errada passa a aparecer como erro no log de boot.
 
 **Menores**
-- **Google OAuth em produção** (conferido em 22/09/2026): o redirect URI de
-  produção **já está registrado** — o Google aceita o fluxo sem
-  `redirect_uri_mismatch`, e os domínios do Railway estão autorizados. Falta
-  **publicar o app**: está em "Testando" com 0 usuários de teste, então hoje
-  ninguém entra com Google. O botão "Publicar app" fica bloqueado até o
-  Branding ter links de **página inicial, Política de Privacidade e Termos de
-  Serviço** — e o web não tem essas páginas. Escopos só `email profile`
-  (não sensíveis): publicar não exige verificação do Google.
+- ~~**Google OAuth em produção**~~ — resolvido em 22/09/2026: redirect URI já
+  registrado; páginas `/termos` e `/privacidade` publicadas e ligadas no
+  Branding; app passou de "Testando" para **"Em produção"**. Escopos só
+  `email profile`, sem verificação do Google. ⚠ Os dois textos ainda não
+  passaram por advogado — entram na mesma revisão do template de contrato.
 - **`catch` silenciosos deliberados** (~20): `SeloProcedencia`, autopreenchimento
   de CEP/CNPJ, `localStorage`, prévia do tooltip no mapa, polling dos badges da
   sidebar, "visto recentemente", corações de favorito. Nenhum esconde dado
@@ -123,8 +120,8 @@ Duas correções ao plano já registradas **dentro dele**:
 
 ## Próximos passos sugeridos
 
-1. **Revisão jurídica do template de contrato** — bloqueia uso real
-2. **Concluir o Google OAuth**: páginas de privacidade e termos (LGPD, revisão jurídica), links no Branding e "Publicar app"
+1. **Revisão jurídica do template de contrato, dos Termos e da Política de Privacidade** — bloqueia uso real
+2. ~~Concluir o Google OAuth~~ — feito em 22/09/2026
 3. **Fase 3** do plano: consultas veiculares (placa/chassi) com cache por
    custo de chamada, e assinatura externa atrás da interface que já existe
 4. ~~**Revisar responsividade** de `/relatorios`, `/agendamentos` e `/equipe`~~ — feito em 22/09/2026
