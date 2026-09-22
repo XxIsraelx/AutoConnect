@@ -799,6 +799,12 @@ export default function SignupPage() {
         </div>
       </form>
 
+      <p className="mt-4 text-center text-xs text-slate-400">
+        Ao criar a conta, você concorda com os 
+        <Link href="/termos" className="text-blue-600 hover:underline">Termos de Uso</Link> e a 
+        <Link href="/privacidade" className="text-blue-600 hover:underline">Política de Privacidade</Link>.
+      </p>
+
       <p className="mt-5 text-center text-sm text-slate-500">
         Já tem conta?{' '}
         <Link href="/login" className="text-blue-600 hover:underline font-medium">Entrar</Link>
