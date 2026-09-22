@@ -35,7 +35,7 @@ describe('provedorConfigurado', () => {
 
   it('provedor sem adaptador fica indisponível', () => {
     const p = provedorConfigurado(config({
-      ASSINATURA_FORNECEDOR: 'clicksign', ASSINATURA_WEBHOOK_SECRET: 's',
+      ASSINATURA_FORNECEDOR: 'docusign', ASSINATURA_WEBHOOK_SECRET: 's',
     }));
     expect(p).toBeInstanceOf(ProvedorIndisponivel);
   });

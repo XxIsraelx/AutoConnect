@@ -49,6 +49,14 @@ describe('HMAC do webhook de assinatura', () => {
     expect(hmacConfere(corpo, 'sha256=zz', segredo)).toBe(false);
   });
 
+  it('hex sem prefixo só com aceitaHexPuro (x-clicksign-signature)', () => {
+    const hex = hmacSha256Hex(corpo, segredo);
+    expect(hmacConfere(corpo, hex, segredo)).toBe(false);
+    expect(hmacConfere(corpo, hex, segredo, { aceitaHexPuro: true })).toBe(true);
+    expect(hmacConfere(corpo, `sha256=${hex}`, segredo, { aceitaHexPuro: true })).toBe(true);
+    expect(hmacConfere(corpo, `sha1=${hex}`, segredo, { aceitaHexPuro: true })).toBe(false);
+  });
+
   it('sem segredo configurado, nada confere', () => {
     expect(hmacConfere(corpo, cabecalhoHmac(corpo, ''), '')).toBe(false);
   });

@@ -84,6 +84,11 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = '';
 // simulado roda em memória e não sai do processo.
 process.env.ASSINATURA_FORNECEDOR = 'simulado';
 process.env.ASSINATURA_WEBHOOK_SECRET = 'segredo-de-webhook-de-teste';
+// E a credencial da Clicksign zerada: mesmo que alguém troque o fornecedor
+// acima por engano, sem token a fábrica cai no indisponível e nenhuma
+// requisição sai para a Clicksign.
+process.env.CLICKSIGN_ACCESS_TOKEN = '';
+process.env.CLICKSIGN_API_URL = '';
 
 /** Nome do banco de teste, para os testes afirmarem onde estão conectados. */
 export const BANCO_DE_TESTE = verificada.pathname.replace(/^\//, '');

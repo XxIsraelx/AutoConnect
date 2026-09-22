@@ -4,6 +4,7 @@ import type {
   EnvelopeCriado, EventoDeAssinatura, ProvedorDeAssinatura,
 } from '@autoconnect/shared';
 import { ProvedorSimulado } from './provedor-simulado';
+import { ProvedorClicksign } from './provedor-clicksign';
 
 export const PROVEDOR_DE_ASSINATURA = Symbol('ProvedorDeAssinatura');
 
@@ -50,8 +51,9 @@ export class ProvedorIndisponivel implements ProvedorDeAssinatura {
  *  - ausente → indisponível (a opção some da tela);
  *  - `simulado` → provedor em memória, **recusado em produção**: um contrato
  *    marcado como assinado por simulação é documento falso;
- *  - `clicksign` → ainda não existe. O adaptador entra aqui, e é a única
- *    mudança necessária fora do próprio arquivo dele.
+ *  - `clicksign` → API 3.0, exige também `CLICKSIGN_ACCESS_TOKEN` e
+ *    `CLICKSIGN_API_URL` (https). Faltando algum, fica indisponível com erro
+ *    no log — nunca derruba o boot.
  *
  * `ASSINATURA_WEBHOOK_SECRET` é obrigatório para qualquer provedor: sem ele
  * não há como conferir que o webhook veio mesmo do provedor.
@@ -78,6 +80,29 @@ export function provedorConfigurado(config: ConfigService): ProvedorDeAssinatura
     }
     log.warn('Assinatura externa SIMULADA: nenhum documento sai deste servidor.');
     return new ProvedorSimulado(segredo);
+  }
+
+  if (escolhido === 'clicksign') {
+    const token = config.get<string>('CLICKSIGN_ACCESS_TOKEN')?.trim();
+    const apiUrl = config.get<string>('CLICKSIGN_API_URL')?.trim();
+    const faltam = [
+      !token && 'CLICKSIGN_ACCESS_TOKEN',
+      !apiUrl && 'CLICKSIGN_API_URL',
+    ].filter(Boolean);
+    if (faltam.length) {
+      log.error(`ASSINATURA_FORNECEDOR=clicksign sem ${faltam.join(' e ')}: assinatura externa desligada.`);
+      return new ProvedorIndisponivel();
+    }
+    if (!/^https:\/\//i.test(apiUrl!)) {
+      log.error('CLICKSIGN_API_URL precisa ser https: assinatura externa desligada.');
+      return new ProvedorIndisponivel();
+    }
+    if (config.get<string>('NODE_ENV') === 'production' && /sandbox/i.test(apiUrl!)) {
+      // Não bloqueia (homologação pode rodar com NODE_ENV=production), mas
+      // assinatura colhida no sandbox não tem validade jurídica.
+      log.warn('Clicksign em SANDBOX com NODE_ENV=production: as assinaturas não têm validade.');
+    }
+    return new ProvedorClicksign({ apiUrl: apiUrl!, token: token!, segredoWebhook: segredo });
   }
 
   log.error(`ASSINATURA_FORNECEDOR="${escolhido}" não tem adaptador. Assinatura externa desligada.`);

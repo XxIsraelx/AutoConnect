@@ -35,6 +35,30 @@ describe('aplicarEventoDeAssinatura', () => {
     expect(r.estado.signatarios.map((s) => s.status)).toEqual(['assinou', 'enviado']);
   });
 
+  it('id do provedor que não casa com ninguém cai para o papel', () => {
+    const r = aplicarEventoDeAssinatura(enviado(), {
+      tipo: 'assinou', idSignatarioExterno: 'chave-legada', papel: 'customer', ocorridoEm: quando,
+    });
+
+    expect(r.estado.signatarios.map((s) => s.status)).toEqual(['enviado', 'assinou']);
+  });
+
+  it('id que casa vence o papel', () => {
+    const r = aplicarEventoDeAssinatura(enviado(), {
+      tipo: 'assinou', idSignatarioExterno: 'sig-d', papel: 'customer', ocorridoEm: quando,
+    });
+
+    expect(r.estado.signatarios.map((s) => s.status)).toEqual(['assinou', 'enviado']);
+  });
+
+  it('id que não casa e sem papel não marca ninguém', () => {
+    const r = aplicarEventoDeAssinatura(enviado(), {
+      tipo: 'assinou', idSignatarioExterno: 'chave-legada', ocorridoEm: quando,
+    });
+
+    expect(r.mudou).toBe(false);
+  });
+
   it('o mesmo assinou duas vezes não muda nada na segunda (entrega repetida)', () => {
     const uma = aplicarEventoDeAssinatura(enviado(), { tipo: 'assinou', papel: 'dealer', ocorridoEm: quando });
     const duas = aplicarEventoDeAssinatura(uma.estado, {

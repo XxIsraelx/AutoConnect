@@ -205,9 +205,15 @@ bucket existe.
 ### Assinatura eletrônica externa
 
 ```env
-ASSINATURA_FORNECEDOR=""        # vazio = desligada (503, opção some da tela); simulado = em memória, recusado em produção
+ASSINATURA_FORNECEDOR=""        # vazio = desligada (503, opção some da tela); simulado = em memória, recusado em produção; clicksign
 ASSINATURA_WEBHOOK_SECRET=""    # HMAC do webhook; sem ele nenhum provedor liga
+CLICKSIGN_ACCESS_TOKEN=""       # só com clicksign; token cru no Authorization
+CLICKSIGN_API_URL=""            # https://sandbox.clicksign.com ou https://app.clicksign.com, SEM /api/v3
 ```
+
+Faltando qualquer uma das três com `clicksign`, a assinatura externa fica
+desligada com erro no log — o boot não cai. O `setup-e2e.ts` força `simulado`
+e zera as `CLICKSIGN_*`: a suíte nunca fala com a Clicksign.
 
 ### Órfãs — presentes no `.env` mas sem nenhum código que as leia
 
@@ -292,7 +298,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 360 testes:
+são 401 testes:
 
 ```bash
 pnpm exec turbo run typecheck lint test

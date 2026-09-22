@@ -9,6 +9,19 @@ import { createHash, createHmac, timingSafeEqual } from 'crypto';
 
 export const CABECALHO_HMAC = 'content-hmac';
 
+/**
+ * Cabeçalho alternativo, aceito só pelo adaptador da Clicksign.
+ *
+ * A página técnica "Segurança de Webhooks" da Clicksign documenta
+ * `Content-Hmac: sha256=<hex>` (https://developers.clicksign.com/docs/seguranca-de-webhooks);
+ * o FAQ da página inicial do portal (https://developers.clicksign.com/) diz
+ * que "cada aviso inclui o cabeçalho `x-clicksign-signature`", sem dizer o
+ * formato. Até uma entrega real tirar a dúvida, os dois são aceitos — com o
+ * mesmo segredo e a mesma comparação em tempo constante, então aceitar os dois
+ * não enfraquece nada: forjar qualquer um exige o segredo.
+ */
+export const CABECALHO_HMAC_ALTERNATIVO = 'x-clicksign-signature';
+
 export function hmacSha256Hex(corpo: Uint8Array, segredo: string): string {
   return createHmac('sha256', segredo).update(corpo).digest('hex');
 }
@@ -34,10 +47,14 @@ export function hmacConfere(
   corpo: Uint8Array,
   cabecalho: string | string[] | undefined,
   segredo: string,
+  opcoes: { aceitaHexPuro?: boolean } = {},
 ): boolean {
   if (!segredo || typeof cabecalho !== 'string') return false;
 
-  const m = /^sha256=([0-9a-f]{64})$/i.exec(cabecalho.trim());
+  // `aceitaHexPuro`: o `x-clicksign-signature` não tem formato documentado, e
+  // o hex sem o prefixo `sha256=` é a outra forma comum.
+  const padrao = opcoes.aceitaHexPuro ? /^(?:sha256=)?([0-9a-f]{64})$/i : /^sha256=([0-9a-f]{64})$/i;
+  const m = padrao.exec(cabecalho.trim());
   if (!m?.[1]) return false;
 
   const recebido = Buffer.from(m[1].toLowerCase(), 'hex');

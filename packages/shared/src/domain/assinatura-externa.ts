@@ -162,9 +162,17 @@ export function aplicarEventoDeAssinatura(
   if (atual.status !== 'sent' || evento.tipo === 'ignorado') return igual;
 
   const quando = evento.ocorridoEm.toISOString();
+  // O id do provedor vence; o papel só decide quando o id não casa com
+  // ninguém. Na Clicksign o `signer.key` do webhook não é garantidamente o
+  // id do signatário devolvido pela API v3, e o adaptador também deduz o
+  // papel (pelos metadados do documento) — sem este recuo, um id que não
+  // casa faria o `assinou` se perder em silêncio.
+  const casaPeloId = Boolean(evento.idSignatarioExterno) &&
+    atual.signatarios.some((s) => s.idExterno === evento.idSignatarioExterno);
   const alvo = (s: SignatarioRegistrado) =>
-    (evento.idSignatarioExterno && s.idExterno === evento.idSignatarioExterno) ||
-    (!evento.idSignatarioExterno && evento.papel !== undefined && s.papel === evento.papel);
+    casaPeloId
+      ? s.idExterno === evento.idSignatarioExterno
+      : evento.papel !== undefined && s.papel === evento.papel;
 
   switch (evento.tipo) {
     case 'assinou': {
