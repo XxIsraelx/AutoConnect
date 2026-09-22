@@ -18,7 +18,10 @@ export default function AuthCallbackPage() {
       return;
     }
 
-    const redirect = params.get('redirect') ?? '/dashboard';
+    // Só caminho interno: `redirect` vem da URL, e `//site` ou `https://…`
+    // levariam a pessoa, já logada, para fora do AutoConnect.
+    const pedido = params.get('redirect');
+    const redirect = pedido?.startsWith('/') && !pedido.startsWith('//') ? pedido : '/dashboard';
 
     api<{ id: string; email: string; fullName: string; role: string; tenantId: string | null }>(
       '/users/me',

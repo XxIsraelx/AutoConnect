@@ -60,6 +60,9 @@ export class AuthController {
     const session = this.auth.buildSession(req.user);
     const webUrl = process.env.WEB_URL ?? 'http://localhost:3000';
     const redirect = session.user.role === 'customer' ? '/buscar' : '/dashboard';
-    res.redirect(`${webUrl}/auth/callback?token=${session.accessToken}&redirect=${redirect}`);
+    // `/callback`, não `/auth/callback`: a página mora em `app/(auth)/callback`,
+    // e o grupo entre parênteses não entra na URL. O caminho errado dava 404
+    // depois de escolher a conta no Google.
+    res.redirect(`${webUrl}/callback?token=${session.accessToken}&redirect=${redirect}`);
   }
 }
