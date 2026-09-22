@@ -49,3 +49,8 @@ uploads/
 # arquivos de teste e backups locais
 teste-importacao-com-erros.csv
 .claude/backup-buscar/
+
+# Obsidian — estado da janela muda a cada clique; config do cofre é versionada
+docs/.obsidian/workspace*.json
+docs/.obsidian/cache
+docs/.trash/

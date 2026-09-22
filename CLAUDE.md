@@ -738,9 +738,25 @@ Auditadas em 04/09/2026, contra o repositório.
 
 ---
 
+## Documentação — cofre Obsidian em `docs/`
+
+`docs/` é um cofre do Obsidian, versionado. Índice em `docs/Início.md`.
+
+| Pasta | Uso |
+|---|---|
+| `docs/inbox/` | Ideias e bugs que o usuário anota. **"Veja o inbox"** = ler, resumir, propor destino de cada nota |
+| `docs/decisoes/` | Uma nota por decisão nova (`AAAA-MM-DD titulo.md`, modelo em `docs/modelos/Decisão.md`). Registrar ao fechar uma decisão de arquitetura ou produto com o usuário |
+| `docs/planos/` | Plano de vendas e levantamento |
+| `docs/produto/`, `docs/arquitetura/` | Funcionalidades, MVP, banco, ERD |
+
+- Links entre notas em **markdown relativo**, não `[[wikilink]]` — funcionam no
+  Obsidian, no GitHub e no terminal.
+- Nada de segredo no cofre: `ACESSOS.md` fica na raiz, fora dele.
+- `docs/.obsidian/workspace*.json` é gitignored; o resto da config é versionado.
+
 ## Onde o plano de vendas está
 
-`plano-implementacao-vendas.md` governa o trabalho. Estado em 03/09/2026:
+`docs/planos/plano-implementacao-vendas.md` governa o trabalho. Estado em 03/09/2026:
 
 | Fase | Estado |
 |---|---|

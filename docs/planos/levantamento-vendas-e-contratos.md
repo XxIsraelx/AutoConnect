@@ -10,7 +10,7 @@ Documento companheiro: [`plano-implementacao-vendas.md`](./plano-implementacao-v
 
 ## 1. O que o AutoConnect é hoje
 
-Lendo `packages/db/prisma/schema.prisma`, `docs/features.md` e `CLAUDE.md`: o AutoConnect é um **SaaS multi-tenant de aquisição e relacionamento**. Ele resolve o ciclo *cliente vê veículo → fala com vendedor → agenda test drive → lead vira "ganho"*. E aí ele para.
+Lendo `packages/db/prisma/schema.prisma`, `docs/produto/features.md` e `CLAUDE.md`: o AutoConnect é um **SaaS multi-tenant de aquisição e relacionamento**. Ele resolve o ciclo *cliente vê veículo → fala com vendedor → agenda test drive → lead vira "ganho"*. E aí ele para.
 
 O modelo `Lead` termina em `won` com um `wonAt`. Não existe entidade que represente **o negócio em si**: qual foi o valor fechado, como o cliente pagou, qual contrato foi assinado, quanto o veículo custou para a loja, qual foi a margem, quem assinou, quando o carro foi entregue. Um lead "ganho" é uma flag, não uma venda.
 

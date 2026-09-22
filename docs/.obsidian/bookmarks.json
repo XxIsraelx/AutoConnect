@@ -1,0 +1,7 @@
+{
+  "items": [
+    { "type": "file", "ctime": 1790000000000, "path": "Início.md", "title": "Início" },
+    { "type": "file", "ctime": 1790000000001, "path": "planos/plano-implementacao-vendas.md", "title": "Plano de vendas" },
+    { "type": "folder", "ctime": 1790000000002, "path": "inbox", "title": "Inbox" }
+  ]
+}

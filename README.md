@@ -20,8 +20,7 @@ autoconnect/
 │   └── shared/     # Tipos, zod schemas, constantes
 ├── infra/          # Dockerfiles, fly.toml
 ├── schema.sql      # DDL canônica (referência)
-├── erd.mermaid     # Diagrama ER
-└── database-design.md
+└── docs/           # cofre Obsidian: produto, arquitetura, planos, decisões
 ```
 
 ## Pré-requisitos
@@ -55,8 +54,10 @@ pnpm dev
 API sobe em http://localhost:4000, Web em http://localhost:3000.
 
 ## Documentação
-- `database-design.md` — decisões de schema e RLS
-- `mvp-and-architecture.md` — MVP, arquitetura e roadmap por sprints
+Tudo em `docs/`, que também é um cofre do Obsidian (comece por `docs/Início.md`):
+- `docs/arquitetura/database-design.md` — decisões de schema e RLS
+- `docs/produto/mvp-and-architecture.md` — MVP, arquitetura e roadmap por sprints
+- `docs/planos/plano-implementacao-vendas.md` — plano de vendas e contrato em fases
 
 ## Scripts úteis
 - `pnpm dev` — roda api + web em paralelo
