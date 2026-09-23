@@ -54,3 +54,6 @@ teste-importacao-com-erros.csv
 docs/.obsidian/workspace*.json
 docs/.obsidian/cache
 docs/.trash/
+
+# Arquivos seus, não do projeto (planilhas, apresentações) — nunca versionar
+Claude outputs/
