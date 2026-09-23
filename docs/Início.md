@@ -26,6 +26,8 @@ com o código e lido pelo Claude quando o assunto aparece.
 ## Documentos principais
 
 - [Plano de implementação — vendas e contrato](planos/plano-implementacao-vendas.md)
+- [Plano — paridade de CRM e diferenciação](planos/plano-paridade-crm.md)
+  · [levantamento dos CRMs do mercado](planos/levantamento-crms-e-paridade.md)
 - [Levantamento — vendas e contratos](planos/levantamento-vendas-e-contratos.md)
 - [Funcionalidades do produto](produto/features.md)
 - [MVP e arquitetura](produto/mvp-and-architecture.md)
