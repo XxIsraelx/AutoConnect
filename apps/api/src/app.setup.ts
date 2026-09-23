@@ -20,6 +20,13 @@ export function configureApp(app: INestApplication): INestApplication {
   // bateria. As demais rotas seguem com o parser padrão.
   app.use(ROTA_WEBHOOK_ASSINATURA, corpoCru(1024 * 1024));
 
+  // Um salto de proxy (a borda do Railway). Sem isto, `req.ip` é o IP do
+  // proxy para todo mundo, e o limite por IP do formulário público — cinco
+  // envios por janela — barraria a internet inteira depois do quinto visitante.
+  // O `1` é deliberado: `true` confiaria na cadeia inteira de
+  // `X-Forwarded-For`, que o cliente escreve e portanto forja.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   app.useGlobalFilters(new ZodFilter());
 
   app.useGlobalPipes(

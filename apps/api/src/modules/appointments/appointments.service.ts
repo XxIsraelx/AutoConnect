@@ -1,8 +1,16 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException,
+} from '@nestjs/common';
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
 import { ehGlobal, type Escopo } from '../../common/escopo';
 import { EmailService } from '../../common/email/email.service';
+import {
+  DURACAO_PADRAO_MINUTOS,
+  type AgendamentoDaLojaInput,
+  type AgendamentoDoClienteInput,
+  type AtualizarAgendamentoInput,
+} from '@autoconnect/shared';
 
 const TYPE_LABELS: Record<string, string> = {
   test_drive: 'Test drive',
@@ -71,7 +79,15 @@ export class AppointmentsService {
       ...(status ? { status: status as never } : {}),
       ...(salespersonId ? { salespersonId } : {}),
       ...(type ? { type: type as never } : {}),
-      ...(q ? { customer: { fullName: { contains: q, mode: 'insensitive' as const } } } : {}),
+      // A busca tem que alcançar o contato avulso também: um agendamento feito
+      // pela loja para quem não tem conta não tem `customer`, e antes ele
+      // simplesmente sumia da busca por nome.
+      ...(q ? {
+        OR: [
+          { customer: { fullName: { contains: q, mode: 'insensitive' as const } } },
+          { contactName: { contains: q, mode: 'insensitive' as const } },
+        ],
+      } : {}),
       ...(from || to ? {
         scheduledStart: {
           ...(from ? { gte: new Date(from) } : {}),
@@ -124,17 +140,9 @@ export class AppointmentsService {
   }
 
   /** Cliente solicita agendamento */
-  async create(customerUserId: string, data: {
-    tenantId:      string;
-    vehicleId?:    string;
-    branchId?:     string;
-    leadId?:       string;
-    type:          string;
-    scheduledStart: string;
-    notes?:        string;
-  }): Promise<unknown> {
+  async create(customerUserId: string, data: AgendamentoDoClienteInput): Promise<unknown> {
     const start = new Date(data.scheduledStart);
-    const end   = new Date(start.getTime() + 60 * 60 * 1000); // +1h default
+    const end   = new Date(start.getTime() + DURACAO_PADRAO_MINUTOS * 60 * 1000);
 
     // Quem cria é o cliente, não a concessionária: o contexto é o do usuário.
     const appt = await this.prisma.withUser(customerUserId, (tx) =>
@@ -163,6 +171,146 @@ export class AppointmentsService {
     this.notifyDealerOfRequest(appt).catch(err =>
       this.logger.warn(`Falha ao notificar concessionária: ${err}`),
     );
+
+    return appt;
+  }
+
+  /**
+   * A loja marca um compromisso — inclusive para quem **não tem conta**.
+   *
+   * ## Por que não bastou exigir um lead
+   *
+   * A alternativa era tornar `leadId` obrigatório e guardar o contato só lá.
+   * Foi descartada por duas razões:
+   *
+   *  1. nem todo agendamento é evento de funil. Entrega de carro vendido e
+   *     revisão não são oportunidades novas, e criar lead para cada um sujaria
+   *     o funil e a contagem do relatório;
+   *  2. o contato precisa sobreviver ao lead. A deduplicação funde contatos
+   *     repetidos num lead só, e o lead pode ser apagado pela tela; um
+   *     agendamento que só soubesse o nome do cliente por join ficaria sem
+   *     saber quem esperar.
+   *
+   * Por isso os três caminhos, com o contato **copiado** para o agendamento
+   * quando vem de um lead. O Zod garante que um deles veio; a constraint
+   * `appointments_tem_contato` garante o mesmo no banco, para o caso de algum
+   * caminho futuro esquecer.
+   */
+  async criarPelaLoja(
+    escopo: Escopo,
+    criadorId: string,
+    input: AgendamentoDaLojaInput,
+  ): Promise<unknown> {
+    if (ehGlobal(escopo)) {
+      throw new ForbiddenException('Selecione uma concessionária para criar um agendamento.');
+    }
+    const tenantId = escopo.tenantId;
+
+    const start = new Date(input.scheduledStart);
+    const end = new Date(
+      start.getTime() + (input.durationMinutes ?? DURACAO_PADRAO_MINUTOS) * 60 * 1000,
+    );
+
+    const appt = await this.prisma.withTenant(tenantId, async (tx) => {
+      if (input.vehicleId) {
+        const veiculo = await tx.vehicle.findFirst({
+          where: { id: input.vehicleId, tenantId }, select: { id: true },
+        });
+        if (!veiculo) throw new NotFoundException('Veículo não encontrado');
+      }
+
+      if (input.branchId) {
+        const filial = await tx.dealershipBranch.findFirst({
+          where: { id: input.branchId, tenantId }, select: { id: true },
+        });
+        if (!filial) throw new NotFoundException('Filial não encontrada');
+      }
+
+      const salespersonId = input.salespersonId ?? criadorId;
+      const vendedor = await tx.user.findFirst({
+        where: { id: salespersonId, tenantId, status: 'active' }, select: { id: true },
+      });
+      if (!vendedor) throw new NotFoundException('Vendedor não encontrado');
+
+      // Contato: o que o corpo trouxe, completado pelo lead quando há um.
+      let contactName = input.contactName?.trim() || null;
+      let contactPhone = input.contactPhone?.trim() || null;
+      let contactEmail = input.contactEmail?.trim() || null;
+
+      if (input.leadId) {
+        const lead = await tx.lead.findFirst({
+          where: { id: input.leadId, tenantId },
+          select: { id: true, contactName: true, contactPhone: true, contactEmail: true, customerUserId: true },
+        });
+        if (!lead) throw new NotFoundException('Lead não encontrado');
+
+        contactName ??= lead.contactName;
+        contactPhone ??= lead.contactPhone;
+        contactEmail ??= lead.contactEmail;
+      }
+
+      if (input.customerUserId) {
+        // A policy `cliente_relacionado` já limita quem a loja enxerga: só
+        // clientes com lead, agendamento ou conversa com ela. Um id de cliente
+        // de outra loja simplesmente não aparece aqui.
+        const cliente = await tx.user.findFirst({
+          where: { id: input.customerUserId, role: 'customer' },
+          select: { id: true, fullName: true, phone: true, email: true },
+        });
+        if (!cliente) throw new NotFoundException('Cliente não encontrado');
+
+        contactName ??= cliente.fullName;
+        contactPhone ??= cliente.phone;
+        contactEmail ??= cliente.email;
+      }
+
+      // O Zod já cobre o corpo; isto pega o caso em que o lead escolhido não
+      // tem contato nenhum — aí o agendamento nasceria sem saber quem esperar.
+      if (!input.customerUserId && !contactName) {
+        throw new BadRequestException(
+          'O lead escolhido não tem nome de contato. Informe nome e telefone.',
+        );
+      }
+
+      return tx.appointment.create({
+        data: {
+          tenantId,
+          customerUserId: input.customerUserId ?? null,
+          leadId: input.leadId ?? null,
+          contactName,
+          contactPhone,
+          contactEmail,
+          salespersonId,
+          vehicleId: input.vehicleId ?? null,
+          branchId: input.branchId ?? null,
+          type: input.type,
+          status: 'scheduled',
+          scheduledStart: start,
+          scheduledEnd: end,
+          notes: input.notes ?? null,
+        },
+        include: INCLUDE_COMPLETO,
+      });
+    });
+
+    // A timeline do lead tem que mostrar o agendamento no momento em que ele é
+    // marcado — é o evento mais importante do atendimento.
+    if (input.leadId) {
+      await this.prisma
+        .withTenant(tenantId, (tx) =>
+          tx.leadInteraction.create({
+            data: {
+              leadId: input.leadId!,
+              tenantId,
+              actorUserId: criadorId,
+              kind: 'visit',
+              content: `Agendamento marcado para ${start.toLocaleString('pt-BR')}`,
+              payload: { appointmentId: appt.id, type: input.type } as never,
+            },
+          }),
+        )
+        .catch((err) => this.logger.warn(`Falha ao registrar na timeline do lead: ${err}`));
+    }
 
     return appt;
   }
@@ -196,12 +344,7 @@ export class AppointmentsService {
   }
 
   /** Dealer responde ao agendamento (confirma, cancela, reagenda) */
-  async update(tenantId: string, id: string, data: {
-    status?:        string;
-    scheduledStart?: string;
-    salespersonId?: string;
-    notes?:         string;
-  }): Promise<unknown> {
+  async update(tenantId: string, id: string, data: AtualizarAgendamentoInput): Promise<unknown> {
     const updated = await this.prisma.withTenant(tenantId, async (tx) => {
       const appt = await tx.appointment.findFirst({ where: { id, tenantId } });
       if (!appt) throw new NotFoundException('Agendamento não encontrado');
@@ -212,7 +355,9 @@ export class AppointmentsService {
           ...(data.status ? { status: data.status as never } : {}),
           ...(data.scheduledStart ? {
             scheduledStart: new Date(data.scheduledStart),
-            scheduledEnd:   new Date(new Date(data.scheduledStart).getTime() + 60 * 60 * 1000),
+            scheduledEnd:   new Date(
+              new Date(data.scheduledStart).getTime() + DURACAO_PADRAO_MINUTOS * 60 * 1000,
+            ),
           } : {}),
           ...(data.salespersonId !== undefined ? { salespersonId: data.salespersonId } : {}),
           ...(data.notes         !== undefined ? { notes:         data.notes         } : {}),
@@ -228,10 +373,13 @@ export class AppointmentsService {
       data.status === 'canceled'  ? 'canceled'  as const :
       rescheduled                 ? 'rescheduled' as const : null;
 
-    if (status && updated.customer?.email) {
+    // Contato avulso não tem `customer`: o e-mail vive no próprio agendamento.
+    // Sem este fallback, quem a loja agendou pelo balcão nunca era avisado.
+    const paraOCliente = updated.customer?.email ?? updated.contactEmail;
+    if (status && paraOCliente) {
       this.email.sendAppointmentStatusUpdate({
-        to: updated.customer.email,
-        customerName: updated.customer.fullName,
+        to: paraOCliente,
+        customerName: updated.customer?.fullName ?? updated.contactName ?? 'cliente',
         dealerName: updated.tenant.tradeName,
         status,
         typeLabel: TYPE_LABELS[updated.type] ?? 'Agendamento',
@@ -265,10 +413,11 @@ export class AppointmentsService {
       : await this.prisma.withUser(customerUserId!, cancelar);
 
     // Se foi a concessionária que cancelou, avisa o cliente
-    if (tenantId && updated.customer?.email) {
+    const paraOCliente = updated.customer?.email ?? updated.contactEmail;
+    if (tenantId && paraOCliente) {
       this.email.sendAppointmentStatusUpdate({
-        to: updated.customer.email,
-        customerName: updated.customer.fullName,
+        to: paraOCliente,
+        customerName: updated.customer?.fullName ?? updated.contactName ?? 'cliente',
         dealerName: updated.tenant.tradeName,
         status: 'canceled',
         typeLabel: TYPE_LABELS[updated.type] ?? 'Agendamento',

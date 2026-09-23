@@ -607,6 +607,10 @@ model Lead {
   contactName    String?    @map("contact_name")
   contactEmail   String?    @map("contact_email") @db.Citext
   contactPhone   String?    @map("contact_phone")
+  /// Forma canônica do telefone (DDD + número, sem DDI nem pontuação, com o
+  /// nono dígito). É por ela que a deduplicação compara — ver
+  /// `normalizarTelefoneBr` no shared, que é quem a produz.
+  contactPhoneNormalized String? @map("contact_phone_normalized")
   source         LeadSource @default(website)
   status         LeadStatus @default(new)
   message        String?
@@ -614,6 +618,11 @@ model Lead {
   lastActivityAt DateTime   @default(now()) @map("last_activity_at") @db.Timestamptz()
   wonAt          DateTime?  @map("won_at") @db.Timestamptz()
   lostReason     String?    @map("lost_reason")
+  /// Consentimento LGPD do formulário público: quando foi aceito e o texto
+  /// exibido no momento do aceite. O texto é copiado, não referenciado — a
+  /// prova tem que ser do termo que a pessoa leu, não do termo de hoje.
+  consentedAt    DateTime?  @map("consented_at") @db.Timestamptz()
+  consentText    String?    @map("consent_text")
   metadata       Json       @default("{}")
   createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz()
@@ -634,6 +643,9 @@ model Lead {
   @@index([vehicleId])
   // Sustenta a policy `cliente_relacionado` de users (ver migration 20260902150000).
   @@index([tenantId, customerUserId], map: "leads_tenant_customer_idx")
+  // Deduplicação: a busca é sempre "dentro desta loja, com este telefone/e-mail".
+  @@index([tenantId, contactPhoneNormalized], map: "leads_tenant_telefone_idx")
+  @@index([tenantId, contactEmail], map: "leads_tenant_email_idx")
   @@map("leads")
 }
 
@@ -660,7 +672,13 @@ model Appointment {
   id                 String                                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String                                 @map("tenant_id") @db.Uuid
   branchId           String?                                @map("branch_id") @db.Uuid
-  customerUserId     String                                 @map("customer_user_id") @db.Uuid
+  /// Nulo quando a loja agendou para quem não tem conta — o contato vive nos
+  /// campos `contact*` abaixo, ou no lead vinculado. A constraint
+  /// `appointments_tem_contato` garante que um dos três existe.
+  customerUserId     String?                                @map("customer_user_id") @db.Uuid
+  contactName        String?                                @map("contact_name")
+  contactPhone       String?                                @map("contact_phone")
+  contactEmail       String?                                @map("contact_email") @db.Citext
   salespersonId      String?                                @map("salesperson_id") @db.Uuid
   vehicleId          String?                                @map("vehicle_id") @db.Uuid
   leadId             String?                                @map("lead_id") @db.Uuid
@@ -679,7 +697,7 @@ model Appointment {
 
   tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch      DealershipBranch? @relation(fields: [branchId], references: [id])
-  customer    User              @relation("AppointmentsAsCustomer", fields: [customerUserId], references: [id], onDelete: Cascade)
+  customer    User?             @relation("AppointmentsAsCustomer", fields: [customerUserId], references: [id], onDelete: Cascade)
   salesperson User?             @relation("AppointmentsAsSalesperson", fields: [salespersonId], references: [id])
   vehicle     Vehicle?          @relation(fields: [vehicleId], references: [id])
   lead        Lead?             @relation(fields: [leadId], references: [id])

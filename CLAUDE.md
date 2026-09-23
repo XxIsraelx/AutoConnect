@@ -298,7 +298,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 432 testes:
+são 485 testes (370 na API, 115 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -373,6 +373,42 @@ desligue** para "resolver" um aviso.
 desativava a própria loja; `slug` trocava a URL pública. **Todo corpo passa
 por Zod**, que descarta o que não está no schema — `mass-assignment.e2e-spec.ts`
 fixa isso.
+
+---
+
+## Captura de lead
+
+O porquê de cada regra: [Onda 0 do plano de paridade](docs/planos/plano-paridade-crm.md).
+
+- **O visitante vira lead sem conta.** `POST /leads/public` é `@Public()`. Quem
+  está logado continua em `POST /leads`, que vincula o `customerUserId` — a
+  tela escolhe a rota pelo token que tem em mãos.
+- **A loja da rota pública vem do banco, nunca do corpo.** A resolução roda em
+  `withPublic` (sobra a policy `leitura_publica`: veículo `available`, loja
+  ativa) e a gravação em `withTenant(tenantId)`, porque `leads` só tem
+  `tenant_isolation` e o `WITH CHECK` recusaria o INSERT sem contexto. Um
+  `tenantId` no corpo que não bata com o do veículo é 404.
+- **Consentimento LGPD por cópia.** `leads.consent_text` guarda o texto exibido
+  no aceite, não uma referência a uma versão. Mudar a frase em
+  `FormularioDeInteresse` é publicar uma versão nova; os aceites antigos seguem
+  guardando o que a pessoa leu. Sem aceite, 400.
+- **Telefone tem uma forma canônica só.** `normalizarTelefoneBr` (shared) —
+  DDD + número, sem DDI, com o nono dígito — guardada em
+  `contact_phone_normalized`. É por ela que a deduplicação compara.
+- **Deduplicação de 30 dias:** mesmo telefone canônico ou e-mail, na mesma
+  loja, fora de status terminal → interação `duplicate` no lead existente, e a
+  resposta traz `deduplicado: true`. A regra de elegibilidade é
+  `elegivelParaDeduplicacao` (shared), com teste próprio.
+- **Antiabuso sem CAPTCHA e sem Redis:** telefone validado, honeypot (`website`)
+  e teto de 5 envios por IP+loja+veículo em 10 min, em memória de processo.
+  ⚠ Duas réplicas = `5 × réplicas`. O `trust proxy` do `app.setup` existe por
+  causa disso: sem ele `req.ip` é o da borda do Railway.
+- **Agendamento sem conta:** `customer_user_id` é nulo e o contato é **copiado**
+  para o agendamento. A constraint `appointments_tem_contato` exige cliente,
+  lead ou nome+telefone. O cron de lembrete pula quem não tem e-mail e marca
+  `reminderSentAt` do mesmo jeito — é o que o mantém idempotente.
+- **Clique em WhatsApp/telefone vira interação** (`ContatoDoLead`). O POST sai
+  em paralelo ao clique: perder o registro é ruim, perder a ligação é pior.
 
 ---
 
@@ -451,13 +487,14 @@ O porquê de cada regra: `docs/decisoes/vendas-e-contrato.md`.
   não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
   foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
   migrations (ver *Testes e CI*).
-- Migrations atuais (14): `init`, `trade_in_and_dealer_setting`,
+- Migrations atuais (15): `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
   `add_announcements_invites_alerts_searches_goals`,
   `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`,
   `deals_vendas_e_custos`, `sales_goal_meta_em_reais`,
   `contrato_garantia_assinatura`, `consultas_veiculares`,
-  `comprador_do_contrato`, `representante_legal`, `assinatura_externa`.
+  `comprador_do_contrato`, `representante_legal`, `assinatura_externa`,
+  `funil_lead_anonimo`.
 
 ---
 
@@ -513,13 +550,16 @@ consulta custa ~0,6s de ida e volta. Por isso a transação do cadastro usa
 ## Estado do projeto
 
 Tabela de módulos, pendências auditadas, fases do plano e próximos passos:
-`docs/planos/estado-e-pendencias.md`. O plano que governa o trabalho é
+`docs/planos/estado-e-pendencias.md`. Dois planos governam o trabalho:
 `docs/planos/plano-implementacao-vendas.md` (Fases 0 e 1 fechadas, Fase 2 com
 4 de 5, Fase 3 com a estrutura pronta — faltam fornecedor de consulta e
-adaptador Clicksign; faltam 4 e 5).
+adaptador Clicksign; faltam 4 e 5) e
+`docs/planos/plano-paridade-crm.md` (**Onda 0 fechada em 23/09/2026**; faltam
+1 a 5).
 
 **Bloqueiam uso real:** template de contrato sem revisão jurídica e ausência de
 fornecedor de consulta veicular.
 
-**Dívidas que afetam código novo:** API e banco em regiões diferentes (~0,6s por consulta); nenhuma
-infraestrutura de feature flag.
+**Dívidas que afetam código novo:** API e banco em regiões diferentes (~0,6s por
+consulta); nenhuma infraestrutura de feature flag; o teto por IP do formulário
+público vive na memória do processo (duas réplicas = teto dobrado).

@@ -82,10 +82,17 @@ export class TasksService {
 
     for (const appt of appts) {
       try {
-        if (appt.customer?.email) {
+        // Agendamento feito pela loja para quem não tem conta não tem
+        // `customer`: o contato vive no próprio agendamento. E pode não haver
+        // e-mail nenhum — o vendedor anotou só o telefone. Nesse caso o
+        // lembrete é pulado e `reminderSentAt` é marcado do mesmo jeito, que é
+        // o que mantém o job idempotente: sem isso o agendamento sem e-mail
+        // seria relido a cada hora, para sempre.
+        const destinatario = appt.customer?.email ?? appt.contactEmail;
+        if (destinatario) {
           await this.email.sendAppointmentReminder({
-            to: appt.customer.email,
-            customerName: appt.customer.fullName ?? 'cliente',
+            to: destinatario,
+            customerName: appt.customer?.fullName ?? appt.contactName ?? 'cliente',
             dealerName: appt.tenant.tradeName,
             typeLabel: TYPE_LABELS[appt.type] ?? 'Agendamento',
             vehicleInfo: vehicleInfo(appt.vehicle),

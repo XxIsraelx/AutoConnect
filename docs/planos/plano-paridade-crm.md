@@ -21,23 +21,46 @@ tela — a regra de "endpoint pronto não é funcionalidade" vale aqui inteira.
 
 ---
 
-## Onda 0 — o funil não pode vazar (≈ 1 semana)
+## Onda 0 — o funil não pode vazar ✅ (23/09/2026)
 
 Sem isto, o piloto falha na primeira semana de uso real, e nenhuma comparação
 com concorrente importa.
 
-1. **Lead anônimo.** Formulário público cria lead sem exigir conta: nome,
-   telefone, e-mail opcional, com consentimento LGPD registrado. Hoje `POST
-   /leads` exige JWT e usa `req.user.id`.
-2. **Lead manual pelo vendedor.** Tela em `/leads` para quem chegou por
-   telefone, WhatsApp ou balcão, com origem correta.
-3. **Agendamento criado pelo vendedor,** para um cliente que não tem conta.
-4. **Deduplicação.** Mesmo telefone ou e-mail na mesma loja em 30 dias vira
-   interação no lead existente, não lead novo.
-5. **Registrar o clique no WhatsApp e no telefone** como interação na timeline.
+1. ✅ **Lead anônimo.** `POST /leads/public` (`@Public()`) cria lead sem conta,
+   com consentimento LGPD gravado no próprio lead (`consented_at` e
+   `consent_text`, que guarda a **cópia** do texto exibido no aceite). A loja
+   vem do veículo, lido do banco, e nunca do corpo. Telas: o modal "Tenho
+   interesse" de `/catalogo/[id]` e um botão novo em `/c/[slug]` — quem está
+   logado continua indo por `POST /leads`, que vincula a conta.
+2. ✅ **Lead manual pelo vendedor.** Botão "Novo lead" em `/leads`, com
+   `LEAD_SOURCES_MANUAIS` (subconjunto de `LeadSource`: `website`, `app` e
+   `trade_in` ficam de fora, para o relatório de origem não mentir).
+3. ✅ **Agendamento criado pelo vendedor.** `POST /appointments/dealer` e botão
+   "Novo agendamento" em `/agendamentos`. `customer_user_id` virou nulo e o
+   contato passou a ser copiado para o agendamento; a constraint
+   `appointments_tem_contato` exige cliente, lead ou nome+telefone.
+4. ✅ **Deduplicação.** Mesmo telefone normalizado ou e-mail, na mesma loja, em
+   30 dias e fora de status terminal, vira interação `duplicate` no lead que já
+   existia. A resposta traz `deduplicado: true` e a tela avisa.
+5. ✅ **Clique no WhatsApp e no telefone** vira interação (`whatsapp`, `call`,
+   `email`) pelo componente `ContatoDoLead`, usado em `/leads` e no drawer de
+   `/agendamentos`. O registro sai em paralelo: se falhar, o link abre do mesmo
+   jeito e a tela avisa que a interação não foi gravada.
+
+Antiabuso proporcional, sem CAPTCHA e sem Redis: telefone brasileiro validado
+(`normalizarTelefoneBr`), honeypot no formulário e teto de 5 envios por
+IP+loja+veículo em janela de 10 minutos, em memória de processo
+(`modules/leads/limite-por-ip.ts`). O `trust proxy` foi ligado no `app.setup`
+para que `req.ip` seja o do visitante, e não o da borda do Railway — sem isso o
+teto barraria a internet inteira depois do quinto envio.
 
 **Pronto quando:** um vendedor consegue passar um dia inteiro de atendimento sem
 sair do sistema, incluindo quem chegou por fora do site.
+
+**Ficou de fora, de propósito:** o lead de troca (`POST /catalog/trade-in`) não
+passa pela deduplicação — ele carrega `metadata.tradeIn` com o veículo ofertado
+e uma avaliação por oferta, e fundir duas ofertas num lead só perderia a
+primeira.
 
 ## Onda 1 — o que a loja compara na primeira reunião (≈ 2 semanas)
 

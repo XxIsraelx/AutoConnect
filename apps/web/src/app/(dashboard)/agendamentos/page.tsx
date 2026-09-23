@@ -3,21 +3,36 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   CalendarDays, Clock, Car, Check, X, Loader2, RefreshCw,
-  ChevronLeft, ChevronRight, List, CalendarRange, Search, Phone, Mail,
+  ChevronLeft, ChevronRight, List, CalendarRange, Search,
   CalendarClock, UserCheck, CheckCircle2, XCircle, AlertCircle, CalendarPlus,
 } from 'lucide-react';
 import { api} from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
+import { ContatoDoLead } from '@/components/ContatoDoLead';
+import NovoAgendamentoModal from './NovoAgendamentoModal';
 
 /* ── Tipos ─────────────────────────────────────────────── */
 interface Appointment {
   id: string; type: string; status: string;
   scheduledStart: string; scheduledEnd: string; notes: string | null;
-  customer: { id: string; fullName: string; email: string; phone: string | null };
+  /** Nulo quando a loja agendou para quem não tem conta. */
+  customer: { id: string; fullName: string; email: string; phone: string | null } | null;
+  /** Contato copiado no agendamento — é o que existe no caso avulso. */
+  contactName: string | null; contactPhone: string | null; contactEmail: string | null;
   salesperson: { id: string; fullName: string; email: string } | null;
   vehicle: { id: string; versionName: string | null; yearModel: number; brand: { name: string }; model: { name: string }; images: { url: string }[] } | null;
+  lead: { id: string; status: string } | null;
+}
+
+/** De quem é o agendamento — a conta, quando existe; o contato copiado, quando não. */
+function quemE(a: Appointment) {
+  return {
+    nome: a.customer?.fullName ?? a.contactName ?? 'Sem nome',
+    telefone: a.customer?.phone ?? a.contactPhone,
+    email: a.customer?.email ?? a.contactEmail,
+  };
 }
 interface Member { id: string; fullName: string; role: string }
 
@@ -77,6 +92,7 @@ export default function AgendamentosPage() {
   const [q, setQ]             = useState('');
   const [weekOffset, setWeekOffset] = useState(0);
   const [selected, setSelected] = useState<Appointment | null>(null);
+  const [novo, setNovo] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -110,7 +126,7 @@ export default function AgendamentosPage() {
     (!status || a.status === status) &&
     (!sellerId || a.salesperson?.id === sellerId) &&
     (!type || a.type === type) &&
-    (!q || a.customer?.fullName?.toLowerCase().includes(q.toLowerCase())),
+    (!q || quemE(a).nome.toLowerCase().includes(q.toLowerCase())),
   ), [appts, status, sellerId, type, q]);
 
   /* KPIs */
@@ -187,6 +203,10 @@ export default function AgendamentosPage() {
               </button>
             ))}
           </div>
+          <button onClick={() => setNovo(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition">
+            <CalendarPlus size={13} /> <span className="hidden sm:inline">Novo agendamento</span><span className="sm:hidden">Novo</span>
+          </button>
           <button onClick={load} disabled={loading} title="Atualizar" className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition">
             <RefreshCw size={14} className={cn(loading && 'animate-spin')} />
           </button>
@@ -289,7 +309,7 @@ export default function AgendamentosPage() {
                           <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', STATUS_DOT[a.status])} />
                           <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200">{fmtTime(a.scheduledStart)}</span>
                         </div>
-                        <p className="text-[10px] text-slate-500 truncate">{a.customer?.fullName?.split(' ')[0]} · {a.vehicle?.model.name ?? TYPE_LABELS[a.type]}</p>
+                        <p className="text-[10px] text-slate-500 truncate">{quemE(a).nome.split(' ')[0]} · {a.vehicle?.model.name ?? TYPE_LABELS[a.type]}</p>
                       </button>
                     ))}
                     {items.length === 0 && <p className="text-[10px] text-slate-300 dark:text-slate-700 text-center pt-3">—</p>}
@@ -300,6 +320,14 @@ export default function AgendamentosPage() {
           </div>
           </div>
         </div>
+      )}
+
+      {novo && (
+        <NovoAgendamentoModal
+          membros={members}
+          onClose={() => setNovo(false)}
+          onCriado={() => { setNovo(false); load(); }}
+        />
       )}
 
       {selected && (
@@ -339,7 +367,7 @@ function Row({ appt, onClick }: { appt: Appointment; onClick: () => void }) {
           : <Car size={15} className="text-slate-300" />}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold truncate">{appt.customer?.fullName}</p>
+        <p className="text-sm font-semibold truncate">{quemE(appt).nome}</p>
         <p className="text-xs text-slate-500 truncate">{v ? `${v.brand.name} ${v.model.name}` : TYPE_LABELS[appt.type]}{appt.salesperson && ` · ${appt.salesperson.fullName.split(' ')[0]}`}</p>
       </div>
       <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0', STATUS_BADGE[appt.status])}>{STATUS_LABELS[appt.status]}</span>
@@ -368,6 +396,7 @@ function DetailDrawer({ appt, members, token, onClose, onUpdate }: {
   const [newDt, setNewDt] = useState('');
   const [erroAcao, setErroAcao] = useState('');
   const v = appt.vehicle;
+  const quem = quemE(appt);
 
   /** Devolve se deu certo — o reagendamento só fecha o campo quando salva. */
   async function patch(body: Record<string, unknown>): Promise<boolean> {
@@ -448,19 +477,21 @@ function DetailDrawer({ appt, members, token, onClose, onUpdate }: {
             </div>
           )}
 
-          {/* Cliente */}
+          {/* Cliente — o clique no telefone/WhatsApp vira interação quando há lead */}
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Cliente</p>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold">{appt.customer?.fullName?.charAt(0).toUpperCase()}</div>
+              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold shrink-0">{quem.nome.charAt(0).toUpperCase()}</div>
               <div className="min-w-0">
-                <p className="text-sm font-semibold truncate">{appt.customer?.fullName}</p>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 min-w-0">
-                  {appt.customer?.email && <a href={`mailto:${appt.customer.email}`} className="flex items-center gap-1 hover:text-blue-500 truncate"><Mail size={11} /> {appt.customer.email}</a>}
-                  {appt.customer?.phone && <a href={`tel:${appt.customer.phone}`} className="flex items-center gap-1 hover:text-blue-500"><Phone size={11} /> {appt.customer.phone}</a>}
-                </div>
+                <p className="text-sm font-semibold truncate">{quem.nome}</p>
+                <ContatoDoLead leadId={appt.lead?.id ?? null} phone={quem.telefone} email={quem.email} />
               </div>
             </div>
+            {!appt.customer && (
+              <p className="text-[11px] text-slate-400 mt-2">
+                Contato avulso — este cliente ainda não tem conta no AutoConnect.
+              </p>
+            )}
           </div>
 
           {/* Vendedor */}

@@ -14,8 +14,11 @@ import {
   VehicleQueryStatus,
   SignatureRequestStatus,
   SubscriptionPlan,
+  AppointmentType,
+  AppointmentStatus,
 } from '@autoconnect/db';
-import { LEAD_SOURCES, LEAD_STATUSES } from './lead';
+import { LEAD_SOURCES, LEAD_STATUSES, LEAD_SOURCES_MANUAIS } from './lead';
+import { APPOINTMENT_TYPES, APPOINTMENT_STATUSES } from './appointment';
 import { VEHICLE_CONDITIONS } from './vehicle';
 import { INVITABLE_ROLES } from './auth';
 import {
@@ -53,6 +56,28 @@ describe('paridade entre os enums do Prisma e os schemas Zod', () => {
 
   it('LeadStatus', () => {
     expect(conjunto(LEAD_STATUSES)).toEqual(conjunto(Object.values(LeadStatus)));
+  });
+
+  it('AppointmentType', () => {
+    expect(conjunto(APPOINTMENT_TYPES)).toEqual(conjunto(Object.values(AppointmentType)));
+  });
+
+  it('AppointmentStatus', () => {
+    expect(conjunto(APPOINTMENT_STATUSES)).toEqual(conjunto(Object.values(AppointmentStatus)));
+  });
+
+  it('as origens que o vendedor escolhe são um subconjunto de LeadSource', () => {
+    // Subconjunto de propósito: `website`, `app` e `trade_in` são escritas pelo
+    // próprio sistema. Deixá-las na lista do formulário manual faria o relatório
+    // de origem mentir — um lead de balcão marcado como "site" some do custo de
+    // aquisição do canal.
+    const origens = conjunto(Object.values(LeadSource));
+    for (const s of LEAD_SOURCES_MANUAIS) {
+      expect(origens.has(s)).toBe(true);
+    }
+    for (const automatica of ['website', 'app', 'trade_in'] as const) {
+      expect(conjunto(LEAD_SOURCES_MANUAIS).has(automatica as never)).toBe(false);
+    }
   });
 
   it('VehicleCondition', () => {

@@ -14,6 +14,7 @@ import ChatDrawer from '@/components/ChatDrawer';
 import ScheduleModal from '@/components/ScheduleModal';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import TradeInModal from '@/components/TradeInModal';
+import FormularioDeInteresse from '@/components/FormularioDeInteresse';
 
 /* ── Tipos ─────────────────────────────────────────────── */
 interface Dealer {
@@ -59,6 +60,10 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
   const [erroChat, setErroChat] = useState('');
   const [showSchedule, setShowSchedule] = useState(false);
   const [showTradeIn, setShowTradeIn]   = useState(false);
+  // Contato sem conta: "Conversar" e "Agendar visita" exigem login, e quem
+  // chega pela busca do Google não tem nenhum. Sem este botão, a página da
+  // loja era uma vitrine sem porta de entrada.
+  const [showInteresse, setShowInteresse] = useState(false);
 
   const canChat = !user || user.role === 'customer';
 
@@ -194,7 +199,14 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
                   WhatsApp
                 </a>
               )}
-              {canChat && (
+              <button
+                onClick={() => setShowInteresse(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition"
+              >
+                <MessageCircle size={14} />
+                Tenho interesse
+              </button>
+              {canChat && token && (
                 <button
                   onClick={startChat}
                   disabled={startingChat}
@@ -387,6 +399,14 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
           dealerName={dealer.tradeName}
           branches={dealer.branches.map(b => ({ id: b.id, name: b.name, city: b.city, state: b.state }))}
           onClose={() => setShowSchedule(false)}
+        />
+      )}
+
+      {showInteresse && (
+        <FormularioDeInteresse
+          tenantId={dealer.id}
+          dealerName={dealer.tradeName}
+          onClose={() => setShowInteresse(false)}
         />
       )}
 

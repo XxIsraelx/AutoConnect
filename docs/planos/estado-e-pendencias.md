@@ -12,8 +12,8 @@
 | Equipe | ✅ completo | ✅ completo | convites por email com token |
 | Veículos | ✅ completo | ✅ completo | CRUD + upload imagens + busca |
 | Catálogo (marcas/modelos) | ✅ completo | ✅ público | página pública do veículo |
-| Leads | ✅ completo | ✅ completo | kanban, timeline, interações, stats |
-| Agendamentos | ✅ completo | ✅ completo | **última página trabalhada** |
+| Leads | ✅ completo | ✅ completo | kanban, timeline, interações, stats; desde 23/09/2026 captura **sem conta** (`POST /leads/public` com consentimento LGPD), cadastro manual pelo vendedor, deduplicação de 30 dias por telefone/e-mail e registro do clique em WhatsApp/telefone |
+| Agendamentos | ✅ completo | ✅ completo | desde 23/09/2026 a loja agenda para quem **não tem conta** (`POST /appointments/dealer`); `customer_user_id` é nulo e o contato fica no próprio agendamento, com a constraint `appointments_tem_contato` |
 | Chat | ✅ completo | ✅ completo | Socket.IO tempo real |
 | Mapa | ✅ completo | ✅ completo | dark theme, pins animados, sidebar |
 | Dashboard | ✅ completo | ✅ completo | KPIs, GalaxyMap |
@@ -103,6 +103,32 @@ Auditadas em 04/09/2026, contra o repositório.
   com datas novas — sem isso ela envelhece e o filtro de 30 dias volta a ficar
   vazio. O banco de produção **não** foi semeado.
 - **CVEs do Next** só têm correção na linha 15.x (breaking changes).
+
+## Onde o plano de paridade de CRM está
+
+`docs/planos/plano-paridade-crm.md`. Estado em 23/09/2026:
+
+| Onda | Estado |
+|---|---|
+| 0 — o funil não pode vazar | ✅ portão fechado em 23/09/2026 |
+| 1 — o que a loja compara na primeira reunião | ⬜ |
+| 2 — WhatsApp oficial e portais | ⬜ |
+| 3 — cobrar | ⬜ |
+| 4 — o que ninguém tem | ⬜ |
+
+Dívidas que a Onda 0 deixou declaradas:
+
+- **Teto por IP em memória de processo.** Com mais de uma réplica da API, o
+  limite efetivo vira `5 × réplicas`. Hoje a API roda em réplica única; se isso
+  mudar, é a primeira coisa a revisar (mesma restrição dos crons, que já têm
+  `execucao-unica.ts` para o caso deles).
+- **Não há listagem de clientes da loja.** O modal de agendamento escolhe o
+  cliente pelo lead — quando o lead tem conta, o `customerUserId` vai junto e o
+  agendamento aparece no `/perfil` dele. Um cliente com conta e **sem** lead
+  nenhum na loja não é alcançável pela tela. Resolver isso pede um endpoint
+  novo, e ele tem que respeitar a policy `cliente_relacionado` (a loja vê quem
+  tem lead, agendamento ou conversa com ela — não a base inteira).
+- **Lead de troca fora da deduplicação**, pelo motivo registrado no plano.
 
 ## Onde o plano de vendas está
 

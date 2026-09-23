@@ -2,16 +2,18 @@
 
 import { useState, useEffect, useCallback} from 'react';
 import {
-  Users, Phone, Mail, Car, Clock, CheckCircle2,
+  Users, Phone, Car, Clock, CheckCircle2,
   XCircle, MessageSquare, ChevronDown, Loader2,
   Search, X, RefreshCw, ExternalLink, Download,
-  History, UserCheck, Send, Repeat, Handshake,
+  History, UserCheck, Send, Repeat, Handshake, UserPlus,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
+import { ContatoDoLead } from '@/components/ContatoDoLead';
+import NovoLeadModal from './NovoLeadModal';
 
 /* ── Tipos ───────────────────────────────────────────────── */
 
@@ -394,6 +396,9 @@ const KIND_LABELS: Record<string, string> = {
   created: 'Lead criado', status_change: 'Status alterado',
   assignment: 'Atribuição', note: 'Nota', call: 'Ligação',
   email: 'E-mail', whatsapp: 'WhatsApp', visit: 'Visita', other: 'Outro',
+  // Escrito pela deduplicação: o mesmo contato chegou de novo e virou
+  // interação neste lead, em vez de um cartão novo no funil.
+  duplicate: 'Contato repetido', trade_in_appraisal: 'Avaliação da troca',
 };
 
 function HistoryModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
@@ -773,20 +778,9 @@ function LeadCard({
         </p>
       )}
 
-      {/* Contato */}
-      <div className="flex items-center gap-3 pt-2 border-t borda">
-        {email && (
-          <a href={`mailto:${email}`}
-             className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-blue-400 transition-colors truncate">
-            <Mail size={10} /> <span className="truncate">{email}</span>
-          </a>
-        )}
-        {phone && (
-          <a href={`tel:${phone}`}
-             className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-blue-400 transition-colors shrink-0">
-            <Phone size={10} /> {phone}
-          </a>
-        )}
+      {/* Contato — cada clique vira interação na timeline */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-2 border-t borda">
+        <ContatoDoLead leadId={lead.id} phone={phone} email={email} compacto />
         <div className="ml-auto flex items-center gap-3 shrink-0">
           {lead.customer?.id && (
             <button
@@ -835,6 +829,8 @@ export default function LeadsPage() {
   const [csvLoading, setCsvLoading]     = useState(false);
   const [erroCsv, setErroCsv]           = useState('');
   const [chatLoadingId, setChatLoadingId] = useState<string | null>(null);
+  const [novoLead, setNovoLead]           = useState(false);
+  const [avisoDeDedupe, setAvisoDeDedupe] = useState(false);
 
   async function openChat(lead: Lead) {
     if (!token || !lead.customer?.id) return;
@@ -945,7 +941,7 @@ export default function LeadsPage() {
   return (
     <div className="p-6 max-w-6xl">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Leads</h1>
           <p className="text-sm text-slate-500 mt-0.5">
@@ -963,6 +959,14 @@ export default function LeadsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setAvisoDeDedupe(false); setNovoLead(true); }}
+            className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg
+                       whitespace-nowrap bg-blue-600 text-white hover:bg-blue-700 transition"
+          >
+            <UserPlus size={13} />
+            Novo lead
+          </button>
           <button
             onClick={exportCsv}
             disabled={csvLoading}
@@ -983,6 +987,15 @@ export default function LeadsPage() {
           </button>
         </div>
       </div>
+
+      {avisoDeDedupe && (
+        <p className="text-xs rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200
+                      dark:border-amber-900/40 text-amber-700 dark:text-amber-300 px-3 py-2 mb-4">
+          Esse contato já tinha um lead aberto nos últimos 30 dias. Registramos o
+          atendimento no lead que já existia, em vez de criar outro.{' '}
+          <button onClick={() => setAvisoDeDedupe(false)} className="underline">ok</button>
+        </p>
+      )}
 
       {erroCsv && (
         <p className="text-xs text-rose-600 dark:text-rose-400 -mt-2">
@@ -1103,6 +1116,19 @@ export default function LeadsPage() {
       {/* Modal de histórico */}
       {historyLead && (
         <HistoryModal lead={historyLead} onClose={() => setHistoryLead(null)} />
+      )}
+
+      {/* Cadastro manual — quem chegou por telefone, WhatsApp ou balcão */}
+      {novoLead && (
+        <NovoLeadModal
+          onClose={() => setNovoLead(false)}
+          onCriado={(deduplicado) => {
+            setNovoLead(false);
+            setAvisoDeDedupe(deduplicado);
+            loadLeads(true);
+            loadStats();
+          }}
+        />
       )}
     </div>
   );

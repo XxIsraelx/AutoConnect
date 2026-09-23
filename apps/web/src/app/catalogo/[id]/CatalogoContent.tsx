@@ -2,14 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useParams } from 'next/navigation';
 import {
   ArrowLeft, MapPin, Phone, Globe, Car, Search, X,
   SlidersHorizontal, ChevronLeft, ChevronRight,
   Navigation, Loader2, ExternalLink,
   Fuel, Gauge, Settings2, DoorOpen,
-  Heart, MessageCircle, Calculator, Scale, CalendarPlus, Repeat, ArrowRight, Check, AlertCircle,
+  Heart, MessageCircle, Calculator, Scale, CalendarPlus, Repeat, ArrowRight,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
@@ -17,6 +16,7 @@ import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import ChatDrawer from '@/components/ChatDrawer';
 import ScheduleModal, { type ScheduleBranch } from '@/components/ScheduleModal';
 import TradeInModal from '@/components/TradeInModal';
+import FormularioDeInteresse from '@/components/FormularioDeInteresse';
 import type {
   PublicDealer, PublicVehicle, PublicVehicleDetail,
   VehiclesPage, PublicBrand,
@@ -316,189 +316,6 @@ function FinancingCalc({ price }: { price: string | null }) {
         * Simulação estimada. Sujeita a análise de crédito e condições da financeira.
       </p>
     </div>
-  );
-}
-
-/* ── Lead Modal ──────────────────────────────────────────── */
-
-function LeadModal({
-  vehicle,
-  tenantId,
-  onClose,
-}: {
-  vehicle: PublicVehicleDetail;
-  tenantId: string;
-  onClose: () => void;
-}) {
-  const user  = useAuthStore(s => s.user);
-  const token = useAuthStore(s => s.token);
-  const router = useRouter();
-
-  const [message, setMessage] = useState('');
-  const [sending, setSending] = useState(false);
-  const [sent, setSent]       = useState(false);
-  const [error, setError]     = useState<string | null>(null);
-
-  if (!user || !token) {
-    return (
-      <>
-        <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm" onClick={onClose} />
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="sup-card border borda rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center">
-            <div className="w-14 h-14 rounded-2xl bg-blue-500/20 flex items-center justify-center mx-auto mb-4">
-              <MessageCircle size={28} className="text-blue-400" />
-            </div>
-            <h3 className="text-lg font-bold txt-forte mb-2">Faça login para continuar</h3>
-            <p className="text-sm txt-fraco leading-relaxed mb-6">
-              Você precisa ter uma conta de cliente para demonstrar interesse em veículos.
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={() => router.push('/entrar')}
-                className="w-full bg-blue-600 text-white font-bold py-2.5 rounded-xl
-                           hover:bg-blue-500 transition-colors text-sm"
-              >
-                Entrar na conta
-              </button>
-              <button
-                onClick={() => router.push('/cadastrar')}
-                className="w-full border borda txt-medio font-semibold py-2.5 rounded-xl
-                           hover:sup-fraca transition-colors text-sm"
-              >
-                Criar conta grátis
-              </button>
-              <button onClick={onClose} className="text-xs text-slate-500 hover:txt-fraco transition-colors mt-1">
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      </>
-    );
-  }
-
-  if (sent) {
-    return (
-      <>
-        <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm" onClick={onClose} />
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="sup-card border borda rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 flex items-center justify-center mx-auto mb-4">
-              <Check size={28} className="text-emerald-400" />
-            </div>
-            <h3 className="text-lg font-bold txt-forte mb-2">Interesse enviado!</h3>
-            <p className="text-sm txt-fraco leading-relaxed mb-6">
-              A concessionária vai entrar em contato em breve pelo e-mail ou telefone cadastrado.
-            </p>
-            <button
-              onClick={onClose}
-              className="w-full bg-emerald-600 text-white font-bold py-2.5 rounded-xl
-                         hover:bg-emerald-500 transition-colors text-sm"
-            >
-              Fechar
-            </button>
-          </div>
-        </div>
-      </>
-    );
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSending(true);
-    setError(null);
-    try {
-      await api('/leads', {
-        method: 'POST',
-        token: token!,
-        body: JSON.stringify({
-          tenantId,
-          vehicleId: vehicle.id,
-          message: message.trim() || undefined,
-          source: 'website',
-        }),
-      });
-      setSent(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao enviar. Tente novamente.');
-    } finally {
-      setSending(false);
-    }
-  }
-
-  const price = vehicle.promoPrice ?? vehicle.price;
-  const label = `${vehicle.brand.name} ${vehicle.model.name} ${vehicle.versionName ?? ''} ${vehicle.yearModel}`.trim();
-
-  return (
-    <>
-      <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-        <div className="sup-card border borda rounded-2xl shadow-2xl max-w-md w-full">
-          {/* Header */}
-          <div className="flex items-center justify-between p-5 border-b borda">
-            <div>
-              <h3 className="text-base font-bold txt-forte">Tenho interesse</h3>
-              <p className="text-xs text-slate-500 truncate max-w-[260px]">{label}</p>
-            </div>
-            <button onClick={onClose} className="p-2 rounded-xl txt-fraco hover:txt-forte hover:sup-fraca transition-all">
-              <X size={16} />
-            </button>
-          </div>
-
-          {/* Body */}
-          <form onSubmit={handleSubmit} className="p-5 space-y-4">
-            {/* Veículo selecionado */}
-            <div className="flex items-center justify-between rounded-xl sup-tenue border borda p-3">
-              <div className="min-w-0">
-                <p className="text-xs text-slate-500 truncate">{vehicle.brand.name} · {vehicle.model.name}</p>
-                <p className="text-sm font-bold txt-forte truncate">{label}</p>
-              </div>
-              <p className="text-base font-extrabold text-blue-400 shrink-0 ml-3">{formatPrice(price)}</p>
-            </div>
-
-            {/* Contato pré-preenchido */}
-            <div className="rounded-xl sup-tenue border borda p-3">
-              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Seus dados</p>
-              <p className="text-sm font-semibold txt-forte">{user.fullName}</p>
-              <p className="text-xs txt-fraco">{user.email}</p>
-            </div>
-
-            {/* Mensagem opcional */}
-            <div>
-              <label className="text-[11px] font-semibold txt-fraco block mb-1.5">
-                Mensagem (opcional)
-              </label>
-              <textarea
-                value={message}
-                onChange={e => setMessage(e.target.value)}
-                placeholder="Ex: Tenho interesse em fazer um test drive…"
-                rows={3}
-                className="w-full rounded-xl sup-base border borda text-sm txt-forte
-                           placeholder-slate-400 dark:placeholder-slate-600 px-3 py-2.5 resize-none
-                           outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
-              />
-            </div>
-
-            {error && (
-              <div className="flex items-center gap-2 text-rose-400 text-xs bg-rose-500/10 rounded-xl px-3 py-2">
-                <AlertCircle size={13} /> {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={sending}
-              className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl
-                         hover:bg-blue-500 transition-colors text-sm
-                         disabled:opacity-50 disabled:cursor-not-allowed
-                         flex items-center justify-center gap-2"
-            >
-              {sending ? <><Loader2 size={15} className="animate-spin" /> Enviando…</> : 'Confirmar interesse'}
-            </button>
-          </form>
-        </div>
-      </div>
-    </>
   );
 }
 
@@ -965,11 +782,13 @@ function VehicleDrawer({
         )}
       </div>
 
-      {/* Lead modal */}
+      {/* Interesse — cria lead com ou sem conta */}
       {showLead && vehicle && (
-        <LeadModal
-          vehicle={vehicle}
+        <FormularioDeInteresse
           tenantId={tenantId}
+          vehicleId={vehicle.id}
+          dealerName={dealerName}
+          vehicleLabel={`${vehicle.brand.name} ${vehicle.model.name} ${vehicle.versionName ?? ''} ${vehicle.yearModel}`.replace(/\s+/g, ' ').trim()}
           onClose={() => setShowLead(false)}
         />
       )}

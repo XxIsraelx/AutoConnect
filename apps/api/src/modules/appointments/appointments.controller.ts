@@ -4,6 +4,11 @@ import {
 } from '@nestjs/common';
 import { AppointmentsService } from './appointments.service';
 import { escopoDa } from '../../common/escopo';
+import {
+  agendamentoDaLojaSchema,
+  agendamentoDoClienteSchema,
+  atualizarAgendamentoSchema,
+} from '@autoconnect/shared';
 
 interface AuthRequest {
   user: { id: string; role: string; tenantId: string | null };
@@ -46,17 +51,27 @@ export class AppointmentsController {
   @Post()
   create(
     @Req()  req: AuthRequest,
-    @Body() body: {
-      tenantId:       string;
-      vehicleId?:     string;
-      branchId?:      string;
-      leadId?:        string;
-      type:           string;
-      scheduledStart: string;
-      notes?:         string;
-    },
+    @Body() body: unknown,
   ): Promise<unknown> {
-    return this.svc.create(req.user.id, body);
+    const parsed = agendamentoDoClienteSchema.parse(body);
+    return this.svc.create(req.user.id, parsed);
+  }
+
+  /**
+   * POST /appointments/dealer — a loja marca o compromisso.
+   *
+   * Separada de `POST /appointments` porque o corpo é outro: aqui quem
+   * identifica o cliente é a loja, e ele pode não ter conta nenhuma. Misturar
+   * os dois num schema só significaria aceitar `customerUserId` do cliente
+   * logado — ou seja, agendar em nome de outra pessoa.
+   */
+  @Post('dealer')
+  criarPelaLoja(
+    @Req()  req: AuthRequest,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const parsed = agendamentoDaLojaSchema.parse(body);
+    return this.svc.criarPelaLoja(escopoDa(req.user), req.user.id, parsed);
   }
 
   /** PATCH /appointments/:id — dealer atualiza (confirma / reagenda / atribui) */
@@ -64,14 +79,10 @@ export class AppointmentsController {
   update(
     @Req()                          req: AuthRequest,
     @Param('id', ParseUUIDPipe)     id: string,
-    @Body()                         body: {
-      status?:         string;
-      scheduledStart?: string;
-      salespersonId?:  string;
-      notes?:          string;
-    },
+    @Body()                         body: unknown,
   ): Promise<unknown> {
-    return this.svc.update(req.user.tenantId!, id, body);
+    const parsed = atualizarAgendamentoSchema.parse(body);
+    return this.svc.update(req.user.tenantId!, id, parsed);
   }
 
   /** PATCH /appointments/:id/cancel — cancela */

@@ -2,10 +2,17 @@ import {
   Body, Controller, Delete, Get, Param,
   ParseUUIDPipe, Patch, Post, Query, Req, Res,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { LeadsService } from './leads.service';
-import { createLeadSchema, updateLeadStatusSchema } from '@autoconnect/shared';
+import {
+  createLeadSchema,
+  updateLeadStatusSchema,
+  leadPublicoSchema,
+  leadManualSchema,
+  createLeadInteractionSchema,
+} from '@autoconnect/shared';
 import { escopoDa } from '../../common/escopo';
+import { Public } from '../../common/decorators/public.decorator';
 
 interface AuthRequest {
   user: { id: string; role: string; tenantId: string | null };
@@ -29,6 +36,41 @@ export class LeadsController {
     // como uuid — antes era lido do corpo cru com um cast.
     const parsed = createLeadSchema.parse(body);
     return this.leads.create(req.user.id, parsed.tenantId, parsed);
+  }
+
+  /**
+   * POST /leads/public
+   * Formulário do catálogo e da página da loja — **sem conta**.
+   *
+   * É a rota que fecha o furo principal do funil: até aqui o visitante que
+   * queria falar sobre um carro tinha que criar conta primeiro, e a maioria
+   * não criava. Quem está logado continua usando `POST /leads`, que vincula o
+   * lead à conta; a tela escolhe a rota pelo token que tem em mãos.
+   */
+  @Public()
+  @Post('public')
+  criarPublico(
+    @Req() req: Request,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const parsed = leadPublicoSchema.parse(body);
+    // `req.ip` respeita o `trust proxy` configurado no app.setup: atrás do
+    // proxy do Railway ele é o IP do visitante, não o da borda — sem isso o
+    // limite por IP bloquearia a internet inteira depois do quinto envio.
+    return this.leads.criarPublico(parsed, req.ip ?? 'desconhecido');
+  }
+
+  /**
+   * POST /leads/manual
+   * O vendedor cadastra quem chegou por telefone, WhatsApp ou balcão.
+   */
+  @Post('manual')
+  criarManual(
+    @Req() req: AuthRequest,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const parsed = leadManualSchema.parse(body);
+    return this.leads.criarManual(escopoDa(req.user), req.user.id, parsed);
   }
 
   /**
@@ -105,14 +147,24 @@ export class LeadsController {
     return this.leads.assign(req.user.tenantId!, id, body.salesPersonId ?? null);
   }
 
-  /** POST /leads/:id/interactions — adiciona nota/interação manual */
+  /**
+   * POST /leads/:id/interactions — nota, ligação, WhatsApp, visita.
+   *
+   * É também o que o clique em `wa.me` e `tel:` no painel chama: o vendedor
+   * abre a conversa e a timeline registra que houve contato, sem ele digitar
+   * nada. `kind` passa por Zod — era `string` livre e qualquer palavra virava
+   * um item sem rótulo na tela.
+   */
   @Post(':id/interactions')
   addInteraction(
     @Req() req: AuthRequest,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { kind: string; content: string },
+    @Body() body: unknown,
   ): Promise<unknown> {
-    return this.leads.addInteraction(req.user.tenantId!, id, req.user.id, body.kind, body.content);
+    const parsed = createLeadInteractionSchema.parse(body);
+    return this.leads.addInteraction(
+      req.user.tenantId!, id, req.user.id, parsed.kind, parsed.content ?? null,
+    );
   }
 
   /** POST /leads/:id/trade-in/appraisal — vendedor avalia o veículo da troca */
