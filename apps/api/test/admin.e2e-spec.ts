@@ -237,6 +237,21 @@ describe('Painel do super admin (e2e)', () => {
     }, 20_000);
   });
 
+  describe('GET /admin/audit', () => {
+    it('lista registros com id serializado — BigInt quebrava a aba com 500', async () => {
+      await dono.auditLog.create({
+        data: { action: 'teste_auditoria', entityType: 'tenant', entityId: f.a.id, diff: {} },
+      });
+
+      const res = await get('/admin/audit');
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBeGreaterThan(0);
+      const registro = (res.body.entries as { id: unknown; action: string }[])
+        .find((e) => e.action === 'teste_auditoria');
+      expect(typeof registro?.id).toBe('string');
+    });
+  });
+
   describe('corpo e query passam por Zod', () => {
     it('plano inexistente é 400, não 500', async () => {
       const res = await request(app.getHttpServer())

@@ -640,7 +640,15 @@ export class AdminService {
       this.privilegiado.auditLog.count({ where }),
     ]);
 
-    return { entries, total, page, pages: Math.ceil(total / take) };
+    return {
+      // `audit_log.id` é BigInt e o JSON.stringify do Nest não sabe serializá-lo:
+      // com a tabela vazia a rota passava, e quebrava com 500 assim que existia
+      // um registro. Vai como string, que é o que o front usa como chave.
+      entries: entries.map((e) => ({ ...e, id: e.id.toString() })),
+      total,
+      page,
+      pages: Math.ceil(total / take),
+    };
   }
 
   async writeAudit(data: {
