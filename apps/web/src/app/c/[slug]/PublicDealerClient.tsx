@@ -292,7 +292,11 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
 
         {/* Contagem + ordenação */}
         <div className="flex items-center justify-between mb-4">
-          <p className="text-xs text-slate-500">{total} veículo{total !== 1 ? 's' : ''} disponível{total !== 1 ? 'is' : ''}</p>
+          {/* "disponível" faz plural em "disponíveis", não em "disponívelis":
+              o -l some antes do -is. */}
+          <p className="text-xs text-slate-500">
+            {total} {total === 1 ? 'veículo disponível' : 'veículos disponíveis'}
+          </p>
           <select
             value={sort}
             onChange={(e) => { setSort(e.target.value); setPage(0); }}

@@ -12,6 +12,7 @@
     "format": "prisma format",
     "typecheck": "tsc --noEmit",
     "db:seed": "tsx prisma/seed.ts",
+    "demo": "tsx prisma/demo.ts",
     "clean": "rm -rf node_modules .turbo",
     "migrate:deploy": "prisma migrate deploy"
   },
