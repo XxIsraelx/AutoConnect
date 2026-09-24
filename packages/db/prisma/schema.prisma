@@ -278,9 +278,9 @@ model TenantCrmSettings {
   /// propósito: tirar o lead de um vendedor é decisão de gestão.
   slaDevolveParaFila        Boolean @default(false) @map("sla_devolve_para_fila")
 
-  /// Padrão **ligado**, para não mudar o que a loja já enxerga hoje. Desligado,
-  /// o vendedor vê só os próprios leads e os da fila.
-  vendedorVeTodosOsLeads Boolean @default(true) @map("vendedor_ve_todos_os_leads")
+  /// Padrão **desligado** desde 23/09/2026: carteira fechada, o vendedor vê só
+  /// os próprios leads e os da fila. Ligado, todo mundo da loja vê tudo.
+  vendedorVeTodosOsLeads Boolean @default(false) @map("vendedor_ve_todos_os_leads")
 
   /// Estado do rodízio: quem recebeu o último lead. A ordem segue daqui.
   rodizioUltimoUsuarioId String?   @map("rodizio_ultimo_usuario_id") @db.Uuid
