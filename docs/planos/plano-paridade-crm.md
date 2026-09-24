@@ -139,7 +139,11 @@ primeira.
    403**: confirmar que ele existe já entrega que o colega tem um cliente com
    aquele id, e o id circula por link.
 
-   **Padrão ligado** ("vê todos"), para não mudar o que a loja já enxerga hoje.
+   **Padrão desligado desde 23/09/2026: carteira fechada.** Nasceu ligado para
+   não mudar o que a loja já enxergava, mas o piloto começa com cada vendedor
+   vendo os próprios leads e a fila — e, sem cliente pagante ainda, as lojas
+   existentes acompanharam o padrão novo (migration
+   `20260924000000_carteira_fechada_por_padrao`). O rodízio já nascia ligado.
 
 9. ✅ **Motivo de perda** (23/09/2026). Lista fechada no shared
    (`domain/motivo-perda.ts`), com listas separadas para lead e para negócio —
