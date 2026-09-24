@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LISTING_STATUSES } from '../domain/anuncio';
 
 /** Espelha `VehicleCondition` do Prisma — a paridade é verificada em vehicle.spec.ts. */
 export const VEHICLE_CONDITIONS = ['new', 'used', 'semi_new', 'demo'] as const;
@@ -48,6 +49,16 @@ export const vehicleQuerySchema = z.object({
   status: z
     .enum(['available', 'reserved', 'sold', 'in_maintenance', 'archived'])
     .default('available'),
+  /**
+   * Estado do anúncio. Sem filtro, a lista traz rascunho, publicado e
+   * despublicado juntos — a tela de estoque é da loja, e esconder o rascunho
+   * dela seria esconder justamente o que falta fazer.
+   *
+   * Não existe no corpo de criação nem no de atualização de propósito:
+   * publicar e despublicar têm rota própria, que confere o mínimo do anúncio.
+   * Aceitar `listingStatus` num PATCH seria contornar essa conferência.
+   */
+  listingStatus: z.enum(LISTING_STATUSES).optional(),
   page: z.coerce.number().min(1).default(1),
   perPage: z.coerce.number().min(1).max(100).default(20),
 });

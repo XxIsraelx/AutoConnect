@@ -7,6 +7,7 @@ import {
   ACQUISITION_ORIGINS,
   VEHICLE_COST_KINDS,
 } from '../domain/deal';
+import { CODIGOS_DE_CANCELAMENTO_DE_NEGOCIO, exigeDetalhe } from '../domain/motivo-perda';
 
 /**
  * Dinheiro entra como **string**, nunca como número.
@@ -61,10 +62,40 @@ export const updateDealSchema = z
   })
   .partial();
 
-export const transitionDealSchema = z.object({
-  to: z.enum(DEAL_STATUSES),
-  reason: z.string().max(500).optional(),
-});
+/**
+ * Transição de status do negócio.
+ *
+ * Cancelar e distratar passaram a exigir motivo estruturado, pelo mesmo motivo
+ * do lead perdido: `cancel_reason` era texto livre e opcional, e o funil de
+ * valor não conseguia dizer por que o dinheiro não entrou. O texto livre segue
+ * existindo como complemento — e é obrigatório quando o código é `outro`.
+ */
+export const transitionDealSchema = z
+  .object({
+    to: z.enum(DEAL_STATUSES),
+    /** Obrigatório em `canceled` e `rescinded`. */
+    cancelReasonCode: z.enum(CODIGOS_DE_CANCELAMENTO_DE_NEGOCIO).optional(),
+    reason: z.string().trim().max(500).optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.to !== 'canceled' && v.to !== 'rescinded') return;
+
+    if (!v.cancelReasonCode) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['cancelReasonCode'],
+        message: 'Escolha o motivo do cancelamento.',
+      });
+      return;
+    }
+    if (exigeDetalhe(v.cancelReasonCode) && !(v.reason ?? '').trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['reason'],
+        message: 'Descreva o motivo em "Outro".',
+      });
+    }
+  });
 
 export const createDealPaymentSchema = z.object({
   kind: z.enum(PAYMENT_KINDS),

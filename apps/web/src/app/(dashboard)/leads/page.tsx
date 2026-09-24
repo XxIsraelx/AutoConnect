@@ -6,7 +6,13 @@ import {
   XCircle, MessageSquare, ChevronDown, Loader2,
   Search, X, RefreshCw, ExternalLink, Download,
   History, UserCheck, Send, Repeat, Handshake, UserPlus,
+  AlertTriangle, Timer, Inbox,
 } from 'lucide-react';
+import {
+  FILTROS_DE_RESPONSAVEL, FILTROS_DE_SLA, MOTIVOS_DE_PERDA_DE_LEAD,
+  rotuloDoMotivo, situacaoDoSla, type FiltroDeResponsavel, type FiltroDeSla,
+  type SlaSituacao,
+} from '@autoconnect/shared';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import Link from 'next/link';
@@ -56,6 +62,12 @@ interface Lead {
   customer: { id: string; fullName: string; email: string; phone: string | null } | null;
   assignee: TeamMember | null;
   metadata?: { tradeIn?: TradeInMeta } | null;
+  /** Prazo de primeiro contato. Nulo em lead anterior à funcionalidade. */
+  firstResponseDueAt: string | null;
+  /** Primeira interação de saída do vendedor. Nota interna não conta. */
+  firstRespondedAt: string | null;
+  lostReasonCode: string | null;
+  lostReason: string | null;
 }
 
 interface LeadsResponse {
@@ -63,16 +75,21 @@ interface LeadsResponse {
   total: number;
   page: number;
   perPage: number;
+  /** Quantos segundos antes do prazo a etiqueta passa a avisar — vem da API
+   *  para concordar exatamente com o filtro "vencendo". */
+  slaAlertaSegundos: number;
 }
 
+/**
+ * Contagens do painel.
+ *
+ * Virou `{ porStatus, porMotivoDePerda }`: era um mapa aberto de status, e a
+ * tela somava `Object.values(...)` para o total — acrescentar os motivos
+ * dentro dele somaria um objeto.
+ */
 interface LeadStats {
-  new?: number;
-  contacted?: number;
-  qualified?: number;
-  negotiating?: number;
-  won?: number;
-  lost?: number;
-  archived?: number;
+  porStatus: Partial<Record<LeadStatus, number>>;
+  porMotivoDePerda: Record<string, number>;
 }
 
 interface TeamMember { id: string; fullName: string; role: string; email: string; }
@@ -100,6 +117,19 @@ const STATUS_CONFIG: Record<LeadStatus, { label: string; color: string; bg: stri
 
 const STATUS_ORDER: LeadStatus[] = ['new','contacted','qualified','negotiating','won','lost','archived'];
 
+const RESPONSAVEL_LABELS: Record<FiltroDeResponsavel, string> = {
+  todos: 'Todos',
+  meus: 'Meus leads',
+  sem_responsavel: 'Sem responsável',
+};
+
+const SLA_LABELS: Record<FiltroDeSla, string> = {
+  todos: 'Todos',
+  no_prazo: 'No prazo',
+  vencendo: 'Vencendo',
+  estourado: 'Prazo estourado',
+};
+
 /* ── Helpers ─────────────────────────────────────────────── */
 
 function formatPrice(v: string) {
@@ -124,6 +154,86 @@ function StatusBadge({ status }: { status: LeadStatus }) {
   return (
     <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${cfg.bg} ${cfg.color}`}>
       {cfg.icon} {cfg.label}
+    </span>
+  );
+}
+
+/* ── Etiqueta do prazo de primeiro contato ───────────────── */
+
+const SLA_CONFIG: Record<SlaSituacao, { label: string; classe: string; icon: React.ReactNode } | null> = {
+  // Lead anterior à funcionalidade, ou loja sem expediente: nada a exibir.
+  sem_prazo: null,
+  // Respondido dentro do prazo não vira selo: a tela ficaria coberta de verde
+  // e o que importa — o que ainda não foi respondido — se perderia no meio.
+  respondido: null,
+  no_prazo: {
+    label: 'No prazo',
+    classe: 'bg-slate-500/15 text-slate-400 border-slate-500/30',
+    icon: <Timer size={9} />,
+  },
+  vencendo: {
+    label: 'Vencendo',
+    classe: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+    icon: <Timer size={9} />,
+  },
+  estourado: {
+    label: 'Prazo estourado',
+    classe: 'bg-rose-500/15 text-rose-400 border-rose-500/30',
+    icon: <AlertTriangle size={9} />,
+  },
+  respondido_fora_do_prazo: {
+    label: 'Respondido fora do prazo',
+    classe: 'bg-rose-500/10 text-rose-300 border-rose-500/20',
+    icon: <AlertTriangle size={9} />,
+  },
+};
+
+/** "faltam 12min", "13min de atraso". */
+function tempoRestante(segundos: number): string {
+  const abs = Math.abs(segundos);
+  const texto = abs < 60
+    ? `${abs}s`
+    : abs < 3600
+      ? `${Math.floor(abs / 60)}min`
+      : `${Math.floor(abs / 3600)}h`;
+  return segundos >= 0 ? `faltam ${texto}` : `${texto} de atraso`;
+}
+
+/**
+ * Em que pé está o prazo deste lead.
+ *
+ * A conta vem do `@autoconnect/shared` — a mesma que a API usa para calcular o
+ * prazo. Duas fórmulas é como se produz uma etiqueta "no prazo" sobre um lead
+ * que a API já contabilizou como estourado.
+ */
+function EtiquetaDeSla({ lead, alertaSegundos }: { lead: Lead; alertaSegundos: number }) {
+  const { situacao, restanteSegundos } = situacaoDoSla(
+    {
+      criadoEm: lead.createdAt,
+      prazo: lead.firstResponseDueAt,
+      respondidoEm: lead.firstRespondedAt,
+    },
+    new Date(),
+    alertaSegundos,
+  );
+
+  const cfg = SLA_CONFIG[situacao];
+  if (!cfg) return null;
+
+  return (
+    <span
+      title={lead.firstResponseDueAt
+        ? `Prazo de primeiro contato: ${new Date(lead.firstResponseDueAt).toLocaleString('pt-BR')}`
+        : undefined}
+      className={`inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide
+                  px-1.5 py-0.5 rounded-full border ${cfg.classe}`}
+    >
+      {cfg.icon} {cfg.label}
+      {restanteSegundos != null && (
+        <span className="font-semibold normal-case opacity-80">
+          · {tempoRestante(restanteSegundos)}
+        </span>
+      )}
     </span>
   );
 }
@@ -320,18 +430,34 @@ function StatusDropdown({
   const [open, setOpen]     = useState(false);
   const [saving, setSaving] = useState(false);
   const [erro, setErro]     = useState<string | null>(null);
+  // Segundo passo do menu: perder exige motivo, e a API recusa sem ele.
+  const [escolhendoMotivo, setEscolhendoMotivo] = useState(false);
+  const [motivo, setMotivo] = useState<string | null>(null);
+  const [detalhe, setDetalhe] = useState('');
 
-  async function change(status: LeadStatus) {
+  function fechar() {
+    setOpen(false);
+    setEscolhendoMotivo(false);
+    setMotivo(null);
+    setDetalhe('');
+  }
+
+  async function change(status: LeadStatus, perda?: { codigo: string; texto: string }) {
     if (status === current || !token) return;
     setSaving(true);
-    setOpen(false);
     setErro(null);
     try {
       await api(`/leads/${leadId}`, {
         method: 'PATCH',
         token,
-        body: JSON.stringify({ status }),
+        body: {
+          status,
+          ...(perda
+            ? { lostReasonCode: perda.codigo, ...(perda.texto ? { lostReason: perda.texto } : {}) }
+            : {}),
+        },
       });
+      fechar();
       onUpdate(leadId, status);
     } catch (err) {
       // Antes ia só para o console: mover para "Ganho" sem negócio ligado é
@@ -341,6 +467,17 @@ function StatusDropdown({
     } finally {
       setSaving(false);
     }
+  }
+
+  function escolher(status: LeadStatus) {
+    if (status === 'lost') {
+      // Não fecha o menu: ele vira a lista de motivos. Abrir outro modal aqui
+      // esconderia de qual lead se está falando.
+      setEscolhendoMotivo(true);
+      return;
+    }
+    setOpen(false);
+    void change(status);
   }
 
   return (
@@ -364,25 +501,82 @@ function StatusDropdown({
       )}
       {open && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="fixed inset-0 z-10" onClick={fechar} />
           <div className="absolute right-0 top-full mt-1 z-20
                           bg-white dark:bg-[#1e293b] border border-white/[.1] rounded-xl
-                          shadow-2xl overflow-hidden py-1 min-w-[160px]">
-            {STATUS_ORDER.map(s => (
-              <button
-                key={s}
-                onClick={() => change(s)}
-                className={`w-full text-left flex items-center gap-2 px-3 py-2 text-xs
-                  transition-colors
-                  ${s === current
-                    ? 'text-white bg-white/[.06] font-bold'
-                    : 'text-slate-400 hover:bg-white/[.04] hover:text-white'}`}
-              >
-                <span className={STATUS_CONFIG[s].color}>{STATUS_CONFIG[s].icon}</span>
-                {STATUS_CONFIG[s].label}
-                {s === current && <CheckCircle2 size={10} className="ml-auto text-blue-400" />}
-              </button>
-            ))}
+                          shadow-2xl overflow-hidden py-1 w-[230px] max-w-[85vw]">
+            {!escolhendoMotivo ? (
+              STATUS_ORDER.map(s => (
+                <button
+                  key={s}
+                  onClick={() => escolher(s)}
+                  className={`w-full text-left flex items-center gap-2 px-3 py-2 text-xs
+                    transition-colors
+                    ${s === current
+                      ? 'text-white bg-white/[.06] font-bold'
+                      : 'text-slate-400 hover:bg-white/[.04] hover:text-white'}`}
+                >
+                  <span className={STATUS_CONFIG[s].color}>{STATUS_CONFIG[s].icon}</span>
+                  {STATUS_CONFIG[s].label}
+                  {s === current && <CheckCircle2 size={10} className="ml-auto text-blue-400" />}
+                </button>
+              ))
+            ) : (
+              <div className="py-1">
+                <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                  Por que foi perdido?
+                </p>
+                {MOTIVOS_DE_PERDA_DE_LEAD.map((m) => (
+                  <button
+                    key={m.codigo}
+                    disabled={saving}
+                    onClick={() => {
+                      // "Outro" abre o campo de texto; os demais já bastam.
+                      if (m.codigo === 'outro') { setMotivo('outro'); return; }
+                      void change('lost', { codigo: m.codigo, texto: '' });
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs transition-colors
+                      ${motivo === m.codigo
+                        ? 'text-white bg-white/[.06] font-bold'
+                        : 'text-slate-400 hover:bg-white/[.04] hover:text-white'}`}
+                  >
+                    {m.rotulo}
+                  </button>
+                ))}
+
+                {motivo === 'outro' && (
+                  <div className="px-3 pt-2 pb-1 space-y-2">
+                    <textarea
+                      value={detalhe}
+                      onChange={(e) => setDetalhe(e.target.value)}
+                      rows={2}
+                      autoFocus
+                      placeholder="Descreva o motivo"
+                      className="w-full resize-none px-2 py-1.5 text-xs rounded-lg
+                                 border border-slate-200 dark:border-slate-700
+                                 bg-slate-50 dark:bg-slate-800 outline-none
+                                 focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      disabled={saving || !detalhe.trim()}
+                      onClick={() => void change('lost', { codigo: 'outro', texto: detalhe.trim() })}
+                      className="w-full py-1.5 text-xs font-bold rounded-lg bg-rose-600 text-white
+                                 hover:bg-rose-700 transition disabled:opacity-40"
+                    >
+                      Marcar como perdido
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => { setEscolhendoMotivo(false); setMotivo(null); setDetalhe(''); }}
+                  className="w-full text-left px-3 py-2 mt-1 text-[11px] text-slate-500
+                             hover:bg-white/[.04] transition-colors border-t border-white/[.06]"
+                >
+                  ← Voltar
+                </button>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -399,6 +593,9 @@ const KIND_LABELS: Record<string, string> = {
   // Escrito pela deduplicação: o mesmo contato chegou de novo e virou
   // interação neste lead, em vez de um cartão novo no funil.
   duplicate: 'Contato repetido', trade_in_appraisal: 'Avaliação da troca',
+  // Escritas pelo sistema, sem ator: a distribuição automática e o estouro do
+  // prazo de primeiro contato.
+  rotation: 'Rodízio', sla_breach: 'Prazo estourado',
 };
 
 function HistoryModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
@@ -662,7 +859,7 @@ function HistoryModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
 /* ── LeadCard ────────────────────────────────────────────── */
 
 function LeadCard({
-  lead, onStatusChange, onShowHistory, onChat, chatLoading, onRecarregar,
+  lead, onStatusChange, onShowHistory, onChat, chatLoading, onRecarregar, slaAlerta,
 }: {
   lead: Lead;
   onStatusChange: (id: string, s: LeadStatus) => void;
@@ -670,6 +867,7 @@ function LeadCard({
   onShowHistory:  (lead: Lead) => void;
   onChat:         (lead: Lead) => void;
   chatLoading:    boolean;
+  slaAlerta:      number;
 }) {
   const name  = lead.customer?.fullName ?? lead.contactName ?? 'Cliente';
   const email = lead.customer?.email ?? lead.contactEmail;
@@ -711,6 +909,28 @@ function LeadCard({
           <StatusBadge status={lead.status} />
         </div>
       </div>
+
+      {/* Prazo de primeiro contato e motivo da perda — o que o gerente procura
+          ao bater o olho na fila. */}
+      {(lead.status === 'lost' || lead.firstResponseDueAt) && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-2">
+          {lead.status !== 'lost' && (
+            <EtiquetaDeSla lead={lead} alertaSegundos={slaAlerta} />
+          )}
+          {lead.status === 'lost' && (
+            <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase
+                             tracking-wide px-1.5 py-0.5 rounded-full border
+                             bg-rose-500/10 text-rose-400 border-rose-500/25">
+              <XCircle size={9} /> {rotuloDoMotivo(lead.lostReasonCode)}
+            </span>
+          )}
+          {lead.status === 'lost' && lead.lostReason && (
+            <span className="text-[10px] text-slate-500 truncate max-w-full">
+              {lead.lostReason}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Ações em linha própria, com quebra: aguenta ação nova sem voltar a
           espremer o nome. Alinhadas à direita porque os menus suspensos abrem
@@ -816,7 +1036,7 @@ export default function LeadsPage() {
   const router = useRouter();
 
   const [leads, setLeads]         = useState<Lead[]>([]);
-  const [stats, setStats]         = useState<LeadStats>({});
+  const [stats, setStats]         = useState<LeadStats>({ porStatus: {}, porMotivoDePerda: {} });
   const [loading, setLoading]     = useState(true);
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(1);
@@ -824,6 +1044,11 @@ export default function LeadsPage() {
   const [erroStats, setErroStats] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState<LeadStatus | ''>('');
+  const [responsavel, setResponsavel] = useState<FiltroDeResponsavel>('todos');
+  const [filtroSla, setFiltroSla]     = useState<FiltroDeSla>('todos');
+  // Vem da API junto da lista: é o mesmo número que o filtro "vencendo" usou,
+  // e é o que faz etiqueta e filtro concordarem.
+  const [slaAlerta, setSlaAlerta]     = useState(225);
   const [search, setSearch]             = useState('');
   const [historyLead, setHistoryLead]   = useState<Lead | null>(null);
   const [csvLoading, setCsvLoading]     = useState(false);
@@ -856,12 +1081,15 @@ export default function LeadsPage() {
 
     const params = new URLSearchParams({ page: String(currentPage), perPage: '20' });
     if (statusFilter) params.set('status', statusFilter);
+    if (responsavel !== 'todos') params.set('responsavel', responsavel);
+    if (filtroSla !== 'todos')   params.set('sla', filtroSla);
 
     setErro(null);
     try {
       const data = await api<LeadsResponse>(`/leads?${params}`, { token });
       setLeads(reset ? data.items : prev => [...prev, ...data.items]);
       setTotal(data.total);
+      setSlaAlerta(data.slaAlertaSegundos);
     } catch (err) {
       // Antes só ia para o console: a tela mostrava "Nenhum lead ainda" e o
       // vendedor concluía que não havia fila para atender.
@@ -869,7 +1097,7 @@ export default function LeadsPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, statusFilter, page]);
+  }, [token, statusFilter, responsavel, filtroSla, page]);
 
   const loadStats = useCallback(async () => {
     if (!token) return;
@@ -887,7 +1115,7 @@ export default function LeadsPage() {
     loadLeads(true);
     loadStats();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, token]);
+  }, [statusFilter, responsavel, filtroSla, token]);
 
   function handleStatusChange(leadId: string, newStatus: LeadStatus) {
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: newStatus } : l));
@@ -900,6 +1128,9 @@ export default function LeadsPage() {
     try {
       const params = new URLSearchParams();
       if (statusFilter) params.set('status', statusFilter);
+      // O CSV segue os mesmos filtros da tela: baixar algo diferente do que
+      // está à vista é como o vendedor conclui que a exportação está quebrada.
+      if (responsavel !== 'todos') params.set('responsavel', responsavel);
       const apiBase = `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000'}/api/v1`;
       const res = await fetch(`${apiBase}/leads/export/csv?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -935,8 +1166,8 @@ export default function LeadsPage() {
       })
     : leads;
 
-  const totalLeads = Object.values(stats).reduce((a, b) => a + b, 0);
-  const newLeads   = stats.new ?? 0;
+  const totalLeads = Object.values(stats.porStatus).reduce((a, b) => a + b, 0);
+  const newLeads   = stats.porStatus.new ?? 0;
 
   return (
     <div className="p-6 max-w-6xl">
@@ -1015,7 +1246,7 @@ export default function LeadsPage() {
           <Users size={11} /> Todos ({totalLeads})
         </button>
         {STATUS_ORDER.map(s => {
-          const count = stats[s] ?? 0;
+          const count = stats.porStatus[s] ?? 0;
           if (count === 0 && s !== 'new') return null;
           const cfg = STATUS_CONFIG[s];
           return (
@@ -1032,6 +1263,69 @@ export default function LeadsPage() {
             </button>
           );
         })}
+      </div>
+
+      {/* Por que a loja não vendeu. Aparece só quando há perda registrada:
+          uma faixa vazia ensinaria o vendedor a ignorá-la. */}
+      {Object.keys(stats.porMotivoDePerda).length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-5 text-[11px]">
+          <span className="font-semibold text-slate-400 uppercase tracking-wide">
+            Perdas por motivo
+          </span>
+          {Object.entries(stats.porMotivoDePerda)
+            .sort(([, a], [, b]) => b - a)
+            .map(([codigo, quantos]) => (
+              <span key={codigo} className="text-slate-500">
+                {codigo === 'sem_motivo' ? 'Sem motivo informado' : rotuloDoMotivo(codigo)}
+                <span className="ml-1 font-bold text-slate-400">{quantos}</span>
+              </span>
+            ))}
+        </div>
+      )}
+
+      {/* Responsável e prazo — os dois recortes que o gerente usa para achar
+          o que está parado. "Sem responsável" é a fila: sem esse filtro, o
+          lead que o rodízio não conseguiu distribuir some no meio dos outros. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-5">
+        <div className="flex flex-wrap gap-1.5">
+          {FILTROS_DE_RESPONSAVEL.map((f) => (
+            <button
+              key={f}
+              onClick={() => setResponsavel(f)}
+              className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5
+                          rounded-full border transition-all
+                ${responsavel === f
+                  ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-transparent'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-300'}`}
+            >
+              {f === 'todos' && <Users size={11} />}
+              {f === 'meus' && <UserCheck size={11} />}
+              {f === 'sem_responsavel' && <Inbox size={11} />}
+              {RESPONSAVEL_LABELS[f]}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          {FILTROS_DE_SLA.filter((f) => f !== 'todos').map((f) => (
+            <button
+              key={f}
+              onClick={() => setFiltroSla(filtroSla === f ? 'todos' : f)}
+              className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5
+                          rounded-full border transition-all
+                ${filtroSla === f
+                  ? f === 'estourado'
+                    ? 'bg-rose-500/15 text-rose-400 border-rose-500/40'
+                    : f === 'vencendo'
+                      ? 'bg-amber-500/15 text-amber-400 border-amber-500/40'
+                      : 'bg-slate-500/15 text-slate-300 border-slate-500/40'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-300'}`}
+            >
+              {f === 'estourado' ? <AlertTriangle size={11} /> : <Timer size={11} />}
+              {SLA_LABELS[f]}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Busca */}
@@ -1080,7 +1374,7 @@ export default function LeadsPage() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map(lead => (
-              <LeadCard key={lead.id} lead={lead} onStatusChange={handleStatusChange} onShowHistory={setHistoryLead} onChat={openChat} chatLoading={chatLoadingId === lead.id} onRecarregar={() => loadLeads(true)} />
+              <LeadCard key={lead.id} lead={lead} onStatusChange={handleStatusChange} onShowHistory={setHistoryLead} onChat={openChat} chatLoading={chatLoadingId === lead.id} onRecarregar={() => loadLeads(true)} slaAlerta={slaAlerta} />
             ))}
           </div>
 

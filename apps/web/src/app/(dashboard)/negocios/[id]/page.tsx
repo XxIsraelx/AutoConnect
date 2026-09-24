@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, Plus, History, TrendingUp } from 'lucide-react';
 import {
-  DEAL_TRANSITIONS, PAYMENT_KINDS, formatarBRL, somar, subtrair,
+  DEAL_TRANSITIONS, MOTIVOS_DE_CANCELAMENTO_DE_NEGOCIO, PAYMENT_KINDS,
+  exigeDetalhe, formatarBRL, somar, subtrair,
   isDealEditable, type DealStatusValue, type PaymentKindValue,
 } from '@autoconnect/shared';
 import { useAuthStore } from '@/store/auth';
@@ -29,6 +30,9 @@ export default function NegocioPage() {
   const adicionar = useAdicionarPagamento(id);
 
   const [motivo, setMotivo] = useState('');
+  // Cancelar e distratar passaram a exigir motivo estruturado: sem ele o funil
+  // de valor não consegue dizer por que o dinheiro não entrou.
+  const [motivoCodigo, setMotivoCodigo] = useState('');
   const [novoPagamento, setNovo] = useState<{ kind: PaymentKindValue; value: string }>({
     kind: 'cash', value: '',
   });
@@ -112,12 +116,23 @@ export default function NegocioPage() {
             {proximos.map((destino) => (
               <button
                 key={destino}
-                disabled={transicionar.isPending}
                 onClick={() =>
                   transicionar.mutate({
                     to: destino,
-                    reason: exigeMotivo(destino) ? motivo || undefined : undefined,
+                    ...(exigeMotivo(destino)
+                      ? {
+                          cancelReasonCode: motivoCodigo,
+                          reason: motivo || undefined,
+                        }
+                      : {}),
                   })
+                }
+                // Sem motivo escolhido a API responde 400 com o campo apontado;
+                // desabilitar aqui evita o ida-e-volta e diz o que falta.
+                disabled={
+                  transicionar.isPending ||
+                  (exigeMotivo(destino) &&
+                    (!motivoCodigo || (exigeDetalhe(motivoCodigo) && !motivo.trim())))
                 }
                 className={`text-sm px-3 py-1.5 rounded-lg font-medium transition disabled:opacity-50 ${
                   exigeMotivo(destino)
@@ -130,12 +145,32 @@ export default function NegocioPage() {
             ))}
           </div>
           {proximos.some(exigeMotivo) && (
-            <input
-              value={motivo}
-              onChange={(e) => setMotivo(e.target.value)}
-              placeholder="Motivo (usado ao cancelar ou distratar)"
-              className="mt-3 w-full text-sm bg-transparent border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2"
-            />
+            <div className="mt-3 space-y-2">
+              <label htmlFor="motivo-cancelamento" className="sr-only">
+                Motivo do cancelamento
+              </label>
+              <select
+                id="motivo-cancelamento"
+                value={motivoCodigo}
+                onChange={(e) => setMotivoCodigo(e.target.value)}
+                className="w-full text-sm bg-transparent border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2"
+              >
+                <option value="">Motivo do cancelamento ou distrato…</option>
+                {MOTIVOS_DE_CANCELAMENTO_DE_NEGOCIO.map((m) => (
+                  <option key={m.codigo} value={m.codigo}>{m.rotulo}</option>
+                ))}
+              </select>
+              <input
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+                placeholder={
+                  exigeDetalhe(motivoCodigo)
+                    ? 'Descreva o motivo (obrigatório em "Outro")'
+                    : 'Detalhe (opcional)'
+                }
+                className="w-full text-sm bg-transparent border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2"
+              />
+            </div>
           )}
           {transicionar.error && (
             <p className="mt-3 text-sm text-rose-600 dark:text-rose-400">

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Building2, Phone, Globe, Palette, MapPin,
-  Mail, Hash, Check, Loader2, AlertCircle, Save, Clock, Repeat,
+  Mail, Hash, Check, Loader2, AlertCircle, Save, Clock, Repeat, UsersRound,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
@@ -11,6 +11,7 @@ import { ErroAoCarregar } from '@/components/ErroAoCarregar';
 import {
   type BusinessHours, defaultBusinessHours, hasBusinessHours, WEEKDAYS_LONG,
 } from '@/lib/businessHours';
+import { AjustesDeCrm } from './AjustesDeCrm';
 
 /* ── Tipos ───────────────────────────────────────────────── */
 
@@ -504,6 +505,11 @@ export default function ConfiguracoesPage() {
             </div>
           </Section>
         </form>
+
+        {/* ── Distribuição de leads e prazo de atendimento ─ */}
+        <Section title="Leads e atendimento" icon={UsersRound}>
+          <AjustesDeCrm />
+        </Section>
 
         {/* ── Endereço da filial ────────────────────────── */}
         {tenant?.branches[0] && (

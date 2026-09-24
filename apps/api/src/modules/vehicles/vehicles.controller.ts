@@ -54,6 +54,24 @@ export class VehiclesController {
     return this.vehicles.getHistory(req.user.tenantId!, id);
   }
 
+  /**
+   * POST /vehicles/:id/publish — põe o anúncio no ar.
+   *
+   * Rota própria, e não um campo no PATCH, porque publicar tem regra: sem foto
+   * e sem preço a API recusa com 422 dizendo o que falta. Um `listingStatus`
+   * aceito no corpo de atualização seria um jeito de pular essa conferência.
+   */
+  @Post(':id/publish')
+  publish(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string): Promise<unknown> {
+    return this.vehicles.publicar(req.user.tenantId!, id, req.user.id);
+  }
+
+  /** POST /vehicles/:id/unpublish — tira da vitrine, mantém no estoque. */
+  @Post(':id/unpublish')
+  unpublish(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string): Promise<unknown> {
+    return this.vehicles.despublicar(req.user.tenantId!, id, req.user.id);
+  }
+
   @Patch(':id')
   update(
     @Req() req: AuthRequest,

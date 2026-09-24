@@ -7,19 +7,20 @@
 | Módulo | Backend | Frontend | Observações |
 |---|---|---|---|
 | Auth | ✅ completo | ✅ completo | JWT + Google OAuth + reset senha + verificação email |
-| Tenants/Filiais | ✅ completo | ✅ configurações | CRUD completo |
+| Tenants/Filiais | ✅ completo | ✅ configurações | CRUD completo; desde 23/09/2026 há a seção "Leads e atendimento" (`GET`/`PATCH /crm/settings`): rodízio, prazo de primeiro contato, devolução à fila e carteira do vendedor |
 | Usuários/Perfil | ✅ completo | ✅ completo | perfil completo implementado |
-| Equipe | ✅ completo | ✅ completo | convites por email com token |
-| Veículos | ✅ completo | ✅ completo | CRUD + upload imagens + busca |
+| Equipe | ✅ completo | ✅ completo | convites por email com token; desde 23/09/2026 o **plantão** de cada membro (`PATCH /team/members/:id/plantao`, com "ausente até") decide quem o rodízio sorteia |
+| Veículos | ✅ completo | ✅ completo | CRUD + upload imagens + busca; desde 23/09/2026 o **anúncio** é separado do estoque (`ListingStatus`: rascunho/publicado/despublicado). Veículo novo nasce em rascunho; publicar exige foto, preço e os campos essenciais (422 diz o que falta) por `POST /vehicles/:id/publish`. Etiqueta, filtro e botão em `/veiculos` e `/veiculos/[id]` |
 | Catálogo (marcas/modelos) | ✅ completo | ✅ público | página pública do veículo |
-| Leads | ✅ completo | ✅ completo | kanban, timeline, interações, stats; desde 23/09/2026 captura **sem conta** (`POST /leads/public` com consentimento LGPD), cadastro manual pelo vendedor, deduplicação de 30 dias por telefone/e-mail e registro do clique em WhatsApp/telefone |
+| Leads | ✅ completo | ✅ completo | kanban, timeline, interações, stats; desde 23/09/2026 captura **sem conta** (`POST /leads/public` com consentimento LGPD), cadastro manual pelo vendedor, deduplicação de 30 dias por telefone/e-mail e registro do clique em WhatsApp/telefone. Ainda em 23/09/2026: **rodízio** entre quem está de plantão (anel por data de entrada, ponteiro por loja travado com `SELECT … FOR UPDATE` na mesma transação do lead), **prazo de primeiro contato** em minutos de expediente com etiqueta, filtro, cron de estouro a cada 5 min e `GET /leads/sla-stats`, **carteira do vendedor** (vale em lista, contadores, CSV e detalhe — 404 no lead do colega) e **motivo de perda obrigatório**, com contagem em `/leads/stats` |
 | Agendamentos | ✅ completo | ✅ completo | desde 23/09/2026 a loja agenda para quem **não tem conta** (`POST /appointments/dealer`); `customer_user_id` é nulo e o contato fica no próprio agendamento, com a constraint `appointments_tem_contato` |
 | Chat | ✅ completo | ✅ completo | Socket.IO tempo real |
 | Mapa | ✅ completo | ✅ completo | dark theme, pins animados, sidebar |
 | Dashboard | ✅ completo | ✅ completo | KPIs, GalaxyMap |
 | Admin | ✅ completo | ✅ completo | impersonation, announcements; desde 22/09/2026 mostra vendas da plataforma (faturado 30 dias/mês em `Decimal`, margem, negócios por grupo, contratos interno × eletrônico, envios de assinatura), **gasto com consulta veicular do mês** (o que a plataforma paga), métricas por loja (faturado, gasto, representante legal, última atividade — em `groupBy`, sem N+1) e sistema com `up`/`down`/`off` (bucket privado, provedor de assinatura, consulta, e-mail, Google, crons da réplica). Corpos e queries em Zod; tela responsiva a 375px, uma aba por arquivo, erro de carga com `ErroAoCarregar` por aba |
-| Página pública concessionária | ✅ | ✅ | `/c/[slug]` com chat iniciado pelo cliente |
-| **Negócios (`Deal`)** | ✅ completo | ✅ completo | máquina de estados, pagamento composto, margem em `Decimal` |
+| Página pública concessionária | ✅ | ✅ | `/c/[slug]` com chat iniciado pelo cliente; desde 23/09/2026 toda consulta pública (catálogo, detalhe, `/buscar`, `/c/[slug]`, contagem dos pins do mapa, selo) exige `listing_status = 'published'`, e a policy `leitura_publica` repete a regra no banco |
+| Relatórios | ✅ completo | ✅ completo | desde 23/09/2026 tem **desempenho por vendedor** (`GET /tenant/reports/salespeople`): leads recebidos e atendidos, agendamentos, comparecimento, negócios ganhos, faturamento, margem e comissão estimada, em cinco consultas agrupadas (sem N+1). Dinheiro só de gerente para cima; o vendedor vê a própria linha, filtrada na consulta. Tempo médio de primeira resposta vem de `/leads/sla-stats` e degrada para "—" se a rota não responder. Exportação CSV de desempenho, negócios e estoque |
+| **Negócios (`Deal`)** | ✅ completo | ✅ completo | máquina de estados, pagamento composto, margem em `Decimal`; cancelar e distratar exigem motivo estruturado (`cancel_reason_code`) desde 23/09/2026 |
 | **Custo do veículo** | ✅ completo | ✅ completo | aquisição + preparação; base da margem |
 | **Contrato** | ✅ completo | ✅ completo | PDF determinístico, hash, assinatura interna |
 | **Consulta veicular** | ✅ estrutura | ✅ completo | cache, idempotência e custo; **falta fornecedor real** |
@@ -111,7 +112,7 @@ Auditadas em 04/09/2026, contra o repositório.
 | Onda | Estado |
 |---|---|
 | 0 — o funil não pode vazar | ✅ portão fechado em 23/09/2026 |
-| 1 — o que a loja compara na primeira reunião | ⬜ |
+| 1 — o que a loja compara na primeira reunião | ✅ itens 6 a 11 fechados em 23/09/2026 |
 | 2 — WhatsApp oficial e portais | ⬜ |
 | 3 — cobrar | ⬜ |
 | 4 — o que ninguém tem | ⬜ |
@@ -129,6 +130,39 @@ Dívidas que a Onda 0 deixou declaradas:
   novo, e ele tem que respeitar a policy `cliente_relacionado` (a loja vê quem
   tem lead, agendamento ou conversa com ela — não a base inteira).
 - **Lead de troca fora da deduplicação**, pelo motivo registrado no plano.
+
+Dívidas que os itens 6 a 9 da Onda 1 deixaram declaradas:
+
+- **O cron do SLA processa 200 leads por rodada.** Uma loja que ligue o prazo
+  com centenas de leads antigos vencendo ao mesmo tempo vê os alertas saírem em
+  levas de 5 em 5 minutos. O teto existe para a rodada não atrasar a seguinte.
+- **O rodízio não conhece férias por filial nem escala por turno.** O plantão é
+  um interruptor por pessoa mais um "ausente até" — o suficiente para 2 a 8
+  vendedores, que é o alvo. Escala por dia da semana entraria só com demanda.
+- **O relógio do SLA usa o expediente de uma filial só** (a do lead, ou a
+  primeira ativa). Loja com filiais em fusos diferentes e lead sem filial
+  definida cai na primeira — correto para 1 a 3 lojas na mesma região, frágil
+  fora disso.
+- **A devolução à fila não reatribui.** O lead estourado volta a ficar sem
+  responsável e espera alguém pegá-lo no filtro "Sem responsável"; ele não
+  entra de novo no rodízio sozinho. Rodar o rodízio ali dentro faria o lead
+  circular entre vendedores sem ninguém decidir nada.
+- **Só o lead tem contagem por motivo de perda.** O negócio grava
+  `cancel_reason_code`, mas nenhuma tela ainda agrupa por ele — o funil de
+  valor mostra o motivo no detalhe, não no consolidado.
+
+Dívidas que os itens 10 e 11 da Onda 1 deixaram declaradas:
+
+- **A conferência para publicar usa o que está salvo, não o formulário aberto.**
+  Quem digita a cor e clica em "Publicar" sem salvar ainda lê "falta cor". É
+  honesto — publicar lê o banco — mas cobra um salvamento a mais.
+- ~~**O tempo médio de primeira resposta depende do item 7.**~~ Resolvido em
+  23/09/2026: `GET /leads/sla-stats?days=` existe e o relatório consome. A
+  degradação visível ("—" quando a rota falha) continua no código, de
+  propósito.
+- **A exportação CSV tem teto de 5.000 linhas** em negócios e estoque. Loja que
+  passar disso exporta um recorte sem aviso — o teto existe para a consulta não
+  varrer a base inteira numa região diferente da API.
 
 ## Onde o plano de vendas está
 

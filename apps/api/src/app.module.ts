@@ -25,6 +25,8 @@ import { ConversationsModule } from './modules/conversations/conversations.modul
 import { TeamModule } from './modules/team/team.module';
 import { FipeModule } from './modules/fipe/fipe.module';
 import { TasksModule } from './modules/tasks/tasks.module';
+import { RelatoriosModule } from './modules/relatorios/relatorios.module';
+import { CrmModule } from './modules/crm/crm.module';
 
 @Module({
   imports: [
@@ -55,6 +57,8 @@ import { TasksModule } from './modules/tasks/tasks.module';
     ConversationsModule,
     FipeModule,
     TasksModule,
+    RelatoriosModule,
+    CrmModule,
   ],
   providers: [
     {

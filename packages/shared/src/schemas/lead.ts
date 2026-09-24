@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { telefoneBrValido } from '../domain/telefone';
+import { CODIGOS_DE_PERDA_DE_LEAD, exigeDetalhe } from '../domain/motivo-perda';
 
 /**
  * Valores espelhados do enum `LeadSource` do Prisma.
@@ -51,11 +52,89 @@ export const createLeadSchema = z.object({
 });
 export type CreateLeadInput = z.infer<typeof createLeadSchema>;
 
-export const updateLeadStatusSchema = z.object({
-  status: z.enum(LEAD_STATUSES),
-  reason: z.string().optional(),
-});
+/**
+ * Mudança de status do lead.
+ *
+ * Mover para `lost` exige motivo: a lista de perda é a única fonte que diz por
+ * que a loja não vende, e "perdido" sem motivo é a linha que o relatório não
+ * consegue usar. Quando o motivo é `outro`, o texto livre passa a ser
+ * obrigatório — senão "outro" vira o depósito de tudo e a lista não informa
+ * nada.
+ */
+export const updateLeadStatusSchema = z
+  .object({
+    status: z.enum(LEAD_STATUSES),
+    /** Obrigatório em `lost`; ignorado nos demais. */
+    lostReasonCode: z.enum(CODIGOS_DE_PERDA_DE_LEAD).optional(),
+    /** Complemento em texto livre. Obrigatório quando o código é `outro`. */
+    lostReason: z.string().trim().max(500).optional(),
+    /** Anotação opcional que entra na timeline junto da mudança. */
+    reason: z.string().trim().max(500).optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.status !== 'lost') return;
+
+    if (!v.lostReasonCode) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['lostReasonCode'],
+        message: 'Escolha o motivo da perda.',
+      });
+      return;
+    }
+    if (exigeDetalhe(v.lostReasonCode) && !(v.lostReason ?? '').trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['lostReason'],
+        message: 'Descreva o motivo em "Outro".',
+      });
+    }
+  });
 export type UpdateLeadStatusInput = z.infer<typeof updateLeadStatusSchema>;
+
+/* ── Filtros da lista ────────────────────────────────────── */
+
+/**
+ * Quem responde pelo lead, como filtro da lista.
+ *
+ * `sem_responsavel` é a fila — o que sobra quando ninguém estava de plantão no
+ * momento em que o lead chegou. Sem esse filtro a fila seria invisível, e um
+ * lead sem dono some no meio dos outros.
+ */
+export const FILTROS_DE_RESPONSAVEL = ['todos', 'meus', 'sem_responsavel'] as const;
+export type FiltroDeResponsavel = (typeof FILTROS_DE_RESPONSAVEL)[number];
+
+export const FILTROS_DE_SLA = ['todos', 'no_prazo', 'vencendo', 'estourado'] as const;
+export type FiltroDeSla = (typeof FILTROS_DE_SLA)[number];
+
+export const listLeadsSchema = z.object({
+  status: z.enum(LEAD_STATUSES).optional(),
+  vehicleId: z.string().uuid().optional(),
+  responsavel: z.enum(FILTROS_DE_RESPONSAVEL).default('todos'),
+  sla: z.enum(FILTROS_DE_SLA).default('todos'),
+  page: z.coerce.number().int().min(1).default(1),
+  perPage: z.coerce.number().int().min(1).max(100).default(20),
+});
+export type ListLeadsInput = z.infer<typeof listLeadsSchema>;
+
+export const exportLeadsSchema = z.object({
+  status: z.enum(LEAD_STATUSES).optional(),
+  responsavel: z.enum(FILTROS_DE_RESPONSAVEL).default('todos'),
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
+});
+export type ExportLeadsInput = z.infer<typeof exportLeadsSchema>;
+
+export const slaStatsSchema = z.object({
+  days: z.coerce.number().int().min(1).max(365).default(30),
+});
+export type SlaStatsInput = z.infer<typeof slaStatsSchema>;
+
+/** Atribuição manual. `null` devolve o lead à fila. */
+export const assignLeadSchema = z.object({
+  salesPersonId: z.string().uuid().nullable(),
+});
+export type AssignLeadInput = z.infer<typeof assignLeadSchema>;
 
 /* ── Interações da timeline ──────────────────────────────── */
 
@@ -79,9 +158,14 @@ export const LEAD_INTERACTION_KINDS = [
   'call',
   'email',
   'whatsapp',
+  'chat',
   'visit',
   'duplicate',
   'trade_in_appraisal',
+  /** Escrita pelo rodízio e pela devolução automática à fila. */
+  'rotation',
+  /** Escrita quando o prazo de primeiro contato estoura. */
+  'sla_breach',
   'other',
 ] as const;
 export type LeadInteractionKind = (typeof LEAD_INTERACTION_KINDS)[number];

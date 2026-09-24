@@ -14,12 +14,14 @@ import {
   VehicleQueryStatus,
   SignatureRequestStatus,
   SubscriptionPlan,
+  ListingStatus,
   AppointmentType,
   AppointmentStatus,
 } from '@autoconnect/db';
 import { LEAD_SOURCES, LEAD_STATUSES, LEAD_SOURCES_MANUAIS } from './lead';
 import { APPOINTMENT_TYPES, APPOINTMENT_STATUSES } from './appointment';
 import { VEHICLE_CONDITIONS } from './vehicle';
+import { LISTING_STATUSES } from '../domain/anuncio';
 import { INVITABLE_ROLES } from './auth';
 import {
   DEAL_STATUSES,
@@ -82,6 +84,10 @@ describe('paridade entre os enums do Prisma e os schemas Zod', () => {
 
   it('VehicleCondition', () => {
     expect(conjunto(VEHICLE_CONDITIONS)).toEqual(conjunto(Object.values(VehicleCondition)));
+  });
+
+  it('ListingStatus', () => {
+    expect(conjunto(LISTING_STATUSES)).toEqual(conjunto(Object.values(ListingStatus)));
   });
 
   it('DealStatus', () => {

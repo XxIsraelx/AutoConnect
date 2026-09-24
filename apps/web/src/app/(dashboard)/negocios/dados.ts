@@ -119,7 +119,7 @@ export function useTransicionar(id: string) {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: (v: { to: DealStatusValue; reason?: string }) =>
+    mutationFn: (v: { to: DealStatusValue; reason?: string; cancelReasonCode?: string }) =>
       api(`/deals/${id}/transition`, { method: 'POST', token, body: v }),
     onSuccess: () => {
       // A transição mexe no negócio, na lista e — ao faturar — na margem e no

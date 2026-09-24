@@ -56,6 +56,23 @@ enum VehicleStatus {
   archived
 }
 
+/// Estado do **anúncio**, que é diferente do estado do **estoque**.
+///
+/// `VehicleStatus` responde "a loja ainda tem este carro?"; `ListingStatus`
+/// responde "este carro está na vitrine?". Um carro disponível pode estar em
+/// rascunho (sem foto, sem preço conferido) e um carro despublicado continua
+/// no estoque, contando dias de giro e aparecendo em custo e margem.
+///
+/// Três estados, e não `published_at` nulo/não-nulo, porque o nulo não
+/// distingue "nunca foi ao ar" de "foi tirado do ar" — e apagar a data para
+/// despublicar perderia quando o anúncio estreou, que é o que a lista de
+/// estoque usa para contar dias.
+enum ListingStatus {
+  draft
+  published
+  unpublished
+}
+
 enum FuelType {
   gasoline
   ethanol
@@ -214,6 +231,7 @@ model Tenant {
   dealBuyers                DealBuyer[]
   contractSignatureRequests ContractSignatureRequest[]
   contractSignatureEvents   ContractSignatureEvent[]
+  crmSettings               TenantCrmSettings?
 
   @@map("tenants")
 }
@@ -235,6 +253,46 @@ model TenantSubscription {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("tenant_subscriptions")
+}
+
+/// Ajustes de CRM da concessionária **e** o estado do rodízio de leads.
+///
+/// Tabela própria, e não `Tenant.settings`, porque a linha é travada com
+/// `SELECT … FOR UPDATE` a cada lead que chega: é assim que dois leads
+/// simultâneos não caem no mesmo vendedor. Travar a linha de `tenants` a cada
+/// lead prenderia o cadastro inteiro da loja atrás da fila de leads.
+///
+/// Uma linha por concessionária, criada sob demanda (`ON CONFLICT DO NOTHING`):
+/// loja que nunca abriu a tela de configuração roda com os padrões da coluna.
+model TenantCrmSettings {
+  tenantId String @id @map("tenant_id") @db.Uuid
+
+  /// Distribui sozinho o lead que chega sem responsável.
+  rodizioAtivo           Boolean @default(true) @map("rodizio_ativo")
+  /// Gerentes entram na fila junto dos vendedores.
+  rodizioIncluiGerentes  Boolean @default(false) @map("rodizio_inclui_gerentes")
+
+  /// Minutos de **expediente** até o primeiro contato (padrão: 15).
+  slaPrimeiroContatoMinutos Int     @default(15) @map("sla_primeiro_contato_minutos")
+  /// Devolver à fila o lead que estourou o prazo. Padrão desligado de
+  /// propósito: tirar o lead de um vendedor é decisão de gestão.
+  slaDevolveParaFila        Boolean @default(false) @map("sla_devolve_para_fila")
+
+  /// Padrão **ligado**, para não mudar o que a loja já enxerga hoje. Desligado,
+  /// o vendedor vê só os próprios leads e os da fila.
+  vendedorVeTodosOsLeads Boolean @default(true) @map("vendedor_ve_todos_os_leads")
+
+  /// Estado do rodízio: quem recebeu o último lead. A ordem segue daqui.
+  rodizioUltimoUsuarioId String?   @map("rodizio_ultimo_usuario_id") @db.Uuid
+  rodizioAtualizadoEm    DateTime? @map("rodizio_atualizado_em") @db.Timestamptz()
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant             Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rodizioUltimoUsuario User? @relation("RodizioUltimoUsuario", fields: [rodizioUltimoUsuarioId], references: [id], onDelete: SetNull)
+
+  @@map("tenant_crm_settings")
 }
 
 model DealershipBranch {
@@ -318,6 +376,8 @@ model User {
   dealsAsSalesperson         Deal[]                    @relation("DealSalesperson")
   dealStatusEvents           DealStatusEvent[]
   contractSignatures         ContractSignature[]
+  /// Última posição do rodízio das lojas em que este usuário é o ponteiro.
+  rodizioDeLeads             TenantCrmSettings[]       @relation("RodizioUltimoUsuario")
 
   @@index([tenantId])
   @@index([role])
@@ -396,7 +456,16 @@ model SalespersonProfile {
   presence         PresenceStatus                         @default(offline)
   lastSeenAt       DateTime?                              @map("last_seen_at") @db.Timestamptz()
   currentLocation  Unsupported("geography(Point, 4326)")? @map("current_location")
+  /// O interruptor do plantão: participa do rodízio de leads.
+  ///
+  /// A coluna existia desde o início e nenhuma tela a lia nem a escrevia. É ela
+  /// que a tela de `/equipe` passou a ligar e desligar.
   isAcceptingLeads Boolean                                @default(true) @map("is_accepting_leads")
+  /// Pausa temporária do plantão ("ausente até"). Enquanto estiver no futuro, o
+  /// membro sai do rodízio sem que ninguém precise lembrar de religar o
+  /// interruptor na volta — que é como um vendedor de férias continuaria
+  /// recebendo lead.
+  onDutyPausedUntil DateTime?                             @map("on_duty_paused_until") @db.Timestamptz()
   updatedAt        DateTime                               @updatedAt @map("updated_at") @db.Timestamptz()
 
   user   User              @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -478,6 +547,9 @@ model Vehicle {
   description    String?
   viewsCount     Int                      @default(0) @map("views_count")
   favoritesCount Int                      @default(0) @map("favorites_count")
+  listingStatus  ListingStatus            @default(draft) @map("listing_status")
+  /// Quando o anúncio estreou. Preservado ao despublicar: o rascunho que nunca
+  /// foi ao ar tem `null`, o despublicado mantém a data da estreia.
   publishedAt    DateTime?                @map("published_at") @db.Timestamptz()
   soldAt         DateTime?                @map("sold_at") @db.Timestamptz()
   metadata       Json                     @default("{}")
@@ -510,6 +582,7 @@ model Vehicle {
   @@index([status])
   @@index([modelId])
   @@index([price])
+  @@index([tenantId, listingStatus])
   @@map("vehicles")
 }
 
@@ -617,7 +690,24 @@ model Lead {
   score          Int?       @db.SmallInt
   lastActivityAt DateTime   @default(now()) @map("last_activity_at") @db.Timestamptz()
   wonAt          DateTime?  @map("won_at") @db.Timestamptz()
+  /// Complemento em texto livre do motivo da perda. Obrigatório quando o
+  /// código é `outro` — ver `domain/motivo-perda.ts` no shared.
   lostReason     String?    @map("lost_reason")
+  /// Motivo estruturado da perda, da lista fechada do shared. É o que o
+  /// relatório agrupa; o texto acima é leitura humana.
+  lostReasonCode String?    @map("lost_reason_code")
+
+  /// Prazo de primeiro contato: até quando alguém tem que ter falado com esta
+  /// pessoa. Calculado na criação, em minutos de **expediente** da loja — ver
+  /// `domain/sla.ts`. Nulo quando a loja não tem prazo configurável aplicável
+  /// (nenhum dia aberto) ou quando o lead nasceu antes desta funcionalidade.
+  firstResponseDueAt DateTime? @map("first_response_due_at") @db.Timestamptz()
+  /// Quando houve a primeira interação de SAÍDA do vendedor (ligação,
+  /// WhatsApp, e-mail ou chat). Nota interna não conta.
+  firstRespondedAt   DateTime? @map("first_responded_at") @db.Timestamptz()
+  /// Quando o estouro do prazo foi notificado. Existe para o cron ser
+  /// idempotente: sem ela, o gerente receberia o mesmo alerta a cada rodada.
+  slaBreachedAt      DateTime? @map("sla_breached_at") @db.Timestamptz()
   /// Consentimento LGPD do formulário público: quando foi aceito e o texto
   /// exibido no momento do aceite. O texto é copiado, não referenciado — a
   /// prova tem que ser do termo que a pessoa leu, não do termo de hoje.
@@ -646,6 +736,13 @@ model Lead {
   // Deduplicação: a busca é sempre "dentro desta loja, com este telefone/e-mail".
   @@index([tenantId, contactPhoneNormalized], map: "leads_tenant_telefone_idx")
   @@index([tenantId, contactEmail], map: "leads_tenant_email_idx")
+  // O índice que sustenta a varredura do cron de SLA é PARCIAL
+  // (`leads_prazo_primeiro_contato_idx`, só o que tem prazo e ainda não
+  // respondeu) e por isso vive apenas na migration — o Prisma não sabe
+  // declarar `WHERE` num @@index. Mesma situação de
+  // `deals_veiculo_negocio_vivo_idx`.
+  // Contagem por motivo em GET /leads/stats.
+  @@index([tenantId, lostReasonCode], map: "leads_tenant_motivo_perda_idx")
   @@map("leads")
 }
 
@@ -971,7 +1068,12 @@ model Deal {
   closedAt     DateTime? @map("closed_at") @db.Timestamptz()
   deliveredAt  DateTime? @map("delivered_at") @db.Timestamptz()
   canceledAt   DateTime? @map("canceled_at") @db.Timestamptz()
+  /// Complemento em texto livre. Obrigatório quando o código é `outro`.
   cancelReason String?   @map("cancel_reason")
+  /// Motivo estruturado do cancelamento ou distrato, da lista fechada do
+  /// shared. Era só o texto livre acima, e o funil de valor não conseguia
+  /// dizer por que o dinheiro não entrou.
+  cancelReasonCode String? @map("cancel_reason_code")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()

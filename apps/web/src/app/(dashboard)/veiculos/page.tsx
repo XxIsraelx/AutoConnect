@@ -3,11 +3,13 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Search, Car, FileSpreadsheet, Eye, Heart } from 'lucide-react';
+import { LISTING_STATUS_LABELS, type ListingStatusValue } from '@autoconnect/shared';
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
 import { ErroAoCarregar } from '@/components/ErroAoCarregar';
 import { cn } from '@/lib/utils';
 import VehicleImportModal from '@/components/VehicleImportModal';
+import { EtiquetaDoAnuncio, BotaoDePublicacao } from '@/components/EstadoDoAnuncio';
 
 interface VehicleItem {
   id: string;
@@ -17,8 +19,14 @@ interface VehicleItem {
   price: string;
   promoPrice: string | null;
   status: string;
+  listingStatus: ListingStatusValue;
   condition: string;
   mileageKm: number;
+  color: string | null;
+  fuel: string | null;
+  transmission: string | null;
+  /** Total de fotos — a lista precisa dele para saber se dá para publicar. */
+  _count?: { images: number };
   viewsCount?: number;
   favoritesCount?: number;
   publishedAt?: string | null;
@@ -48,6 +56,9 @@ export default function VehiclesPage() {
   const token = useAuthStore((s) => s.token);
   const [data, setData] = useState<VehicleList | null>(null);
   const [q, setQ] = useState('');
+  // Sem filtro a lista traz rascunho, publicado e despublicado juntos: a tela
+  // é da loja, e esconder o rascunho dela esconderia o que falta fazer.
+  const [anuncio, setAnuncio] = useState<'' | ListingStatusValue>('');
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [showImport, setShowImport] = useState(false);
@@ -60,12 +71,30 @@ export default function VehiclesPage() {
     setErro(null);
     const params = new URLSearchParams({ page: String(page), perPage: '20', status: 'available' });
     if (q) params.set('q', q);
+    if (anuncio) params.set('listingStatus', anuncio);
     api<VehicleList>(`/vehicles?${params}`, { token })
       .then(setData)
       // Antes ia só para o console e a tela dizia "Nenhum veículo cadastrado".
       .catch((e) => { setData(null); setErro(e); })
       .finally(() => setLoading(false));
-  }, [token, page, q, refreshKey]);
+  }, [token, page, q, anuncio, refreshKey]);
+
+  /** Troca o estado do anúncio na lista já carregada, sem recarregar tudo. */
+  function aplicarPublicacao(id: string, listingStatus: ListingStatusValue) {
+    setData((atual) =>
+      atual
+        ? {
+            ...atual,
+            // Com um filtro de anúncio ativo, o veículo que mudou de estado sai
+            // da lista — ficar exibindo um "Rascunho" na aba "Publicados"
+            // faria a tela mentir até o próximo carregamento.
+            items: anuncio && anuncio !== listingStatus
+              ? atual.items.filter((v) => v.id !== id)
+              : atual.items.map((v) => (v.id === id ? { ...v, listingStatus } : v)),
+          }
+        : atual,
+    );
+  }
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -117,6 +146,29 @@ export default function VehiclesPage() {
         />
       </div>
 
+      {/* Filtro por estado do anúncio. Rola no celular em vez de quebrar. */}
+      <div className="flex items-center gap-1 mb-5 overflow-x-auto -mx-1 px-1 pb-1">
+        {([
+          ['', 'Todos'],
+          ['draft', LISTING_STATUS_LABELS.draft],
+          ['published', LISTING_STATUS_LABELS.published],
+          ['unpublished', LISTING_STATUS_LABELS.unpublished],
+        ] as const).map(([valor, rotulo]) => (
+          <button
+            key={valor || 'todos'}
+            onClick={() => { setAnuncio(valor); setPage(1); }}
+            className={cn(
+              'px-3 py-1.5 text-xs font-medium rounded-lg border whitespace-nowrap transition',
+              anuncio === valor
+                ? 'bg-brand-accent text-white border-brand-accent'
+                : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800',
+            )}
+          >
+            {rotulo}
+          </button>
+        ))}
+      </div>
+
       {/* Table */}
       {loading ? (
         <div className="flex items-center justify-center h-48">
@@ -126,8 +178,8 @@ export default function VehiclesPage() {
         <ErroAoCarregar erro={erro} onTentarNovamente={() => setRefreshKey((k) => k + 1)} contexto="os veículos" />
       ) : data && data.items.length > 0 ? (
         <>
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-x-auto">
+            <table className="w-full text-sm min-w-[52rem]">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-800">
                   <th className="text-left px-4 py-3 font-medium text-slate-500">Veículo</th>
@@ -141,6 +193,9 @@ export default function VehiclesPage() {
                     Estoque
                   </th>
                   <th className="text-left px-4 py-3 font-medium text-slate-500">Status</th>
+                  <th className="text-left px-4 py-3 font-medium text-slate-500" title="Se o veículo aparece no catálogo público">
+                    Anúncio
+                  </th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -227,13 +282,33 @@ export default function VehiclesPage() {
                           {st.label}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <Link
-                          href={`/veiculos/${v.id}`}
-                          className="text-brand-accent hover:underline text-xs font-medium"
-                        >
-                          Editar
-                        </Link>
+                      <td className="px-4 py-3">
+                        <EtiquetaDoAnuncio listingStatus={v.listingStatus} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-3">
+                          <BotaoDePublicacao
+                            compacto
+                            token={token}
+                            veiculo={{
+                              id: v.id,
+                              status: v.status,
+                              listingStatus: v.listingStatus,
+                              price: v.price,
+                              color: v.color,
+                              fuel: v.fuel,
+                              transmission: v.transmission,
+                              totalDeFotos: v._count?.images ?? v.images.length,
+                            }}
+                            onMudou={(novo) => aplicarPublicacao(v.id, novo)}
+                          />
+                          <Link
+                            href={`/veiculos/${v.id}`}
+                            className="text-brand-accent hover:underline text-xs font-medium"
+                          >
+                            Editar
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -270,13 +345,26 @@ export default function VehiclesPage() {
       ) : (
         <div className="flex flex-col items-center justify-center h-64 gap-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 border-dashed">
           <Car size={40} className="text-slate-300" />
-          <p className="text-slate-500 font-medium">Nenhum veículo cadastrado</p>
-          <Link
-            href="/veiculos/novo"
-            className="text-sm text-brand-accent hover:underline font-medium"
-          >
-            Adicionar primeiro veículo
-          </Link>
+          <p className="text-slate-500 font-medium">
+            {anuncio
+              ? `Nenhum veículo em "${LISTING_STATUS_LABELS[anuncio]}"`
+              : 'Nenhum veículo cadastrado'}
+          </p>
+          {anuncio ? (
+            <button
+              onClick={() => { setAnuncio(''); setPage(1); }}
+              className="text-sm text-brand-accent hover:underline font-medium"
+            >
+              Ver todos os veículos
+            </button>
+          ) : (
+            <Link
+              href="/veiculos/novo"
+              className="text-sm text-brand-accent hover:underline font-medium"
+            >
+              Adicionar primeiro veículo
+            </Link>
+          )}
         </div>
       )}
     </div>

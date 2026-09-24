@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   UserPlus, Mail, Clock, Trash2, Copy, CheckCheck, X, Loader2,
   Target, TrendingUp, Users, DollarSign, CalendarCheck, Award,
-  ChevronRight, Send, UserX, UserCheck, RefreshCw, Trophy,
+  ChevronRight, Send, UserX, UserCheck, RefreshCw, Trophy, Radio,
 } from 'lucide-react';
 import { api} from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
@@ -20,6 +20,10 @@ interface MemberStat {
   /** Decimal do backend: chega como string. */
   valueSold: string; appointments: number;
   commissionPct: number | null; commission: string | null;
+  /** Plantão: participa do rodízio de leads. */
+  emPlantao: boolean;
+  /** Pausa temporária do plantão, em ISO. Nulo = sem pausa. */
+  ausenteAte: string | null;
 }
 interface TeamStat {
   goal: number | null; won: number; assigned: number; conversion: number;
@@ -163,6 +167,30 @@ export default function EquipePage() {
     catch (e) { setErroMembro(textoDoErro(e)); }
     finally { setBusyId(null); }
   }
+  /**
+   * Plantão do membro: é o interruptor que decide quem o rodízio sorteia.
+   *
+   * Recarrega a visão inteira em vez de mexer só no membro: `ausenteAte` volta
+   * do backend normalizado, e escrever o valor do input na tela faria a data
+   * exibida divergir da gravada.
+   */
+  async function setPlantao(
+    id: string,
+    patch: { emPlantao?: boolean; ausenteAte?: string | null },
+  ) {
+    if (!token) return;
+    setBusyId(id);
+    setErroMembro('');
+    try {
+      await api(`/team/members/${id}/plantao`, { token, method: 'PATCH', body: patch });
+      const atualizado = await api<Overview>(`/team/overview?period=${period}`, { token });
+      setData(atualizado);
+      setSelected((cur) => atualizado.members.find((m) => m.id === cur?.id) ?? cur);
+    }
+    catch (e) { setErroMembro(textoDoErro(e)); }
+    finally { setBusyId(null); }
+  }
+
   // Nenhuma das duas tinha catch: a promessa rejeitava sem ninguém ver, e o
   // convite seguia na lista como se tivesse sido revogado ou reenviado.
   async function revokeInvite(id: string) {
@@ -370,17 +398,19 @@ export default function EquipePage() {
           onClose={() => { setSelected(null); setErroMembro(''); }}
           onChangeRole={(r) => changeRole(selected.id, r)}
           onSetStatus={(s) => setStatus(selected.id, s)}
-          onSetCommission={(pct) => setCommission(selected.id, pct)} />
+          onSetCommission={(pct) => setCommission(selected.id, pct)}
+          onSetPlantao={(patch) => setPlantao(selected.id, patch)} />
       )}
     </div>
   );
 }
 
 /* ── Drawer do membro ───────────────────────────────────── */
-function MemberDrawer({ member, period, isAdmin, busy, erro, onClose, onChangeRole, onSetStatus, onSetCommission }: {
+function MemberDrawer({ member, period, isAdmin, busy, erro, onClose, onChangeRole, onSetStatus, onSetCommission, onSetPlantao }: {
   member: MemberStat; period: string; isAdmin: boolean; busy: boolean; erro: string;
   onClose: () => void; onChangeRole: (r: string) => void; onSetStatus: (s: 'active' | 'suspended') => void;
   onSetCommission: (pct: number | null) => void;
+  onSetPlantao: (patch: { emPlantao?: boolean; ausenteAte?: string | null }) => void;
 }) {
   const [pctInput, setPctInput] = useState(member.commissionPct != null ? String(member.commissionPct) : '');
   useEffect(() => {
@@ -443,6 +473,77 @@ function MemberDrawer({ member, period, isAdmin, busy, erro, onClose, onChangeRo
           <div className="bg-white dark:bg-slate-900 rounded-xl p-4 border border-slate-200 dark:border-slate-800">
             <p className="text-xs text-slate-400">Valor vendido no período</p>
             <p className="text-2xl font-extrabold text-amber-600 mt-1">{formatarBRL(member.valueSold)}</p>
+          </div>
+
+          {/* Plantão — quem o rodízio sorteia */}
+          <div className="bg-white dark:bg-slate-900 rounded-xl p-4 border border-slate-200 dark:border-slate-800">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+                  <Radio size={13} /> Plantão
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Desligado, sai do rodízio e não recebe lead novo automaticamente.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={member.emPlantao}
+                aria-label="Plantão"
+                disabled={busy}
+                onClick={() => onSetPlantao({ emPlantao: !member.emPlantao })}
+                className={cn(
+                  'relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50',
+                  member.emPlantao ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700',
+                )}
+              >
+                <span className={cn(
+                  'absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
+                  member.emPlantao && 'translate-x-5',
+                )} />
+              </button>
+            </div>
+
+            {/* Ausente até: férias não dependem de alguém lembrar de religar o
+                interruptor na volta. */}
+            <div className="mt-3">
+              <label
+                htmlFor={`ausente-${member.id}`}
+                className="text-[11px] text-slate-500 block mb-1"
+              >
+                Ausente até
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  id={`ausente-${member.id}`}
+                  type="date"
+                  disabled={busy}
+                  value={member.ausenteAte ? member.ausenteAte.slice(0, 10) : ''}
+                  onChange={(e) => onSetPlantao({
+                    ausenteAte: e.target.value
+                      ? new Date(`${e.target.value}T23:59:59`).toISOString()
+                      : null,
+                  })}
+                  className="flex-1 px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {member.ausenteAte && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onSetPlantao({ ausenteAte: null })}
+                    className="px-3 py-2 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+              {member.ausenteAte && new Date(member.ausenteAte) > new Date() && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5">
+                  Fora do rodízio até {new Date(member.ausenteAte).toLocaleDateString('pt-BR')}.
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Comissão */}

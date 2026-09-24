@@ -291,6 +291,7 @@ export class DealsService {
     atorId: string,
     destino: DealStatusValue,
     motivo?: string,
+    motivoCodigo?: string,
   ) {
     const tenantId = this.tenantDe(escopo);
 
@@ -298,7 +299,7 @@ export class DealsService {
       const negocio = await tx.deal.findFirst({ where: { id, tenantId } });
       if (!negocio) throw new NotFoundException('Negócio não encontrado');
 
-      await this.estado.transicionar(tx, negocio, destino, atorId, motivo);
+      await this.estado.transicionar(tx, negocio, destino, atorId, motivo, motivoCodigo);
       return tx.deal.findFirst({ where: { id, tenantId }, include: INCLUDE_DETALHE });
     });
 

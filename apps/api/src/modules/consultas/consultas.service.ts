@@ -207,7 +207,7 @@ export class ConsultasService {
   async seloPublico(vehicleId: string) {
     const veiculo = await this.prisma.withPublic((tx) =>
       tx.vehicle.findFirst({
-        where: { id: vehicleId, status: 'available' },
+        where: { id: vehicleId, status: 'available', listingStatus: 'published' },
         select: { id: true, tenantId: true },
       }),
     );

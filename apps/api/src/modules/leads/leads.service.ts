@@ -8,8 +8,13 @@ import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.s
 import { ehGlobal, type Escopo } from '../../common/escopo';
 import { EmailService } from '../../common/email/email.service';
 import {
+  limiteDeAlertaSegundos,
   normalizarTelefoneBr,
+  rotuloDoMotivo,
   type CreateLeadInput,
+  type ExportLeadsInput,
+  type ListLeadsInput,
+  type SlaStatsInput,
   type UpdateLeadStatusInput,
   type LeadPublicoInput,
   type LeadManualInput,
@@ -17,6 +22,10 @@ import {
 } from '@autoconnect/shared';
 import { acharLeadDuplicado, registrarContatoRepetido } from './deduplicacao';
 import { LimitePorIp, chaveDoEnvio } from './limite-por-ip';
+import { CrmSettingsService, type AjustesDeCrm } from '../crm/crm-settings.service';
+import { RodizioService } from '../crm/rodizio.service';
+import { SlaService } from '../crm/sla.service';
+import { carteiraDe, type Ator } from './carteira';
 
 /** Dados do e-mail de "lead novo", montados dentro da transação e enviados fora. */
 interface AvisoDeLeadNovo {
@@ -41,7 +50,50 @@ export class LeadsService {
      * arquivo do limite para o porquê de não haver Redis nem CAPTCHA.
      */
     private readonly limitePublico: LimitePorIp,
+    private readonly ajustes: CrmSettingsService,
+    private readonly rodizio: RodizioService,
+    private readonly sla: SlaService,
   ) {}
+
+  /* ── Rodízio e prazo, na criação do lead ───────────────── */
+
+  /**
+   * Decide responsável e prazo de primeiro contato de um lead que vai nascer.
+   *
+   * Roda **dentro** da transação de criação: `lerTravando` trava a linha de
+   * ajustes da loja, e é essa trava que impede dois leads simultâneos de
+   * caírem no mesmo vendedor. Uma leitura só serve aos dois usos — o prazo sai
+   * do mesmo `ajustes`, sem segunda ida ao banco (API e banco estão em regiões
+   * diferentes; cada consulta custa ~0,6s).
+   *
+   * `responsavelFixo` é quem a tela já escolheu (cadastro manual com vendedor
+   * indicado). Nesse caso não há rodízio a aplicar, mas o prazo continua
+   * valendo — o relógio é do lead, não da forma como ele chegou.
+   */
+  private async distribuirEAgendar(
+    tx: ScopedClient,
+    tenantId: string,
+    opcoes: { branchId?: string | null; responsavelFixo?: string | null; criadoEm: Date },
+  ): Promise<{
+    assignedTo: string | null;
+    firstResponseDueAt: Date | null;
+    /** Houve rodízio a registrar na timeline? */
+    viaRodizio: boolean;
+  }> {
+    const ajustes = await this.ajustes.lerTravando(tx, tenantId);
+
+    const viaRodizio = !opcoes.responsavelFixo && ajustes.rodizioAtivo;
+    const assignedTo = opcoes.responsavelFixo
+      ?? (await this.rodizio.proximoVendedor(tx, tenantId, ajustes, opcoes.criadoEm));
+
+    const firstResponseDueAt = await this.sla.prazoDePrimeiroContato(tx, tenantId, {
+      branchId: opcoes.branchId ?? null,
+      minutos: ajustes.slaPrimeiroContatoMinutos,
+      criadoEm: opcoes.criadoEm,
+    });
+
+    return { assignedTo, firstResponseDueAt, viaRodizio };
+  }
 
   /** Cria um lead. O userId vem do token JWT (customer logado). */
   async create(
@@ -98,6 +150,10 @@ export class LeadsService {
       return { lead, deduplicado: true, aviso: null };
     }
 
+    const criadoEm = new Date();
+    const { assignedTo, firstResponseDueAt, viaRodizio } =
+      await this.distribuirEAgendar(tx, tenantId, { branchId: input.branchId, criadoEm });
+
     const lead = await tx.lead.create({
       data: {
         tenantId,
@@ -111,10 +167,17 @@ export class LeadsService {
         source: input.source,
         message: input.message ?? null,
         status: 'new',
+        assignedTo,
+        firstResponseDueAt,
       },
     });
 
-    await this.registrarCriacao(tx, tenantId, lead.id, userId, 'formulário do site');
+    await this.registrarCriacao(tx, tenantId, lead.id, userId, 'formulário do site', criadoEm);
+    if (viaRodizio) {
+      await this.rodizio.registrarNaTimeline(
+        tx, tenantId, lead.id, assignedTo, new Date(criadoEm.getTime() + 1),
+      );
+    }
 
     return {
       lead,
@@ -214,9 +277,15 @@ export class LeadsService {
 
       const vehicleInfo = await this.descreverVeiculo(tx, vehicleId);
 
+      const criadoEm = new Date();
+      const { assignedTo, firstResponseDueAt, viaRodizio } =
+        await this.distribuirEAgendar(tx, tenantId, { criadoEm });
+
       const lead = await tx.lead.create({
         data: {
           tenantId,
+          assignedTo,
+          firstResponseDueAt,
           // Sempre nulo aqui: esta rota é a do visitante sem conta. Quem está
           // logado continua indo por `POST /leads`, que vincula o usuário — a
           // tela escolhe a rota pelo token que tem em mãos.
@@ -234,7 +303,14 @@ export class LeadsService {
         },
       });
 
-      await this.registrarCriacao(tx, tenantId, lead.id, null, 'formulário público do site');
+      await this.registrarCriacao(
+        tx, tenantId, lead.id, null, 'formulário público do site', criadoEm,
+      );
+      if (viaRodizio) {
+        await this.rodizio.registrarNaTimeline(
+          tx, tenantId, lead.id, assignedTo, new Date(criadoEm.getTime() + 1),
+        );
+      }
 
       return {
         deduplicado: false,
@@ -305,9 +381,10 @@ export class LeadsService {
    */
   async criarManual(
     escopo: Escopo,
-    criadorId: string,
+    criador: Ator,
     input: LeadManualInput,
   ): Promise<unknown> {
+    const criadorId = criador.id;
     if (ehGlobal(escopo)) {
       // Super admin sem loja selecionada não tem a qual loja cadastrar. Falha
       // alto em vez de escolher uma.
@@ -327,12 +404,21 @@ export class LeadsService {
         if (!veiculo) throw new NotFoundException('Veículo não encontrado');
       }
 
-      const responsavel = input.assignedTo ?? criadorId;
-      const vendedor = await tx.user.findFirst({
-        where: { id: responsavel, tenantId, status: 'active' },
-        select: { id: true },
-      });
-      if (!vendedor) throw new NotFoundException('Vendedor não encontrado');
+      // Quem cadastra à mão é quem já está atendendo: o vendedor fica com o
+      // próprio lead, e só aí não há rodízio a aplicar. Gerente e
+      // administrador cadastram o que chegou por fora e **não** ficam com ele —
+      // esse vai para o rodízio, que é o caminho pelo qual o lead do balcão
+      // chega ao vendedor da vez.
+      const responsavelPedido =
+        input.assignedTo ?? (criador.role === 'salesperson' ? criadorId : null);
+
+      if (responsavelPedido) {
+        const vendedor = await tx.user.findFirst({
+          where: { id: responsavelPedido, tenantId, status: 'active' },
+          select: { id: true },
+        });
+        if (!vendedor) throw new NotFoundException('Vendedor não encontrado');
+      }
 
       const existente = await acharLeadDuplicado(tx, tenantId, {
         contactPhone: input.contactPhone,
@@ -354,12 +440,21 @@ export class LeadsService {
         return { lead, deduplicado: true };
       }
 
+      const criadoEm = new Date();
+      const { assignedTo, firstResponseDueAt, viaRodizio } =
+        await this.distribuirEAgendar(tx, tenantId, {
+          branchId: input.branchId,
+          responsavelFixo: responsavelPedido,
+          criadoEm,
+        });
+
       const lead = await tx.lead.create({
         data: {
           tenantId,
           vehicleId: input.vehicleId ?? null,
           branchId: input.branchId ?? null,
-          assignedTo: responsavel,
+          assignedTo,
+          firstResponseDueAt,
           contactName: input.contactName,
           contactEmail,
           contactPhone: input.contactPhone,
@@ -370,7 +465,12 @@ export class LeadsService {
         },
       });
 
-      await this.registrarCriacao(tx, tenantId, lead.id, criadorId, 'cadastro manual');
+      await this.registrarCriacao(tx, tenantId, lead.id, criadorId, 'cadastro manual', criadoEm);
+      if (viaRodizio) {
+        await this.rodizio.registrarNaTimeline(
+          tx, tenantId, lead.id, assignedTo, new Date(criadoEm.getTime() + 1),
+        );
+      }
 
       return { lead, deduplicado: false };
     });
@@ -387,12 +487,15 @@ export class LeadsService {
     leadId: string,
     actorUserId: string | null,
     comoChegou: string,
+    /** Explícito: dentro da transação, `now()` é igual para todas as linhas. */
+    ocorridoEm: Date = new Date(),
   ): Promise<void> {
     await tx.leadInteraction.create({
       data: {
         leadId,
         tenantId,
         actorUserId,
+        occurredAt: ocorridoEm,
         kind: 'created' satisfies LeadInteractionKind,
         content: `Lead criado — ${comoChegou}`,
       },
@@ -435,23 +538,109 @@ export class LeadsService {
       .catch((err) => this.logger.warn(`Falha ao notificar a loja do lead novo: ${err}`));
   }
 
+  /* ── Filtros da lista ──────────────────────────────────── */
+
+  /**
+   * O recorte do prazo, em SQL.
+   *
+   * "Vencendo" usa o **mesmo** limite de alerta que a etiqueta da tela
+   * (`limiteDeAlertaSegundos` sobre o prazo configurado pela loja). Se cada
+   * ponta usasse a própria conta, o filtro traria leads que a etiqueta chama
+   * de "no prazo" — e a lista perderia a credibilidade justamente na tela em
+   * que o gerente cobra.
+   */
+  private whereDoSla(
+    filtro: ListLeadsInput['sla'],
+    agora: Date,
+    alertaSegundos: number,
+  ): Prisma.LeadWhereInput {
+    const beiraDoPrazo = new Date(agora.getTime() + alertaSegundos * 1000);
+
+    switch (filtro) {
+      case 'estourado':
+        return { firstRespondedAt: null, firstResponseDueAt: { lte: agora } };
+      case 'vencendo':
+        return { firstRespondedAt: null, firstResponseDueAt: { gt: agora, lte: beiraDoPrazo } };
+      case 'no_prazo':
+        return { firstRespondedAt: null, firstResponseDueAt: { gt: beiraDoPrazo } };
+      default:
+        return {};
+    }
+  }
+
+  /**
+   * O `where` da lista, da contagem e do CSV — um só, de propósito.
+   *
+   * A carteira precisa valer nas quatro superfícies (lista, contadores, CSV e
+   * detalhe). Montar o filtro em cada método é como uma delas fica de fora e
+   * o CSV exporta o que a tela esconde.
+   *
+   * Os recortes entram em `AND` e não espalhados no objeto: a carteira e o
+   * filtro de responsável produzem `OR`, e dois `OR` no mesmo nível fariam o
+   * segundo apagar o primeiro em silêncio.
+   */
+  private whereDaLista(
+    escopo: Escopo,
+    ator: Ator | null,
+    ajustes: AjustesDeCrm | null,
+    opts: {
+      status?: string;
+      vehicleId?: string;
+      responsavel?: ListLeadsInput['responsavel'];
+      sla?: ListLeadsInput['sla'];
+      criadoDe?: Date;
+      criadoAte?: Date;
+      agora?: Date;
+    },
+  ): Prisma.LeadWhereInput {
+    const agora = opts.agora ?? new Date();
+    const partes: Prisma.LeadWhereInput[] = [];
+
+    if (opts.responsavel === 'meus' && ator) partes.push({ assignedTo: ator.id });
+    if (opts.responsavel === 'sem_responsavel') partes.push({ assignedTo: null });
+
+    if (opts.sla && opts.sla !== 'todos') {
+      partes.push(
+        this.whereDoSla(
+          opts.sla,
+          agora,
+          limiteDeAlertaSegundos(ajustes?.slaPrimeiroContatoMinutos ?? 15),
+        ),
+      );
+    }
+
+    // Super admin no consolidado não tem carteira a aplicar: `ajustes` é nulo
+    // e a função devolve `{}` — o `true` aqui é o padrão, não uma permissão.
+    const carteira = carteiraDe(ator, ajustes?.vendedorVeTodosOsLeads ?? true);
+    if (Object.keys(carteira).length > 0) partes.push(carteira);
+
+    return {
+      ...(ehGlobal(escopo) ? {} : { tenantId: escopo.tenantId }),
+      ...(opts.status ? { status: opts.status as Prisma.LeadWhereInput['status'] } : {}),
+      ...(opts.vehicleId ? { vehicleId: opts.vehicleId } : {}),
+      ...(opts.criadoDe || opts.criadoAte
+        ? {
+            createdAt: {
+              ...(opts.criadoDe ? { gte: opts.criadoDe } : {}),
+              ...(opts.criadoAte ? { lte: opts.criadoAte } : {}),
+            },
+          }
+        : {}),
+      ...(partes.length > 0 ? { AND: partes } : {}),
+    };
+  }
+
   /** Lista leads da concessionária autenticada (dealer/admin) */
-  async findAll(escopo: Escopo, opts: {
-    status?: string;
-    vehicleId?: string;
-    page?: number;
-    perPage?: number;
-  }): Promise<unknown> {
-    const { status, vehicleId, page = 1, perPage = 20 } = opts;
+  async findAll(
+    escopo: Escopo,
+    ator: Ator,
+    opts: ListLeadsInput & { vehicleId?: string },
+  ): Promise<unknown> {
+    const { page, perPage } = opts;
     const skip = (page - 1) * perPage;
 
-    const where = {
-      ...(ehGlobal(escopo) ? {} : { tenantId: escopo.tenantId }),
-      ...(status ? { status: status as 'new' | 'contacted' | 'qualified' | 'negotiating' | 'won' | 'lost' | 'archived' } : {}),
-      ...(vehicleId ? { vehicleId } : {}),
-    };
-
-    const consultar = async (tx: ScopedClient) => {
+    const consultar = async (tx: ScopedClient, ajustes: AjustesDeCrm | null) => {
+      const where = this.whereDaLista(escopo, ator, ajustes, opts);
       const [items, total] = await Promise.all([
         tx.lead.findMany({
         where,
@@ -484,22 +673,43 @@ export class LeadsService {
         tx.lead.count({ where }),
       ]);
 
-      return { items, total, page, perPage };
+      return {
+        items,
+        total,
+        page,
+        perPage,
+        /**
+         * Quantos segundos antes do prazo a etiqueta deve avisar. Vai junto da
+         * lista para a tela não precisar de uma rota a mais — e para a etiqueta
+         * usar exatamente o número que o filtro "vencendo" usou.
+         */
+        slaAlertaSegundos: limiteDeAlertaSegundos(ajustes?.slaPrimeiroContatoMinutos ?? 15),
+      };
     };
 
-    return ehGlobal(escopo)
-      ? consultar(this.privilegiado)
-      : this.prisma.withTenant(escopo.tenantId, consultar);
+    if (ehGlobal(escopo)) return consultar(this.privilegiado, null);
+
+    return this.prisma.withTenant(escopo.tenantId, async (tx) => {
+      const ajustes = await this.ajustes.ler(tx, escopo.tenantId);
+      return consultar(tx, ajustes);
+    });
   }
 
   /** Atualiza status de um lead (dealer/admin) */
   async updateStatus(
     tenantId: string,
     leadId: string,
+    ator: Ator,
     input: UpdateLeadStatusInput,
   ): Promise<unknown> {
     return this.prisma.withTenant(tenantId, async (tx) => {
-      const lead = await tx.lead.findFirst({ where: { id: leadId, tenantId } });
+      const ajustes = await this.ajustes.ler(tx, tenantId);
+      const lead = await tx.lead.findFirst({
+        where: {
+          id: leadId, tenantId,
+          ...carteiraDe(ator, ajustes.vendedorVeTodosOsLeads),
+        },
+      });
       if (!lead) throw new NotFoundException('Lead não encontrado');
 
       // `won` deixou de ser o fim do lead e passou a significar "gerou
@@ -517,47 +727,196 @@ export class LeadsService {
         }
       }
 
-      return tx.lead.update({
+      // Perder exige motivo, e o Zod da rota já garantiu que ele veio. Aqui
+      // ele é gravado; e voltar de "perdido" para qualquer outro status
+      // **limpa** o motivo, senão o relatório contaria como perda por preço um
+      // lead que está em negociação.
+      const motivo = input.status === 'lost'
+        ? { lostReasonCode: input.lostReasonCode ?? null, lostReason: input.lostReason ?? null }
+        : { lostReasonCode: null, lostReason: null };
+
+      const atualizado = await tx.lead.update({
         where: { id: leadId },
-        data: { status: input.status },
+        data: { status: input.status, ...motivo, lastActivityAt: new Date() },
       });
+
+      // A mudança de status não deixava rastro nenhum na timeline: o lead
+      // aparecia "Perdido" e o histórico não dizia quem, quando nem por quê.
+      const detalhe = input.status === 'lost'
+        ? ` — ${rotuloDoMotivo(input.lostReasonCode)}${input.lostReason ? `: ${input.lostReason}` : ''}`
+        : input.reason ? ` — ${input.reason}` : '';
+
+      await tx.leadInteraction.create({
+        data: {
+          leadId,
+          tenantId,
+          actorUserId: ator.id,
+          kind: 'status_change' satisfies LeadInteractionKind,
+          content: `Status: ${lead.status} → ${input.status}${detalhe}`,
+          payload: {
+            de: lead.status,
+            para: input.status,
+            lostReasonCode: input.lostReasonCode ?? null,
+          } as never,
+        },
+      });
+
+      return atualizado;
     });
   }
 
-  /** Conta leads por status para o dashboard (dealer/admin) */
-  async getStats(escopo: Escopo): Promise<unknown> {
-    const agrupar = (tx: ScopedClient) =>
-      tx.lead.groupBy({
-        by: ['status'],
-        where: ehGlobal(escopo) ? {} : { tenantId: escopo.tenantId },
-        _count: { _all: true },
+  /**
+   * Contagem por status e por motivo de perda.
+   *
+   * O formato mudou de `{ new: 3, lost: 1 }` para `{ porStatus, porMotivoDePerda }`:
+   * a forma antiga era um mapa aberto, e acrescentar a contagem por motivo
+   * dentro dele faria `Object.values(stats).reduce(soma)` — que é como a tela
+   * calcula o total — somar um objeto.
+   */
+  async getStats(escopo: Escopo, ator: Ator): Promise<unknown> {
+    const contar = async (tx: ScopedClient, ajustes: AjustesDeCrm | null) => {
+      const where = this.whereDaLista(escopo, ator, ajustes, {});
+
+      const [porStatus, porMotivo] = await Promise.all([
+        tx.lead.groupBy({ by: ['status'], where, _count: { _all: true } }),
+        tx.lead.groupBy({
+          by: ['lostReasonCode'],
+          where: { ...where, status: 'lost' },
+          _count: { _all: true },
+        }),
+      ]);
+
+      const stats: Record<string, number> = {};
+      for (const g of porStatus) stats[g.status] = g._count._all;
+
+      const motivos: Record<string, number> = {};
+      for (const g of porMotivo) {
+        // Lead perdido antes desta funcionalidade não tem código. Agrupar como
+        // "sem_motivo" é honesto; jogá-lo em "outro" inventaria um dado.
+        motivos[g.lostReasonCode ?? 'sem_motivo'] = g._count._all;
+      }
+
+      return { porStatus: stats, porMotivoDePerda: motivos };
+    };
+
+    if (ehGlobal(escopo)) return contar(this.privilegiado, null);
+
+    return this.prisma.withTenant(escopo.tenantId, async (tx) => {
+      const ajustes = await this.ajustes.ler(tx, escopo.tenantId);
+      return contar(tx, ajustes);
+    });
+  }
+
+  /**
+   * Prazo de primeiro contato por vendedor, para o relatório.
+   *
+   * Contrato de cada linha: `{ userId, nome, leads, respondidos,
+   * tempoMedioSegundos, estourados }`. `userId` é `null` na linha da fila — os
+   * leads que ninguém pegou são justamente os que mais estouram, e escondê-los
+   * faria o relatório parecer melhor do que a loja é.
+   *
+   * Só entram leads **com prazo**: os criados antes desta funcionalidade têm
+   * `firstResponseDueAt` nulo e não são cobráveis.
+   */
+  async slaStats(escopo: Escopo, input: SlaStatsInput): Promise<unknown> {
+    if (ehGlobal(escopo)) {
+      throw new ForbiddenException(
+        'Selecione uma concessionária para ver o prazo de primeiro contato.',
+      );
+    }
+    const tenantId = escopo.tenantId;
+    const desde = new Date(Date.now() - input.days * 24 * 60 * 60 * 1000);
+    const agora = new Date();
+
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const leads = await tx.lead.findMany({
+        where: { tenantId, createdAt: { gte: desde }, firstResponseDueAt: { not: null } },
+        select: {
+          assignedTo: true,
+          createdAt: true,
+          firstResponseDueAt: true,
+          firstRespondedAt: true,
+          assignee: { select: { fullName: true } },
+        },
       });
 
-    const groups = await (ehGlobal(escopo)
-      ? agrupar(this.privilegiado)
-      : this.prisma.withTenant(escopo.tenantId, agrupar));
+      const porVendedor = new Map<string, {
+        userId: string | null; nome: string;
+        leads: number; respondidos: number; somaSegundos: number; estourados: number;
+      }>();
 
-    const stats: Record<string, number> = {};
-    for (const g of groups) {
-      stats[g.status] = g._count._all;
-    }
-    return stats;
+      for (const l of leads) {
+        const chave = l.assignedTo ?? '';
+        const linha = porVendedor.get(chave) ?? {
+          userId: l.assignedTo,
+          nome: l.assignee?.fullName ?? 'Sem responsável',
+          leads: 0, respondidos: 0, somaSegundos: 0, estourados: 0,
+        };
+
+        linha.leads++;
+        if (l.firstRespondedAt) {
+          linha.respondidos++;
+          linha.somaSegundos +=
+            (l.firstRespondedAt.getTime() - l.createdAt.getTime()) / 1000;
+        }
+
+        // Estourou quem respondeu depois do prazo E quem ainda não respondeu
+        // com o prazo já vencido. Contar só o segundo caso premiaria quem
+        // responde tarde.
+        const prazo = l.firstResponseDueAt!;
+        if (l.firstRespondedAt ? l.firstRespondedAt > prazo : prazo <= agora) {
+          linha.estourados++;
+        }
+
+        porVendedor.set(chave, linha);
+      }
+
+      return [...porVendedor.values()]
+        .map((v) => ({
+          userId: v.userId,
+          nome: v.nome,
+          leads: v.leads,
+          respondidos: v.respondidos,
+          tempoMedioSegundos: v.respondidos > 0
+            ? Math.round(v.somaSegundos / v.respondidos)
+            : null,
+          estourados: v.estourados,
+        }))
+        .sort((a, b) => b.leads - a.leads || a.nome.localeCompare(b.nome));
+    });
   }
 
   /** Deleta / arquiva um lead (dealer/admin) */
-  async remove(tenantId: string, leadId: string): Promise<{ deleted: boolean }> {
+  async remove(tenantId: string, leadId: string, ator: Ator): Promise<{ deleted: boolean }> {
     await this.prisma.withTenant(tenantId, async (tx) => {
-      const lead = await tx.lead.findFirst({ where: { id: leadId, tenantId } });
+      const ajustes = await this.ajustes.ler(tx, tenantId);
+      const lead = await tx.lead.findFirst({
+        where: { id: leadId, tenantId, ...carteiraDe(ator, ajustes.vendedorVeTodosOsLeads) },
+      });
       if (!lead) throw new NotFoundException('Lead não encontrado');
       await tx.lead.delete({ where: { id: leadId } });
     });
     return { deleted: true };
   }
 
-  /** Atribui lead a um vendedor */
-  async assign(tenantId: string, leadId: string, salesPersonId: string | null): Promise<unknown> {
+  /**
+   * Atribui lead a um vendedor.
+   *
+   * Passa pela carteira: sem isso um vendedor com a carteira ligada não
+   * enxergaria o lead do colega na tela, mas conseguiria puxá-lo para si com
+   * uma chamada direta à rota.
+   */
+  async assign(
+    tenantId: string,
+    leadId: string,
+    ator: Ator,
+    salesPersonId: string | null,
+  ): Promise<unknown> {
     return this.prisma.withTenant(tenantId, async (tx) => {
-      const lead = await tx.lead.findFirst({ where: { id: leadId, tenantId } });
+      const ajustes = await this.ajustes.ler(tx, tenantId);
+      const lead = await tx.lead.findFirst({
+        where: { id: leadId, tenantId, ...carteiraDe(ator, ajustes.vendedorVeTodosOsLeads) },
+      });
       if (!lead) throw new NotFoundException('Lead não encontrado');
 
       if (salesPersonId) {
@@ -587,11 +946,18 @@ export class LeadsService {
     });
   }
 
-  /** Histórico completo de um lead (timeline) */
-  async getHistory(tenantId: string, leadId: string): Promise<unknown> {
-    const lead = await this.prisma.withTenant(tenantId, (tx) =>
-      tx.lead.findFirst({
-      where: { id: leadId, tenantId },
+  /**
+   * Histórico completo de um lead (timeline).
+   *
+   * Com a carteira ligada, o lead de outro vendedor responde **404** — e não
+   * 403: confirmar que o lead existe já entrega que o colega tem um cliente
+   * com aquele id, e o id circula por link.
+   */
+  async getHistory(tenantId: string, leadId: string, ator: Ator): Promise<unknown> {
+    const lead = await this.prisma.withTenant(tenantId, async (tx) => {
+      const ajustes = await this.ajustes.ler(tx, tenantId);
+      return tx.lead.findFirst({
+      where: { id: leadId, tenantId, ...carteiraDe(ator, ajustes.vendedorVeTodosOsLeads) },
       include: {
         vehicle: {
           select: {
@@ -612,8 +978,8 @@ export class LeadsService {
           select: { id: true, scheduledStart: true, scheduledEnd: true, status: true, type: true, notes: true },
         },
       },
-      }),
-    );
+      });
+    });
     if (!lead) throw new NotFoundException('Lead não encontrado');
     return lead;
   }
@@ -629,27 +995,37 @@ export class LeadsService {
   async addInteraction(
     tenantId: string,
     leadId: string,
-    actorUserId: string,
+    ator: Ator,
     kind: string,
     content: string | null,
   ): Promise<unknown> {
     return this.prisma.withTenant(tenantId, async (tx) => {
-      const lead = await tx.lead.findFirst({ where: { id: leadId, tenantId } });
+      const ajustes = await this.ajustes.ler(tx, tenantId);
+      const lead = await tx.lead.findFirst({
+        where: { id: leadId, tenantId, ...carteiraDe(ator, ajustes.vendedorVeTodosOsLeads) },
+        select: { id: true, firstRespondedAt: true },
+      });
       if (!lead) throw new NotFoundException('Lead não encontrado');
 
+      const agora = new Date();
       const interaction = await tx.leadInteraction.create({
         data: {
-          leadId, tenantId, actorUserId, kind, content,
+          leadId, tenantId, actorUserId: ator.id, kind, content,
         },
       });
 
-      // Atualiza lastActivityAt
+      // É aqui que o prazo para de correr: a primeira interação de **saída**
+      // do vendedor. Nota interna não conta — escrever sobre o cliente não é
+      // falar com ele, e contá-la mediria quem digita mais. A regra vive no
+      // shared (`INTERACOES_DE_PRIMEIRA_RESPOSTA`) porque a tela também a usa.
+      const respondeu = await this.sla.registrarPrimeiraResposta(tx, lead, kind, agora);
+
       await tx.lead.update({
         where: { id: leadId },
-        data: { lastActivityAt: new Date() },
+        data: { lastActivityAt: agora },
       });
 
-      return interaction;
+      return { ...interaction, primeiraResposta: respondeu };
     });
   }
 
@@ -736,21 +1112,33 @@ export class LeadsService {
     return updated;
   }
 
-  /** Exporta leads como CSV */
-  async exportCsv(tenantId: string, opts: { status?: string; from?: string; to?: string }): Promise<string> {
-    const where = {
-      tenantId,
-      ...(opts.status ? { status: opts.status as never } : {}),
-      ...(opts.from || opts.to ? {
-        createdAt: {
-          ...(opts.from ? { gte: new Date(opts.from) } : {}),
-          ...(opts.to   ? { lte: new Date(opts.to)   } : {}),
-        },
-      } : {}),
-    };
+  /**
+   * Exporta leads como CSV.
+   *
+   * Passa pelo **mesmo** `whereDaLista` da tela: um CSV que traz o que a lista
+   * esconde não é um detalhe de relatório, é a carteira sendo contornada por
+   * um botão.
+   */
+  async exportCsv(
+    escopo: Escopo,
+    ator: Ator,
+    opts: ExportLeadsInput,
+  ): Promise<string> {
+    if (ehGlobal(escopo)) {
+      throw new ForbiddenException('Selecione uma concessionária para exportar os leads.');
+    }
+    const tenantId = escopo.tenantId;
 
-    const leads = await this.prisma.withTenant(tenantId, (tx) =>
-      tx.lead.findMany({
+    const leads = await this.prisma.withTenant(tenantId, async (tx) => {
+      const ajustes = await this.ajustes.ler(tx, tenantId);
+      const where = this.whereDaLista(escopo, ator, ajustes, {
+        status: opts.status,
+        responsavel: opts.responsavel,
+        criadoDe: opts.from ? new Date(opts.from) : undefined,
+        criadoAte: opts.to ? new Date(opts.to) : undefined,
+      });
+
+      return tx.lead.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: {
@@ -759,10 +1147,14 @@ export class LeadsService {
         assignee:  { select: { fullName: true } },
       },
       take: 5000,
-      }),
-    );
+      });
+    });
 
-    const header = ['ID', 'Nome', 'E-mail', 'Telefone', 'Veículo', 'Preço', 'Fonte', 'Status', 'Vendedor', 'Mensagem', 'Criado em'];
+    const header = [
+      'ID', 'Nome', 'E-mail', 'Telefone', 'Veículo', 'Preço', 'Fonte', 'Status',
+      'Vendedor', 'Motivo da perda', 'Prazo de 1º contato', 'Respondido em',
+      'Mensagem', 'Criado em',
+    ];
     const rows = leads.map((l) => [
       l.id,
       l.contactName ?? l.customer?.fullName ?? '',
@@ -773,6 +1165,11 @@ export class LeadsService {
       l.source,
       l.status,
       l.assignee?.fullName ?? '',
+      l.status === 'lost'
+        ? `${rotuloDoMotivo(l.lostReasonCode)}${l.lostReason ? ` — ${l.lostReason}` : ''}`
+        : '',
+      l.firstResponseDueAt?.toISOString() ?? '',
+      l.firstRespondedAt?.toISOString() ?? '',
       (l.message ?? '').replace(/[\r\n,]/g, ' '),
       l.createdAt.toISOString(),
     ]);

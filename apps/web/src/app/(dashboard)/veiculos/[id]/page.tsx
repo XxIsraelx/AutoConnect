@@ -7,9 +7,11 @@ import {
   ChevronLeft, Trash2, X, Star, Loader2,
   ImagePlus, TrendingDown, TrendingUp, History,
 } from 'lucide-react';
+import type { ListingStatusValue } from '@autoconnect/shared';
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
+import { EtiquetaDoAnuncio, BotaoDePublicacao } from '@/components/EstadoDoAnuncio';
 import CustoDoVeiculo from './CustoDoVeiculo';
 import ConsultaVeicular from './ConsultaVeicular';
 import NegocioDoVeiculo from './NegocioDoVeiculo';
@@ -40,6 +42,7 @@ interface VehicleDetail {
   transmission: string | null;
   condition: string;
   status: string;
+  listingStatus: ListingStatusValue;
   /// A API devolve o registro inteiro; a interface é que não os declarava.
   /// A consulta veicular precisa de um dos dois.
   licensePlate: string | null;
@@ -74,7 +77,18 @@ async function uploadToCloudinary(file: File): Promise<string> {
 
 /* ── ImageManager ────────────────────────────────────────── */
 
-function ImageManager({ vehicleId }: { vehicleId: string }) {
+/**
+ * `onTotal` existe porque o botão "Publicar" mora fora daqui e precisa saber se
+ * já há foto. Sem isso ele leria a contagem que veio no carregamento da página
+ * e continuaria dizendo "falta pelo menos uma foto" logo depois do upload.
+ */
+function ImageManager({
+  vehicleId,
+  onTotal,
+}: {
+  vehicleId: string;
+  onTotal?: (total: number) => void;
+}) {
   const token = useAuthStore(s => s.token);
 
   const [images, setImages]     = useState<VehicleImage[]>([]);
@@ -103,6 +117,12 @@ function ImageManager({ vehicleId }: { vehicleId: string }) {
   }, [vehicleId, token]);
 
   useEffect(() => { carregar(); }, [carregar]);
+
+  // Um efeito só, sobre o estado final: avisar dentro de cada handler daria
+  // uma contagem por caminho, e o de upload roda em laço.
+  useEffect(() => {
+    if (!loading && !erroCarga) onTotal?.(images.length);
+  }, [images.length, loading, erroCarga, onTotal]);
 
   async function handleFiles(files: FileList | File[]) {
     if (!token) return;
@@ -386,6 +406,8 @@ export default function EditVehiclePage() {
   const token = useAuthStore((s) => s.token);
 
   const [vehicle, setVehicle] = useState<VehicleDetail | null>(null);
+  // Contagem viva das fotos, alimentada pelo ImageManager.
+  const [totalDeFotos, setTotalDeFotos] = useState(0);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(false);
@@ -518,13 +540,44 @@ export default function EditVehiclePage() {
         </button>
       </div>
 
-      <h1 className="text-2xl font-bold mb-6">
-        {vehicle.brand.name} {vehicle.model.name}
-      </h1>
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">
+            {vehicle.brand.name} {vehicle.model.name}
+          </h1>
+          <div className="flex items-center gap-2 mt-2">
+            <EtiquetaDoAnuncio listingStatus={vehicle.listingStatus} />
+            <span className="text-xs text-slate-500">
+              {vehicle.listingStatus === 'published'
+                ? 'Aparece no catálogo público e na busca.'
+                : 'Fora do catálogo público — só a loja vê.'}
+            </span>
+          </div>
+        </div>
+
+        {/* A conferência usa o que está SALVO, não o formulário: publicar lê o
+            banco. Se o lojista acabou de digitar a cor, salvar vem primeiro. */}
+        <BotaoDePublicacao
+          token={token}
+          veiculo={{
+            id: vehicle.id,
+            status: vehicle.status,
+            listingStatus: vehicle.listingStatus,
+            price: vehicle.price,
+            color: vehicle.color,
+            fuel: vehicle.fuel,
+            transmission: vehicle.transmission,
+            totalDeFotos,
+          }}
+          onMudou={(listingStatus) =>
+            setVehicle((v) => (v ? { ...v, listingStatus } : v))
+          }
+        />
+      </div>
 
       {/* ── FOTOS ──────────────────────────────────────── */}
       <div className="mb-6">
-        <ImageManager vehicleId={params.id} />
+        <ImageManager vehicleId={params.id} onTotal={setTotalDeFotos} />
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">

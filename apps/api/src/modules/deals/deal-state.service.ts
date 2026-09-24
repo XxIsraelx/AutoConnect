@@ -21,6 +21,13 @@ export class DealStateService {
     destino: DealStatusValue,
     atorId: string,
     motivo?: string,
+    /**
+     * Motivo estruturado do cancelamento ou distrato, da lista fechada do
+     * shared. O Zod da rota já o exige em `canceled` e `rescinded`; aqui ele é
+     * gravado. Sem ele o funil de valor não conseguia dizer **por que** o
+     * dinheiro não entrou — só que não entrou.
+     */
+    motivoCodigo?: string,
   ): Promise<Deal> {
     const origem = negocio.status as DealStatusValue;
 
@@ -67,6 +74,7 @@ export class DealStateService {
     if (destino === 'canceled' || destino === 'rescinded') {
       dados.canceledAt = agora;
       dados.cancelReason = motivo ?? null;
+      dados.cancelReasonCode = motivoCodigo ?? null;
 
       // O carro volta ao estoque. Sem isto ele fica preso a um negócio morto —
       // e como o índice único parcial libera o veículo, a loja conseguiria

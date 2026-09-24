@@ -332,7 +332,7 @@ describe('Assinatura externa (e2e)', () => {
       const c = await emitir(dealId);
       await enviar(c.id);
 
-      const res = await post(`/deals/${dealId}/transition`, comoVendedor, { to: 'canceled', reason: 'cliente desistiu' });
+      const res = await post(`/deals/${dealId}/transition`, comoVendedor, { to: 'canceled', cancelReasonCode: 'desistencia_do_cliente', reason: 'cliente desistiu' });
       expect(res.status).toBe(201);
 
       expect((await solicitacaoDe(c.id)).status).toBe('canceled');

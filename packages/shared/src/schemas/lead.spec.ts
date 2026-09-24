@@ -62,9 +62,18 @@ describe('createLeadSchema', () => {
 
 describe('updateLeadStatusSchema', () => {
   it('aceita as transições que a tela oferece', () => {
-    for (const status of ['new', 'contacted', 'qualified', 'negotiating', 'won', 'lost', 'archived']) {
+    // `lost` ficou de fora: passou a exigir motivo, e a regra inteira está em
+    // `domain/motivo-perda.spec.ts`.
+    for (const status of ['new', 'contacted', 'qualified', 'negotiating', 'won', 'archived']) {
       expect(updateLeadStatusSchema.safeParse({ status }).success).toBe(true);
     }
+  });
+
+  it('perder exige motivo — é a única fonte que diz por que a loja não vende', () => {
+    expect(updateLeadStatusSchema.safeParse({ status: 'lost' }).success).toBe(false);
+    expect(
+      updateLeadStatusSchema.safeParse({ status: 'lost', lostReasonCode: 'preco' }).success,
+    ).toBe(true);
   });
 
   it('recusa status inventado', () => {

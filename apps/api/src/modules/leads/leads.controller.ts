@@ -5,18 +5,26 @@ import {
 import { Request, Response } from 'express';
 import { LeadsService } from './leads.service';
 import {
+  assignLeadSchema,
   createLeadSchema,
-  updateLeadStatusSchema,
-  leadPublicoSchema,
+  exportLeadsSchema,
   leadManualSchema,
+  leadPublicoSchema,
+  listLeadsSchema,
+  slaStatsSchema,
+  updateLeadStatusSchema,
   createLeadInteractionSchema,
 } from '@autoconnect/shared';
 import { escopoDa } from '../../common/escopo';
 import { Public } from '../../common/decorators/public.decorator';
+import type { Ator } from './carteira';
 
 interface AuthRequest {
   user: { id: string; role: string; tenantId: string | null };
 }
+
+/** Quem está pedindo — o que a carteira do vendedor consulta. */
+const atorDa = (req: AuthRequest): Ator => ({ id: req.user.id, role: req.user.role });
 
 @Controller('leads')
 export class LeadsController {
@@ -70,36 +78,43 @@ export class LeadsController {
     @Body() body: unknown,
   ): Promise<unknown> {
     const parsed = leadManualSchema.parse(body);
-    return this.leads.criarManual(escopoDa(req.user), req.user.id, parsed);
+    return this.leads.criarManual(escopoDa(req.user), atorDa(req), parsed);
   }
 
   /**
    * GET /leads
    * Somente dealer/admin — lista leads da própria concessionária.
+   *
+   * A query passa por Zod: `page` e `perPage` vinham de `parseInt` solto, e
+   * `perPage=100000` era uma varredura da tabela inteira a um clique.
    */
   @Get()
   findAll(
     @Req() req: AuthRequest,
-    @Query('status')    status?: string,
-    @Query('vehicleId') vehicleId?: string,
-    @Query('page')      page?: string,
-    @Query('perPage')   perPage?: string,
+    @Query() query: Record<string, string>,
   ): Promise<unknown> {
-    return this.leads.findAll(escopoDa(req.user), {
-      status,
-      vehicleId,
-      page:    page    ? parseInt(page, 10)    : undefined,
-      perPage: perPage ? parseInt(perPage, 10) : undefined,
-    });
+    return this.leads.findAll(escopoDa(req.user), atorDa(req), listLeadsSchema.parse(query));
   }
 
   /**
    * GET /leads/stats
-   * Contagem por status para o dashboard.
+   * Contagem por status e por motivo de perda, para o painel.
    */
   @Get('stats')
   getStats(@Req() req: AuthRequest): Promise<unknown> {
-    return this.leads.getStats(escopoDa(req.user));
+    return this.leads.getStats(escopoDa(req.user), atorDa(req));
+  }
+
+  /**
+   * GET /leads/sla-stats?days=30
+   * Prazo de primeiro contato por vendedor — o que o relatório consome.
+   */
+  @Get('sla-stats')
+  slaStats(
+    @Req() req: AuthRequest,
+    @Query() query: Record<string, string>,
+  ): Promise<unknown> {
+    return this.leads.slaStats(escopoDa(req.user), slaStatsSchema.parse(query));
   }
 
   /**
@@ -113,7 +128,7 @@ export class LeadsController {
     @Body() body: unknown,
   ): Promise<unknown> {
     const parsed = updateLeadStatusSchema.parse(body);
-    return this.leads.updateStatus(req.user.tenantId!, id, parsed);
+    return this.leads.updateStatus(req.user.tenantId!, id, atorDa(req), parsed);
   }
 
   /**
@@ -125,7 +140,7 @@ export class LeadsController {
     @Req() req: AuthRequest,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<{ deleted: boolean }> {
-    return this.leads.remove(req.user.tenantId!, id);
+    return this.leads.remove(req.user.tenantId!, id, atorDa(req));
   }
 
   /** GET /leads/:id/history — timeline completa */
@@ -134,7 +149,7 @@ export class LeadsController {
     @Req() req: AuthRequest,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<unknown> {
-    return this.leads.getHistory(req.user.tenantId!, id);
+    return this.leads.getHistory(req.user.tenantId!, id, atorDa(req));
   }
 
   /** PATCH /leads/:id/assign — atribui vendedor */
@@ -142,9 +157,12 @@ export class LeadsController {
   assign(
     @Req() req: AuthRequest,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { salesPersonId: string | null },
+    @Body() body: unknown,
   ): Promise<unknown> {
-    return this.leads.assign(req.user.tenantId!, id, body.salesPersonId ?? null);
+    // O corpo era só anotado: `salesPersonId` chegava como qualquer coisa e ia
+    // direto para o `where` da busca do vendedor.
+    const { salesPersonId } = assignLeadSchema.parse(body);
+    return this.leads.assign(req.user.tenantId!, id, atorDa(req), salesPersonId);
   }
 
   /**
@@ -163,7 +181,7 @@ export class LeadsController {
   ): Promise<unknown> {
     const parsed = createLeadInteractionSchema.parse(body);
     return this.leads.addInteraction(
-      req.user.tenantId!, id, req.user.id, parsed.kind, parsed.content ?? null,
+      req.user.tenantId!, id, atorDa(req), parsed.kind, parsed.content ?? null,
     );
   }
 
@@ -186,11 +204,11 @@ export class LeadsController {
   async exportCsv(
     @Req() req: AuthRequest,
     @Res() res: Response,
-    @Query('status') status?: string,
-    @Query('from')   from?: string,
-    @Query('to')     to?: string,
+    @Query() query: Record<string, string>,
   ) {
-    const csv = await this.leads.exportCsv(req.user.tenantId!, { status, from, to });
+    const csv = await this.leads.exportCsv(
+      escopoDa(req.user), atorDa(req), exportLeadsSchema.parse(query),
+    );
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="leads_${Date.now()}.csv"`);
     res.send('﻿' + csv); // BOM para Excel reconhecer UTF-8

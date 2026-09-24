@@ -56,7 +56,9 @@ export class MapService {
         },
         _count: {
           select: {
-            vehicles: { where: { status: 'available' } },
+            // Contagem do pin: o que o visitante encontraria ao clicar. Com
+            // rascunho aqui, o mapa anunciaria 12 carros e a loja abriria com 3.
+            vehicles: { where: { status: 'available', listingStatus: 'published' } },
           },
         },
       },

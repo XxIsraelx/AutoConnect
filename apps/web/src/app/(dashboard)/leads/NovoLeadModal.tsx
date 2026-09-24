@@ -55,7 +55,10 @@ export default function NovoLeadModal({
   const [email, setEmail] = useState('');
   const [origem, setOrigem] = useState<(typeof LEAD_SOURCES_MANUAIS)[number]>('phone');
   const [vehicleId, setVehicleId] = useState('');
-  const [assignedTo, setAssignedTo] = useState(user?.id ?? '');
+  // Vazio = deixa o backend decidir: o vendedor fica com o próprio lead, e o
+  // gerente manda para o rodízio. Preencher com o id de quem abriu o modal
+  // faria o gerente virar responsável por todo lead que cadastrasse.
+  const [assignedTo, setAssignedTo] = useState('');
   const [mensagem, setMensagem] = useState('');
 
   const [equipe, setEquipe] = useState<Membro[]>([]);
@@ -177,7 +180,9 @@ export default function NovoLeadModal({
                 <label htmlFor="nl-vendedor" className="text-[11px] font-semibold text-slate-500 block mb-1.5">Responsável</label>
                 <select id="nl-vendedor" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}
                   className={`${campo} ${borda()}`}>
-                  <option value="">Eu mesmo</option>
+                  <option value="">
+                    {user?.role === 'salesperson' ? 'Eu mesmo' : 'Rodízio (próximo de plantão)'}
+                  </option>
                   {equipe.map((m) => <option key={m.id} value={m.id}>{m.fullName}</option>)}
                 </select>
               </div>

@@ -14,6 +14,7 @@ import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
 import { ErroAoCarregar } from '@/components/ErroAoCarregar';
 import GraficosDeVenda from './GraficosDeVenda';
+import DesempenhoVendedores from './DesempenhoVendedores';
 
 /* ── Tipos ─────────────────────────────────────────────── */
 interface ReportsData {
@@ -187,6 +188,8 @@ export default function RelatoriosPage() {
           )}
 
           <GraficosDeVenda />
+
+          <DesempenhoVendedores days={days} />
 
           {/* Leads por dia */}
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5">

@@ -86,8 +86,10 @@ export class DealsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: unknown,
   ): Promise<unknown> {
-    const { to, reason } = transitionDealSchema.parse(body);
-    return this.deals.transition(escopoDa(req.user), id, req.user.id, to, reason);
+    const { to, reason, cancelReasonCode } = transitionDealSchema.parse(body);
+    return this.deals.transition(
+      escopoDa(req.user), id, req.user.id, to, reason, cancelReasonCode,
+    );
   }
 
   @Post(':id/payments')

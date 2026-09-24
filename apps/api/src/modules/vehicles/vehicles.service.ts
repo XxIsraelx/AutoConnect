@@ -1,9 +1,15 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
 import { ehGlobal, type Escopo } from '../../common/escopo';
 import { EmailService } from '../../common/email/email.service';
 import { Prisma } from '@autoconnect/db';
+import { listarPendencias, pendenciasParaPublicar } from '@autoconnect/shared';
 import type { CreateVehicleInput, UpdateVehicleInput, VehicleQuery } from '@autoconnect/shared';
 import type { ImportRow } from './import.schema';
 
@@ -23,7 +29,10 @@ export class VehiclesService {
   ) {}
 
   async findAll(escopo: Escopo, query: VehicleQuery): Promise<unknown> {
-    const { q, brandId, modelId, minPrice, maxPrice, minYear, condition, status, page, perPage } = query;
+    const {
+      q, brandId, modelId, minPrice, maxPrice, minYear,
+      condition, status, listingStatus, page, perPage,
+    } = query;
     const skip = (page - 1) * perPage;
 
     const where = {
@@ -32,6 +41,7 @@ export class VehiclesService {
       ...(modelId && { modelId }),
       ...(condition && { condition }),
       ...(status && { status }),
+      ...(listingStatus && { listingStatus }),
       ...(minPrice !== undefined || maxPrice !== undefined
         ? { price: { ...(minPrice !== undefined ? { gte: minPrice } : {}), ...(maxPrice !== undefined ? { lte: maxPrice } : {}) } }
         : {}),
@@ -59,6 +69,9 @@ export class VehiclesService {
             brand: { select: { id: true, name: true, logoUrl: true } },
             model: { select: { id: true, name: true, category: true } },
             images: { where: { isCover: true }, take: 1, select: { url: true } },
+            // A lista mostra o que falta para publicar; sem a contagem de
+            // fotos ela teria de adivinhar a partir da capa, que é uma só.
+            _count: { select: { images: true } },
           },
         }),
         tx.vehicle.count({ where }),
@@ -254,6 +267,119 @@ export class VehiclesService {
         this.logger.warn(`Falha ao notificar alerta ${alert.id}: ${err}`);
       }
     }
+  }
+
+  /* ── Publicação do anúncio ───────────────────────────────── */
+
+  /**
+   * Põe o anúncio no ar.
+   *
+   * A conferência do mínimo acontece **aqui**, e não só na tela: a tela usa a
+   * mesma função do shared para avisar antes, mas quem decide é a API — senão
+   * bastaria um `curl` para publicar um carro sem foto.
+   *
+   * Recusa com 422 e diz o que falta. 400 seria "seu pedido está malformado",
+   * e não está: o pedido é legítimo, o cadastro é que não está pronto.
+   */
+  async publicar(tenantId: string, id: string, actorUserId?: string): Promise<unknown> {
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const veiculo = await tx.vehicle.findFirst({
+        where: { id, tenantId },
+        select: {
+          id: true, price: true, color: true, fuel: true, transmission: true,
+          status: true, listingStatus: true, publishedAt: true,
+          _count: { select: { images: true } },
+        },
+      });
+      if (!veiculo) throw new NotFoundException('Veículo não encontrado');
+
+      // Vitrine é para carro que a loja tem para vender. Vendido, reservado ou
+      // em manutenção não vai ao ar nem que tenha foto — e o catálogo público
+      // filtra por `available` de qualquer forma, então publicar aqui criaria
+      // um "publicado" que não aparece em lugar nenhum.
+      if (veiculo.status !== 'available') {
+        throw new UnprocessableEntityException(
+          'Só é possível publicar veículo com status "Disponível". ' +
+            'Ajuste o status do estoque antes de anunciar.',
+        );
+      }
+
+      const faltando = pendenciasParaPublicar({
+        price: veiculo.price,
+        totalDeFotos: veiculo._count.images,
+        color: veiculo.color,
+        fuel: veiculo.fuel,
+        transmission: veiculo.transmission,
+      });
+      if (faltando.length > 0) {
+        throw new UnprocessableEntityException(
+          `Para publicar, o anúncio precisa de ${listarPendencias(faltando)}.`,
+        );
+      }
+
+      const atualizado = await tx.vehicle.update({
+        where: { id },
+        data: {
+          listingStatus: 'published',
+          // Só na estreia. Republicar depois de despublicar não zera o giro de
+          // estoque — o carro não voltou a ser novo por ter saído do ar.
+          ...(veiculo.publishedAt ? {} : { publishedAt: new Date() }),
+        },
+        include: {
+          brand: { select: { id: true, name: true } },
+          model: { select: { id: true, name: true } },
+        },
+      });
+
+      await tx.vehicleHistory.create({
+        data: {
+          vehicleId: id,
+          tenantId,
+          eventType: 'listing_published',
+          actorUserId: actorUserId ?? null,
+          payload: { de: veiculo.listingStatus, para: 'published' },
+        },
+      });
+
+      return atualizado;
+    });
+  }
+
+  /**
+   * Tira o anúncio do ar sem mexer no estoque.
+   *
+   * O carro continua na lista da loja, contando dias parados e carregando
+   * custo e margem — despublicar é decisão de vitrine, não de inventário.
+   */
+  async despublicar(tenantId: string, id: string, actorUserId?: string): Promise<unknown> {
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const veiculo = await tx.vehicle.findFirst({
+        where: { id, tenantId },
+        select: { id: true, listingStatus: true },
+      });
+      if (!veiculo) throw new NotFoundException('Veículo não encontrado');
+
+      const atualizado = await tx.vehicle.update({
+        where: { id },
+        data: { listingStatus: 'unpublished' },
+        include: {
+          brand: { select: { id: true, name: true } },
+          model: { select: { id: true, name: true } },
+        },
+      });
+
+      await tx.vehicleHistory.create({
+        data: {
+          vehicleId: id,
+          tenantId,
+          eventType: 'listing_unpublished',
+          actorUserId: actorUserId ?? null,
+          payload: { de: veiculo.listingStatus, para: 'unpublished' },
+        },
+      });
+
+      return atualizado;
+    });
   }
 
   /** Linha do tempo de eventos do veículo (ex: mudanças de preço) */

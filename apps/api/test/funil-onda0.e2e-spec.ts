@@ -235,8 +235,12 @@ describe('Onda 0 — captura de lead e agendamento (e2e)', () => {
         where: { leadId: leads[0].id },
         orderBy: { occurredAt: 'asc' },
       });
-      expect(interacoes.map((i) => i.kind)).toEqual(['created', 'duplicate', 'duplicate']);
-      expect(interacoes[2].content).toContain('tentativa 3');
+      // `rotation` entrou com a Onda 1: o rodízio roda em toda criação e
+      // registra o resultado — aqui, "ninguém de plantão", porque a fixture não
+      // tem vendedor. O contato repetido continua sem passar pelo rodízio.
+      expect(interacoes.map((i) => i.kind))
+        .toEqual(['created', 'rotation', 'duplicate', 'duplicate']);
+      expect(interacoes[3].content).toContain('tentativa 3');
     });
 
     it('casa grafias diferentes do mesmo número, com e sem DDI e nono dígito', async () => {
@@ -307,7 +311,7 @@ describe('Onda 0 — captura de lead e agendamento (e2e)', () => {
   /* ── 4. Lead manual ──────────────────────────────────── */
 
   describe('lead manual', () => {
-    it('o vendedor cadastra quem ligou, e o lead já nasce atribuído a ele', async () => {
+    it('quem cadastra à mão sendo gerência não fica com o lead: vai para o rodízio', async () => {
       const res = await request(app.getHttpServer())
         .post(rota('/leads/manual'))
         .set('Authorization', `Bearer ${tokenDeA}`)
@@ -322,9 +326,35 @@ describe('Onda 0 — captura de lead e agendamento (e2e)', () => {
       expect(res.body).toMatchObject({
         deduplicado: false,
         source: 'walk_in',
-        assignedTo: f.a.usuarioId,
         tenantId: f.a.id,
       });
+      // `tokenDeA` é tenant_admin: pela regra do rodízio (Onda 1), gerência
+      // cadastra o que chegou por fora e não fica com o lead. Sem vendedor
+      // elegível na fixture, ele nasce sem responsável e cai na fila.
+      expect(res.body.assignedTo).toBeNull();
+    });
+
+    it('vendedor que cadastra à mão fica com o próprio lead', async () => {
+      const [{ id: vendedorId }] = await dono.$queryRaw<{ id: string }[]>`
+        INSERT INTO users (tenant_id, email, full_name, role, status, updated_at)
+        VALUES (${f.a.id}::uuid, ${`vend.${Date.now()}@teste.local`}, 'Vendedor Teste',
+                'salesperson', 'active', now())
+        RETURNING id`;
+      const tokenVendedor = app
+        .get(JwtService)
+        .sign({ sub: vendedorId, role: 'salesperson', tenantId: f.a.id });
+
+      const res = await request(app.getHttpServer())
+        .post(rota('/leads/manual'))
+        .set('Authorization', `Bearer ${tokenVendedor}`)
+        .send({
+          contactName: 'Cliente do Vendedor',
+          contactPhone: '(11) 93333-0777',
+          source: 'phone',
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.assignedTo).toBe(vendedorId);
     });
 
     it('origem que o sistema escreve sozinho (website) é recusada no cadastro manual', async () => {

@@ -398,7 +398,9 @@ async function semearOperacao(
         fuel: e.comb, transmission: e.cambio, condition: e.ano >= 2024 ? 'semi_new' : 'used',
         status: 'available', price: valor,
         licensePlate: `${String.fromCharCode(65 + rng.int(0, 25))}${String.fromCharCode(65 + rng.int(0, 25))}${String.fromCharCode(65 + rng.int(0, 25))}${rng.int(0, 9)}${String.fromCharCode(65 + rng.int(0, 9))}${rng.int(10, 99)}`,
-        publishedAt: entrada, createdAt: entrada,
+        // O estoque de demonstração nasce publicado: a loja de exemplo existe
+        // para ser navegada, e um catálogo vazio não demonstraria nada.
+        listingStatus: 'published', publishedAt: entrada, createdAt: entrada,
         metadata: { seed: 'demo' },
         images: { create: [{ tenantId, url: FOTOS[i % FOTOS.length], isCover: true, position: 0 }] },
         acquisition: {

@@ -20,7 +20,7 @@ export interface TenantFixture {
   id: string;
   slug: string;
   usuarioId: string;
-  /** status = 'available' — aparece no catálogo público */
+  /** `available` **e** `published` — é o que aparece no catálogo público */
   veiculoPublicoId: string;
   /** status = 'archived' — só a própria concessionária pode ver */
   veiculoPrivadoId: string;
@@ -67,16 +67,21 @@ async function criarTenant(
     VALUES (${tenantId}::uuid, ${`Matriz ${nome}`}, true, now())
     RETURNING id`;
 
-  const veiculo = async (status: string) => {
+  // Desde `rascunho_de_anuncio`, a vitrine exige as DUAS condições: estoque
+  // `available` e anúncio `published`. Sem o segundo, o "veículo público" da
+  // fixture nasceria em rascunho e nenhum teste de catálogo provaria nada —
+  // todos passariam por ausência de dado, não por isolamento.
+  const veiculo = async (status: string, anuncio: string) => {
     const [{ id }] = await prisma.$queryRaw<{ id: string }[]>`
-      INSERT INTO vehicles (tenant_id, brand_id, model_id, year_model, year_make, price, status, updated_at)
+      INSERT INTO vehicles (tenant_id, brand_id, model_id, year_model, year_make, price, status,
+                            listing_status, updated_at)
       VALUES (${tenantId}::uuid, ${marcaId}::uuid, ${modeloId}::uuid, 2020, 2020, 50000,
-              ${status}::"VehicleStatus", now())
+              ${status}::"VehicleStatus", ${anuncio}::"ListingStatus", now())
       RETURNING id`;
     return id;
   };
-  const veiculoPublicoId = await veiculo('available');
-  const veiculoPrivadoId = await veiculo('archived');
+  const veiculoPublicoId = await veiculo('available', 'published');
+  const veiculoPrivadoId = await veiculo('archived', 'draft');
 
   const [{ id: leadId }] = await prisma.$queryRaw<{ id: string }[]>`
     INSERT INTO leads (tenant_id, contact_name, contact_email, updated_at)

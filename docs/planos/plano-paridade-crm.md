@@ -64,19 +64,152 @@ primeira.
 
 ## Onda 1 — o que a loja compara na primeira reunião (≈ 2 semanas)
 
-6. **Distribuição de leads:** rodízio entre vendedores ativos, com plantão
-   configurável, e atribuição automática do lead que chega.
-7. **Prazo de primeiro contato (SLA):** contador no lead, alerta ao gerente e
-   devolução do lead à fila se estourar. É o motivo de compra mais citado no
-   mercado global, e só dois produtos brasileiros monitoram.
-8. **Carteira do vendedor:** ver só os próprios leads, com o gerente vendo tudo.
-   Hoje o filtro é por loja.
-9. **Motivo de perda** obrigatório ao marcar lead ou negócio como perdido, e
-   relatório por motivo. O campo `lostReason` já existe no banco, sem tela.
-10. **Relatório por vendedor:** leads atendidos, tempo médio de primeira
-    resposta, agendamentos, comparecimento, vendas, margem e comissão.
-11. **Rascunho de anúncio:** hoje todo veículo `available` já aparece no
-    catálogo público, sem etapa de publicação.
+6. ✅ **Distribuição de leads** (23/09/2026). Rodízio entre quem está de
+   plantão, aplicado nos três caminhos de criação (formulário público, cliente
+   logado e cadastro manual). Ajustes em `/configuracoes` → "Leads e
+   atendimento"; plantão por membro em `/equipe`, com "ausente até".
+
+   **A ordem é um anel** por data de entrada na equipe (`created_at`, com o id
+   desempatando), e o próximo é quem vem logo depois do último atribuído —
+   guardado em `tenant_crm_settings.rodizio_ultimo_usuario_id`. É essa
+   previsibilidade que a loja compara com o concorrente: o vendedor consegue
+   dizer se o próximo é dele. **Quando não há de onde andar no anel** (primeiro
+   lead da loja, ou o último atribuído saiu/entrou de férias), desempata o
+   **menor número de leads abertos** — escolher o primeiro da lista faria uma
+   pessoa só receber tudo enquanto o ponteiro estivesse fora do ar.
+
+   **A concorrência é resolvida no banco, não em memória.**
+   `SELECT … FOR UPDATE` na linha de `tenant_crm_settings`, dentro da **mesma
+   transação** que grava o lead: o segundo lead simultâneo fica bloqueado até o
+   primeiro confirmar, e então lê o ponteiro já atualizado. Feito em memória de
+   processo, o defeito nem aparece com uma réplica só — e apareceria no dia em
+   que a API escalasse. A linha é tabela própria justamente por isso: travar
+   `tenants` a cada lead prenderia o cadastro inteiro da loja atrás da fila.
+
+   **Sem ninguém elegível o lead fica sem responsável**, com uma interação
+   `rotation` dizendo por quê, e aparece no filtro "Sem responsável" de
+   `/leads`. Inventar um dono fora do plantão é como um lead dorme o fim de
+   semana na caixa de quem não está trabalhando.
+
+7. ✅ **Prazo de primeiro contato (SLA)** (23/09/2026). `firstResponseDueAt` é
+   calculado na criação do lead; `firstRespondedAt` é gravado na primeira
+   interação **de saída** do vendedor (`call`, `whatsapp`, `email`, `chat`).
+   Nota interna não conta, de propósito: escrever sobre o cliente não é falar
+   com ele, e contá-la mediria quem digita mais.
+
+   **O relógio só corre no expediente.** Um lead que chega às 23h de sábado não
+   pode nascer estourado às 23h15 — a loja estava fechada. O prazo começa a
+   contar na próxima abertura. O expediente vem do `businessHours` da filial do
+   lead (ou da primeira filial ativa) e o fuso de `Tenant.timezone`; loja sem
+   expediente configurado usa o padrão do shared (seg–sex 09–18, sáb 09–13), e
+   não 24h por dia — o padrão errado para menos é alarme falso, o errado para
+   mais é lead esquecido. Loja sem um único dia aberto **não gera prazo**
+   (`null`), em vez de um prazo inventado.
+
+   Etiqueta e filtro em `/leads` (no prazo, vencendo, estourado). Os dois usam
+   o mesmo `limiteDeAlertaSegundos`, que a API manda junto da lista: com cada
+   ponta calculando o seu, a etiqueta diria "no prazo" sobre um lead que o
+   filtro já traz como vencendo.
+
+   **Estouro**: cron a cada 5 minutos (`sla-primeiro-contato`, sob
+   `executarEmUmaReplica`) marca `slaBreachedAt`, escreve a interação
+   `sla_breach` e notifica **gerente e administrador** — não o vendedor, que já
+   vê a etiqueta vermelha. `slaBreachedAt` é o que torna o job idempotente: sem
+   ela o gerente receberia o mesmo alerta a cada 5 minutos, e um alarme que
+   repete é um alarme que se aprende a ignorar. **Devolução à fila é
+   configurável e nasce desligada**: tirar o lead de um vendedor é decisão de
+   gestão, não efeito colateral de um alarme.
+
+   `GET /leads/sla-stats?days=` devolve um **array** de
+   `{ userId, nome, leads, respondidos, tempoMedioSegundos, estourados }` — uma
+   linha por vendedor, mais uma com `userId: null` ("Sem responsável"), porque
+   o lead que ninguém pegou é justamente o que mais estoura. Só entram leads
+   com prazo; os anteriores à funcionalidade não são cobráveis. É o que o
+   relatório do item 10 consome.
+
+8. ✅ **Carteira do vendedor** (23/09/2026). Com `vendedorVeTodosOsLeads`
+   desligado, `salesperson` vê só os próprios leads **e os sem responsável** —
+   a fila entra de propósito, senão o lead que o rodízio não distribuiu ficaria
+   invisível para quem poderia atendê-lo. Gerente e administrador veem tudo.
+
+   O recorte é uma função só (`modules/leads/carteira.ts`) aplicada em lista,
+   contadores, CSV, detalhe, atribuição e exclusão. Montá-lo em cada método é
+   como uma superfície fica de fora — e o botão de CSV vira o caminho para
+   contornar a carteira inteira. O lead de outro vendedor responde **404, não
+   403**: confirmar que ele existe já entrega que o colega tem um cliente com
+   aquele id, e o id circula por link.
+
+   **Padrão ligado** ("vê todos"), para não mudar o que a loja já enxerga hoje.
+
+9. ✅ **Motivo de perda** (23/09/2026). Lista fechada no shared
+   (`domain/motivo-perda.ts`), com listas separadas para lead e para negócio —
+   o negócio morre por razões que o lead não tem (crédito já pedido e
+   reprovado, troca recusada na vistoria). `PATCH /leads/:id` exige
+   `lostReasonCode` ao ir para `lost`, e `POST /deals/:id/transition` exige
+   `cancelReasonCode` em `canceled` e `rescinded`; "outro" sem texto livre é
+   recusado, senão "outro" vira o depósito de tudo. Sair de "perdido" **limpa**
+   o motivo — senão o relatório contaria como perda por preço um lead que está
+   em negociação. Contagem em `GET /leads/stats` (`porMotivoDePerda`), com as
+   perdas anteriores agrupadas em `sem_motivo`, que é honesto.
+
+   **Código em texto, não enum do banco:** motivo de perda é o campo que a loja
+   quer ajustar depois da primeira semana de uso, e cada ajuste custaria uma
+   migration. Quem recusa valor fora da lista é o Zod da rota; o `CHECK` da
+   migration só impede string vazia, e o relatório trata código desconhecido
+   como "outro".
+
+   > O formato de `GET /leads/stats` mudou de `{ new: 3, lost: 1 }` para
+   > `{ porStatus, porMotivoDePerda }`: a forma antiga era um mapa aberto e a
+   > tela somava `Object.values(...)` para o total.
+10. ✅ **Relatório por vendedor** (23/09/2026). Seção em `/relatorios`, servida
+    por `GET /tenant/reports/salespeople?days=`: leads recebidos e atendidos,
+    agendamentos, comparecimento, negócios ganhos, faturamento, margem e
+    comissão estimada. São **cinco consultas** no total — a equipe mais quatro
+    `groupBy` —, e não uma por vendedor: a API roda numa região diferente do
+    banco, e um laço por pessoa transformaria o relatório em meio minuto de
+    espera.
+
+    O **tempo médio de primeira resposta** não é calculado aqui: vem de
+    `GET /leads/sla-stats` (item 7) e a tela junta os dois. Duas definições do
+    mesmo número é como dois relatórios da mesma loja passam a discordar.
+    Enquanto a rota do SLA não responde, as duas colunas do prazo mostram "—" e
+    o resto da seção continua inteiro.
+
+    **Dinheiro é de gerente para cima** (`manager`, `tenant_admin`,
+    `super_admin`, a mesma lista da aba de custo). O vendedor vê a própria
+    linha, e o filtro entra na **consulta**: o número do colega não chega a sair
+    do banco. Exportação em CSV do desempenho, dos negócios e do estoque, com
+    as colunas de dinheiro ausentes para quem não as vê.
+
+11. ✅ **Rascunho de anúncio** (23/09/2026). O estado do **anúncio** passou a ser
+    separado do estado do **estoque**: `VehicleStatus` responde "a loja ainda
+    tem este carro?" e o novo `ListingStatus` (`draft`, `published`,
+    `unpublished`) responde "este carro está na vitrine?". Antes, cadastrar era
+    publicar — o carro estreava sem foto e com o preço que o vendedor ainda ia
+    conferir.
+
+    Três estados, e não `published_at` nulo ou não: o nulo não distingue "nunca
+    foi ao ar" de "foi tirado do ar", e despublicar teria de apagar a data da
+    estreia, que é o que a lista de estoque usa para contar dias de giro.
+
+    **Compatibilidade:** a migration é aditiva e traz `UPDATE … SET
+    listing_status = 'published' WHERE status = 'available'` — o critério é
+    exatamente o que decidia a visibilidade antes dela. Sem esse backfill, toda
+    loja em uso perderia o catálogo inteiro no deploy.
+
+    **Publicar exige o mínimo** — ao menos uma foto, preço maior que zero, cor,
+    combustível e câmbio — e o veículo tem que estar `available`. A regra mora
+    no shared (`domain/anuncio.ts`), usada pela tela para avisar *antes* e pela
+    API para recusar *depois*, com 422 dizendo o que falta. Rota própria
+    (`POST /vehicles/:id/publish` e `/unpublish`), e não um campo no PATCH:
+    aceitar `listingStatus` no corpo seria um jeito de pular a conferência.
+
+    **A vitrine inteira passou a exigir `published`** — catálogo, detalhe,
+    `/buscar`, `/c/[slug]`, contagem dos pins do mapa e selo de procedência —,
+    e a policy `leitura_publica` do RLS repete a mesma dupla no banco: um
+    caminho público novo que esqueça o filtro não volta a expor rascunho.
+    Despublicar tira do catálogo sem mexer no estoque, e republicar não zera a
+    data da estreia.
 
 **Pronto quando:** dá para demonstrar o ciclo inteiro numa reunião de 20 minutos
 e responder "como o lead chega no vendedor certo?" sem constrangimento.

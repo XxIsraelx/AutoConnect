@@ -20,6 +20,45 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Baixa um arquivo da API (CSV, por ora) sem sair da página.
+ *
+ * Não dá para usar `api()`: ela termina em `res.json()`, e a resposta aqui é
+ * `text/csv`. E não dá para usar um `<a href>` simples: a rota exige o header
+ * `Authorization`, que uma navegação do navegador não carrega — o resultado
+ * seria um arquivo com "Unauthorized" dentro.
+ */
+export async function baixarArquivo(
+  path: string,
+  nomeSugerido: string,
+  token?: string,
+): Promise<void> {
+  const res = await fetch(`${API_URL}/api/v1${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    let message = `Erro ${res.status}`;
+    try {
+      const body = await res.json();
+      if (typeof body.message === 'string') message = body.message;
+    } catch {
+      // resposta não é JSON — mensagem genérica serve
+    }
+    throw new ApiError(res.status, message);
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nomeSugerido;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Sem o revoke o blob fica na memória da aba até o recarregamento.
+  URL.revokeObjectURL(url);
+}
+
 export async function api<T>(
   path: string,
   init: (Omit<RequestInit, 'body'> & { token?: string; body?: unknown }) = {},

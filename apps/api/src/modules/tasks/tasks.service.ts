@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import type { LeadInteractionKind } from '@autoconnect/shared';
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
 import { EmailService } from '../../common/email/email.service';
 import { executarEmUmaReplica } from './execucao-unica';
@@ -175,5 +176,126 @@ export class TasksService {
     }
 
     if (created > 0) this.logger.log(`Re-engajamento: ${created} alerta(s) de lead frio criados`);
+  }
+
+  /* ── Estouro do prazo de primeiro contato ─────────────────── */
+
+  /**
+   * A cada 5 minutos, porque o prazo padrão é de 15: varrer de hora em hora
+   * faria o gerente saber do estouro quando ele já tem 45 minutos, e um alerta
+   * atrasado não muda o desfecho do lead.
+   */
+  @Cron('*/5 * * * *', { name: 'sla-primeiro-contato' })
+  async alertarSlaEstourado(): Promise<boolean> {
+    return executarEmUmaReplica(this.privilegiado, 'sla-primeiro-contato', this.logger, () =>
+      this.processarEstouros(),
+    );
+  }
+
+  /**
+   * Quem passou do prazo sem primeira resposta.
+   *
+   * **Idempotente por `slaBreachedAt`**: sem essa marca o gerente receberia o
+   * mesmo alerta a cada 5 minutos, para sempre — e um alarme que repete é um
+   * alarme que se aprende a ignorar. É o mesmo desenho do `reminderSentAt` dos
+   * lembretes.
+   *
+   * Roda pela conexão privilegiada porque atravessa todas as concessionárias:
+   * não há um tenant a que se restringir, e é isso que o nome `privilegiado`
+   * torna visível na chamada.
+   */
+  private async processarEstouros(): Promise<void> {
+    const agora = new Date();
+
+    const estourados = await this.privilegiado.lead.findMany({
+      where: {
+        firstResponseDueAt: { lte: agora },
+        firstRespondedAt: null,
+        slaBreachedAt: null,
+        status: { in: ['new', 'contacted'] },
+      },
+      select: {
+        id: true, tenantId: true, assignedTo: true, contactName: true,
+        firstResponseDueAt: true,
+        assignee: { select: { fullName: true } },
+      },
+      // Teto por rodada: uma loja que acabou de ligar o prazo pode ter
+      // centenas de leads vencendo ao mesmo tempo, e travar o cron por 20
+      // minutos atrasaria a rodada seguinte. O que sobrar sai na próxima.
+      take: 200,
+    });
+
+    if (estourados.length === 0) return;
+
+    // Configuração da loja lida uma vez por loja, não por lead.
+    const lojas = [...new Set(estourados.map((l) => l.tenantId))];
+    const ajustes = new Map(
+      (
+        await this.privilegiado.tenantCrmSettings.findMany({
+          where: { tenantId: { in: lojas } },
+          select: { tenantId: true, slaDevolveParaFila: true },
+        })
+      ).map((a) => [a.tenantId, a.slaDevolveParaFila]),
+    );
+
+    const gerentes = await this.privilegiado.user.findMany({
+      where: { tenantId: { in: lojas }, status: 'active', role: { in: ['manager', 'tenant_admin'] } },
+      select: { id: true, tenantId: true },
+    });
+
+    for (const lead of estourados) {
+      try {
+        // Devolução à fila é **desligada por padrão**: tirar o lead de um
+        // vendedor é decisão de gestão, não efeito colateral de um alarme.
+        const devolve = (ajustes.get(lead.tenantId) ?? false) && lead.assignedTo != null;
+        const quem = lead.contactName ?? 'Um lead';
+
+        await this.privilegiado.lead.update({
+          where: { id: lead.id },
+          data: { slaBreachedAt: agora, ...(devolve ? { assignedTo: null } : {}) },
+        });
+
+        await this.privilegiado.leadInteraction.create({
+          data: {
+            leadId: lead.id,
+            tenantId: lead.tenantId,
+            actorUserId: null,
+            kind: 'sla_breach' satisfies LeadInteractionKind,
+            content: devolve
+              ? 'Prazo de primeiro contato estourado — lead devolvido à fila'
+              : 'Prazo de primeiro contato estourado',
+            payload: {
+              prazo: lead.firstResponseDueAt?.toISOString() ?? null,
+              devolvidoAFila: devolve,
+            },
+          },
+        });
+
+        // O alerta vai ao gerente e ao administrador — não ao vendedor: quem
+        // precisa agir sobre um prazo estourado é quem redistribui. O vendedor
+        // já vê a etiqueta vermelha na própria lista.
+        const destinatarios = gerentes.filter((g) => g.tenantId === lead.tenantId);
+        for (const gerente of destinatarios) {
+          await this.privilegiado.notification.create({
+            data: {
+              tenantId: lead.tenantId,
+              userId: gerente.id,
+              channel: 'in_app',
+              status: 'sent',
+              sentAt: agora,
+              title: 'Prazo de primeiro contato estourado ⏰',
+              body: `${quem} não recebeu contato dentro do prazo${
+                lead.assignee ? ` (responsável: ${lead.assignee.fullName})` : ' e estava na fila'
+              }.${devolve ? ' O lead voltou para a fila.' : ''}`,
+              data: { kind: 'sla_breach', leadId: lead.id },
+            },
+          });
+        }
+      } catch (err) {
+        this.logger.warn(`Falha ao processar estouro do lead ${lead.id}: ${err}`);
+      }
+    }
+
+    this.logger.log(`Prazo de primeiro contato: ${estourados.length} estouro(s) processados`);
   }
 }

@@ -36,7 +36,13 @@ export class TeamService {
       select: {
         id: true, email: true, fullName: true, role: true,
         status: true, lastLoginAt: true, avatarUrl: true, createdAt: true,
-        salespersonProfile: { select: { commissionPct: true } },
+        salespersonProfile: {
+          select: {
+            commissionPct: true,
+            isAcceptingLeads: true,
+            onDutyPausedUntil: true,
+          },
+        },
       },
           orderBy: { createdAt: 'asc' },
         }),
@@ -127,6 +133,11 @@ export class TeamService {
         valueSold: vendido.toFixed(2),
         commissionPct, commission,
         appointments: apptMap.get(mem.id) ?? 0,
+        // Plantão: quem entra no rodízio. Membro sem perfil de vendedor conta
+        // como de plantão — é o mesmo padrão que o rodízio aplica, e ver
+        // "fora do plantão" em quem o sistema vai sortear seria mentira.
+        emPlantao: mem.salespersonProfile?.isAcceptingLeads ?? true,
+        ausenteAte: mem.salespersonProfile?.onDutyPausedUntil ?? null,
       };
     });
 
@@ -159,6 +170,42 @@ export class TeamService {
       }
       return tx.salesGoal.create({
         data: { tenantId, userId: userId ?? null, period, target },
+      });
+    });
+  }
+
+  /**
+   * Liga ou desliga o plantão de um membro, e a pausa temporária.
+   *
+   * `is_accepting_leads` existia desde o início e nenhuma tela a lia ou
+   * escrevia — o rodízio é o primeiro a usá-la, e sem esta rota o interruptor
+   * seria mais um endpoint sem tela. O perfil é criado sob demanda pelo mesmo
+   * motivo da comissão: vendedor convidado não nasce com um.
+   */
+  async setPlantao(
+    tenantId: string,
+    userId: string,
+    input: { emPlantao?: boolean; ausenteAte?: string | null },
+  ): Promise<unknown> {
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const user = await tx.user.findFirst({
+        where: { id: userId, tenantId },
+        select: { id: true },
+      });
+      if (!user) throw new NotFoundException('Membro não encontrado');
+
+      const dados = {
+        ...(input.emPlantao !== undefined ? { isAcceptingLeads: input.emPlantao } : {}),
+        ...(input.ausenteAte !== undefined
+          ? { onDutyPausedUntil: input.ausenteAte ? new Date(input.ausenteAte) : null }
+          : {}),
+      };
+
+      return tx.salespersonProfile.upsert({
+        where: { userId },
+        update: dados,
+        create: { userId, tenantId, ...dados },
+        select: { userId: true, isAcceptingLeads: true, onDutyPausedUntil: true },
       });
     });
   }

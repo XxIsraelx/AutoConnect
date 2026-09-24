@@ -5,6 +5,23 @@ import { EmailService } from '../../common/email/email.service';
 import { FipeService } from '../fipe/fipe.service';
 import type { TradeInInput } from './trade-in.schema';
 
+/**
+ * O que está na vitrine pública.
+ *
+ * Duas condições, não uma: `available` é sobre o estoque ("a loja ainda tem
+ * este carro?") e `published` é sobre o anúncio ("a loja mandou pôr no ar?").
+ * Antes bastava a primeira, e por isso todo veículo cadastrado estreava sozinho
+ * — sem foto, com o preço que o vendedor ainda ia conferir.
+ *
+ * Fica numa constante para que toda consulta pública use a mesma definição: o
+ * modo como o rascunho volta a vazar é alguém escrever o filtro de novo, à mão,
+ * numa consulta nova. A policy `leitura_publica` repete a mesma dupla no banco.
+ */
+const NA_VITRINE = {
+  status: 'available',
+  listingStatus: 'published',
+} as const;
+
 @Injectable()
 export class CatalogService {
   private readonly logger = new Logger(CatalogService.name);
@@ -104,7 +121,7 @@ export class CatalogService {
   findPublicVehicle(vehicleId: string): Promise<unknown> {
     return this.prisma.withPublic((tx) =>
       tx.vehicle.findFirst({
-      where: { id: vehicleId, status: 'available' },
+      where: { id: vehicleId, ...NA_VITRINE },
       select: {
         id: true,
         versionName: true,
@@ -167,7 +184,7 @@ export class CatalogService {
     const kmFilter = maxKm !== undefined ? { mileageKm: { lte: maxKm } } : {};
 
     const where = {
-      status: 'available' as const,
+      ...NA_VITRINE,
       ...(tenantId  ? { tenantId }  : {}),
       ...(brandId   ? { brandId }   : {}),
       ...(condition ? { condition: condition as 'new' | 'used' | 'semi_new' | 'demo' } : {}),
@@ -237,7 +254,7 @@ export class CatalogService {
     const maxKm    = num(f.maxKm);
 
     return {
-      status: 'available' as const,
+      ...NA_VITRINE,
       ...(f.brandId      ? { brandId: f.brandId as string } : {}),
       ...(f.condition    ? { condition: f.condition as never } : {}),
       ...(f.fuel         ? { fuel: f.fuel as never } : {}),
@@ -396,7 +413,7 @@ export class CatalogService {
 
     const vehicles = await this.prisma.withPublic((tx) =>
       tx.vehicle.findMany({
-      where: { id: { in: ids }, status: 'available' },
+      where: { id: { in: ids }, ...NA_VITRINE },
       select: {
         id: true, versionName: true, yearModel: true, price: true, promoPrice: true,
         condition: true, mileageKm: true, tenantId: true,

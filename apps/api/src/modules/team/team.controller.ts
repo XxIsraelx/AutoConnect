@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { plantaoSchema } from '@autoconnect/shared';
 import { TeamService } from './team.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -36,6 +37,21 @@ export class TeamController {
       body.period || currentPeriod(),
       Number(body.target),
     );
+  }
+
+  /**
+   * PATCH /team/members/:id/plantao — liga/desliga o rodízio para o membro.
+   *
+   * Gerente também pode: remanejar plantão é rotina de gestão do dia, não
+   * mudança de contrato como a comissão.
+   */
+  @Patch('members/:id/plantao')
+  setPlantao(
+    @Req() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ) {
+    return this.svc.setPlantao(req.user.tenantId!, id, plantaoSchema.parse(body));
   }
 
   /** PATCH /team/members/:id/commission — define % de comissão (só admin) */
