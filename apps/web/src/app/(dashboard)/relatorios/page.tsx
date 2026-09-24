@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { ErroAoCarregar } from '@/components/ErroAoCarregar';
 import GraficosDeVenda from './GraficosDeVenda';
 import DesempenhoVendedores from './DesempenhoVendedores';
+import { ROTULO_DA_ORIGEM_DE_LEAD } from '@autoconnect/shared';
 
 /* ── Tipos ─────────────────────────────────────────────── */
 interface ReportsData {
@@ -43,10 +44,7 @@ const STATUS_COLORS: Record<string, string> = {
   new: '#3b82f6', contacted: '#8b5cf6', qualified: '#f59e0b',
   negotiating: '#06b6d4', won: '#22c55e', lost: '#ef4444', archived: '#94a3b8',
 };
-const SOURCE_LABELS: Record<string, string> = {
-  website: 'Site', whatsapp: 'WhatsApp', phone: 'Telefone',
-  email: 'E-mail', in_person: 'Presencial', referral: 'Indicação', other: 'Outro',
-};
+
 const PIE_COLORS = ['#3b82f6','#8b5cf6','#f59e0b','#06b6d4','#22c55e','#ef4444','#f97316'];
 
 function KpiCard({ label, value, sub, trend }: { label: string; value: string | number; sub?: string; trend?: number }) {
@@ -252,7 +250,7 @@ export default function RelatoriosPage() {
                 <div className="w-full sm:w-1/2 shrink-0">
                 <ResponsiveContainer width="100%" height={180}>
                   <PieChart>
-                    <Pie data={data.bySource.map((s) => ({ ...s, name: SOURCE_LABELS[s.source] ?? s.source }))}
+                    <Pie data={data.bySource.map((s) => ({ ...s, name: ROTULO_DA_ORIGEM_DE_LEAD[s.source as keyof typeof ROTULO_DA_ORIGEM_DE_LEAD] ?? s.source }))}
                       dataKey="count" cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3}>
                       {data.bySource.map((_, i) => (
                         <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
@@ -267,7 +265,7 @@ export default function RelatoriosPage() {
                     <div key={s.source} className="flex items-center justify-between text-xs">
                       <div className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                        <span className="text-slate-600 dark:text-slate-400">{SOURCE_LABELS[s.source] ?? s.source}</span>
+                        <span className="text-slate-600 dark:text-slate-400">{ROTULO_DA_ORIGEM_DE_LEAD[s.source as keyof typeof ROTULO_DA_ORIGEM_DE_LEAD] ?? s.source}</span>
                       </div>
                       <span className="font-medium">{s.count}</span>
                     </div>

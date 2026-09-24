@@ -19,17 +19,9 @@ import { AlertCircle, Loader2, UserPlus, X } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { textoDoErro } from '@/components/ErroAoCarregar';
-import { LEAD_SOURCES_MANUAIS } from '@autoconnect/shared';
+import { LEAD_SOURCES_MANUAIS, ROTULO_DA_ORIGEM_DE_LEAD } from '@autoconnect/shared';
 
-const ROTULO_DA_ORIGEM: Record<(typeof LEAD_SOURCES_MANUAIS)[number], string> = {
-  phone: 'Telefone',
-  whatsapp: 'WhatsApp',
-  walk_in: 'Balcão',
-  referral: 'Indicação',
-  social: 'Rede social',
-  ad: 'Anúncio',
-  other: 'Outro',
-};
+
 
 interface Membro { id: string; fullName: string; role: string }
 interface VeiculoDaLoja {
@@ -172,7 +164,7 @@ export default function NovoLeadModal({
                   onChange={(e) => setOrigem(e.target.value as typeof origem)}
                   className={`${campo} ${borda()}`}>
                   {LEAD_SOURCES_MANUAIS.map((s) => (
-                    <option key={s} value={s}>{ROTULO_DA_ORIGEM[s]}</option>
+                    <option key={s} value={s}>{ROTULO_DA_ORIGEM_DE_LEAD[s]}</option>
                   ))}
                 </select>
               </div>

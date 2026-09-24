@@ -233,7 +233,7 @@ export default function VehiclesPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
-                        {v.yearModel}/{v.yearMake}
+                        {v.yearMake}/{v.yearModel}
                       </td>
                       <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
                         {v.mileageKm.toLocaleString('pt-BR')} km

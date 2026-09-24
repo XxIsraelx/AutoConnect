@@ -27,6 +27,26 @@ export const LEAD_SOURCES = [
   'trade_in',
 ] as const;
 
+/**
+ * Rótulo de cada origem, em um lugar só.
+ *
+ * Cada tela mantinha o seu mapa, e o de `/relatorios` não cobria `app`,
+ * `walk_in`, `social`, `ad` nem `trade_in` — o gráfico de origem mostrava o
+ * nome cru do enum para justamente as origens que a Onda 0 passou a gravar.
+ */
+export const ROTULO_DA_ORIGEM_DE_LEAD: Record<(typeof LEAD_SOURCES)[number], string> = {
+  website: 'Site',
+  app: 'Aplicativo',
+  whatsapp: 'WhatsApp',
+  phone: 'Telefone',
+  walk_in: 'Balcão',
+  referral: 'Indicação',
+  social: 'Rede social',
+  ad: 'Anúncio',
+  other: 'Outro',
+  trade_in: 'Troca',
+};
+
 export const LEAD_STATUSES = [
   'new',
   'contacted',

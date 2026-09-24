@@ -72,7 +72,7 @@ export default function NegociosPage() {
               <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-blue-50 dark:bg-blue-950/30 p-3">
                 <p className="text-xs text-slate-500">Em aberto</p>
                 <p className="text-lg font-bold mt-0.5">{formatarBRL(totalDe(emAberto))}</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">{emAberto.length} negócios</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">{emAberto.length} {emAberto.length === 1 ? 'negócio' : 'negócios'}</p>
               </div>
               {funil.map(({ etapa, quantidade, valor }) => (
                 <button
