@@ -19,6 +19,7 @@ import {
   EmailVerificadoGuard,
   ExigeEmailVerificado,
 } from '../../common/guards/email-verificado.guard';
+import { LiberadoNoBloqueio } from '../../common/guards/somente-leitura.guard';
 
 interface AuthRequest {
   user: { id: string; role: string; tenantId: string | null };
@@ -76,8 +77,15 @@ export class VehiclesController {
     return this.vehicles.publicar(req.user.tenantId!, id, req.user.id);
   }
 
-  /** POST /vehicles/:id/unpublish — tira da vitrine, mantém no estoque. */
+  /**
+   * POST /vehicles/:id/unpublish — tira da vitrine, mantém no estoque.
+   *
+   * `@LiberadoNoBloqueio()` pela mesma razão de não exigir e-mail confirmado:
+   * tirar do ar nunca pode ficar travado. Uma loja que fechou as portas
+   * precisa conseguir sumir da vitrine mesmo devendo a assinatura.
+   */
   @Post(':id/unpublish')
+  @LiberadoNoBloqueio()
   unpublish(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string): Promise<unknown> {
     return this.vehicles.despublicar(req.user.tenantId!, id, req.user.id);
   }

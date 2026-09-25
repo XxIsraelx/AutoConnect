@@ -8,7 +8,9 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { randomBytes } from 'crypto';
+import { Prisma } from '@autoconnect/db';
 import {
+  avaliarCobranca,
   DEAL_FATURADO_STATUSES,
   DEAL_TERMINAL_STATUSES,
   type FornecedorDeConsulta,
@@ -20,6 +22,7 @@ import { EmailService } from '../../common/email/email.service';
 import { DocumentosStorage } from '../../common/armazenamento/documentos.storage';
 import { PROVEDOR_DE_ASSINATURA } from '../contracts/assinatura/provedor';
 import { FORNECEDOR_DE_CONSULTA } from '../consultas/fornecedor';
+import { EstadoDaLojaService } from '../cobranca/estado-da-loja.service';
 
 const DIA_MS = 86_400_000;
 
@@ -83,6 +86,7 @@ export class AdminService {
    */
   constructor(
     private readonly privilegiado: PrivilegedPrismaService,
+    private readonly estadoDaLoja: EstadoDaLojaService,
     private readonly jwt:    JwtService,
     private readonly email:  EmailService,
     private readonly config: ConfigService,
@@ -353,6 +357,43 @@ export class AdminService {
     return { configured: !!t.legalRepName, hasEmail: !!t.legalRepEmail };
   }
 
+  /**
+   * O que o painel precisa saber sobre o dinheiro de cada loja, num objeto só.
+   *
+   * O veredito sai de `avaliarCobranca`, a **mesma** função que o guard usa
+   * para bloquear e que a tela da loja usa para desenhar a faixa de aviso. Se
+   * o painel tivesse a própria regra, ele acabaria dizendo "em dia" para uma
+   * loja que a API está recusando — e é justamente aqui que se olha quando
+   * alguém liga reclamando.
+   */
+  private cobrancaDaLoja(
+    assinatura: {
+      plan: string; status: string; trialEndsAt: Date | null;
+      currentPeriodEnd?: Date | null; graceUntil?: Date | null;
+    } | null,
+    ultimaFatura?: { status: string; amount: Prisma.Decimal; dueDate: Date; paidAt: Date | null } | null,
+  ) {
+    const veredito = avaliarCobranca(assinatura);
+    return {
+      plan: assinatura?.plan ?? null,
+      status: assinatura?.status ?? null,
+      trialEndsAt: assinatura?.trialEndsAt ?? null,
+      situacao: veredito.situacao,
+      somenteLeitura: veredito.somenteLeitura,
+      diasRestantes: veredito.diasRestantes,
+      prazoAte: veredito.prazoAte,
+      inadimplente: assinatura?.status === 'past_due' || veredito.somenteLeitura,
+      ultimaFatura: ultimaFatura
+        ? {
+            status: ultimaFatura.status,
+            valor: ultimaFatura.amount.toFixed(2),
+            vencimento: ultimaFatura.dueDate,
+            pagoEm: ultimaFatura.paidAt,
+          }
+        : null,
+    };
+  }
+
   async listTenants(): Promise<unknown[]> {
     const [tenants, metricas] = await Promise.all([
       this.privilegiado.tenant.findMany({
@@ -360,7 +401,19 @@ export class AdminService {
           id: true, slug: true, tradeName: true, legalName: true, taxId: true,
           primaryEmail: true, isActive: true, createdAt: true,
           legalRepName: true, legalRepEmail: true,
-          subscription: { select: { plan: true, status: true, trialEndsAt: true } },
+          subscription: {
+            select: {
+              plan: true, status: true, trialEndsAt: true,
+              currentPeriodEnd: true, graceUntil: true,
+              // Só a última: o painel mostra "a fatura mais recente", e trazer
+              // o histórico inteiro de cada loja para uma lista seria pagar
+              // por um dado que ninguém lê ali.
+              invoices: {
+                orderBy: { dueDate: 'desc' }, take: 1,
+                select: { status: true, amount: true, dueDate: true, paidAt: true },
+              },
+            },
+          },
           branches: { take: 1, select: { city: true, state: true } },
         },
         orderBy: { createdAt: 'desc' },
@@ -371,12 +424,13 @@ export class AdminService {
     return tenants.map(({ legalRepName, legalRepEmail, ...t }) => ({
       ...t,
       legalRep: this.representante({ legalRepName, legalRepEmail }),
+      cobranca: this.cobrancaDaLoja(t.subscription, t.subscription?.invoices[0]),
       metrics: metricas.get(t.id) ?? METRICAS_VAZIAS,
     }));
   }
 
   async getTenantDetail(tenantId: string): Promise<unknown> {
-    const [tenant, vehicleCount, leadCount, leadNewCount, metricas] = await Promise.all([
+    const [tenant, vehicleCount, leadCount, leadNewCount, metricas, faturas] = await Promise.all([
       this.privilegiado.tenant.findUnique({
         where: { id: tenantId },
         include: {
@@ -395,6 +449,13 @@ export class AdminService {
       this.privilegiado.lead.count({ where: { tenantId } }),
       this.privilegiado.lead.count({ where: { tenantId, status: 'new' } }),
       this.metricasDasLojas(tenantId),
+      this.privilegiado.tenantInvoice.findMany({
+        where: { tenantId }, orderBy: { dueDate: 'desc' }, take: 12,
+        select: {
+          id: true, status: true, amount: true, dueDate: true,
+          paidAt: true, paymentMethod: true,
+        },
+      }),
     ]);
     if (!tenant) throw new NotFoundException('Concessionária não encontrada');
 
@@ -409,6 +470,11 @@ export class AdminService {
         role: tenant.legalRepRole,
       },
       vehicleCount, leadCount, leadNewCount,
+      cobranca: this.cobrancaDaLoja(tenant.subscription, faturas[0]),
+      faturas: faturas.map((f) => ({
+        id: f.id, status: f.status, valor: f.amount.toFixed(2),
+        vencimento: f.dueDate, pagoEm: f.paidAt, meio: f.paymentMethod,
+      })),
       metrics: metricas.get(tenantId) ?? METRICAS_VAZIAS,
     };
   }
@@ -430,6 +496,12 @@ export class AdminService {
       diff: { plan },
     });
 
+    // O veredito de cobrança está em cache por 30 s no guard. Sem isto, a loja
+    // que o super admin acabou de desbloquear continuaria recebendo 402 por
+    // meio minuto — e quem está do outro lado da linha ligou justamente por
+    // causa do bloqueio.
+    this.estadoDaLoja.invalidar(tenantId);
+
     return sub;
   }
 
@@ -447,10 +519,15 @@ export class AdminService {
       diff: { days, newTrialEndsAt: newEnd },
     });
 
-    return this.privilegiado.tenantSubscription.update({
+    const atualizada = await this.privilegiado.tenantSubscription.update({
       where: { tenantId },
-      data:  { trialEndsAt: newEnd },
+      // `graceUntil` zerado junto: estender o trial de uma loja que já venceu
+      // sem limpar a carência deixaria o veredito preso em somente leitura,
+      // e o super admin veria a data nova sem nada destravar.
+      data:  { trialEndsAt: newEnd, graceUntil: null, lastNoticeAt: null },
     });
+    this.estadoDaLoja.invalidar(tenantId);
+    return atualizada;
   }
 
   async toggleTenantActive(tenantId: string): Promise<unknown> {

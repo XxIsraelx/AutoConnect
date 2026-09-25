@@ -33,6 +33,10 @@ const MODELOS_DE_TENANT = [
   'vehicleQuery',
   // Assinatura externa: e-mail e CPF dos signatários e os webhooks crus.
   'contractSignatureRequest', 'contractSignatureEvent', 'dealBuyer',
+  // Cobrança: o que a loja paga, o histórico de faturas e os webhooks crus do
+  // gateway. Uma loja vendo a fatura da outra é preço e inadimplência de
+  // concorrente à mostra.
+  'tenantInvoice', 'billingWebhookEvent',
 ];
 
 /**
@@ -165,6 +169,14 @@ describe('isolamento por tenant — regra de arquitetura', () => {
     // O webhook de assinatura chega sem loja: acha o tenant do envelope pela
     // conexão privilegiada (só id e tenantId) e segue em withTenant.
     'modules/contracts/assinatura/assinatura-externa.service.ts',
+    // O webhook de cobrança chega sem loja: acha a assinatura pelo id do
+    // gateway (só id e tenantId) e segue em withTenant.
+    'modules/cobranca/cobranca.service.ts',
+    // O guard de somente leitura precisa do veredito ANTES de existir qualquer
+    // contexto de tenant na consulta — sempre pelo tenantId do próprio JWT.
+    'modules/cobranca/estado-da-loja.service.ts',
+    // Varredura diária: percorre todas as concessionárias, como os demais crons.
+    'modules/cobranca/vencimentos.cron.ts',
   ])('%s atravessa concessionárias pela conexão privilegiada, e isso é visível', (arquivo) => {
     const fonte = readFileSync(join(RAIZ, arquivo), 'utf8');
 

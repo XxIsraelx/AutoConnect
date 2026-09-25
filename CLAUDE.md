@@ -18,6 +18,7 @@ SaaS multi-tenant para concessionárias de veículos. Objetivo: fechar o primeir
 | Upload de imagens | **Cloudinary** (direto do navegador) |
 | Geração de PDF | **pdfmake** (JS puro, sem Chromium — ver *Contrato*) |
 | Documentos privados | **Supabase Storage**, bucket `documentos` (URL assinada) |
+| Cobrança | **Asaas** (Pix, boleto e cartão numa API só) — camada neutra, adaptador não exercitado |
 | Agendamento de jobs | `@nestjs/schedule` (cron in-process; cada execução passa por `executarEmUmaReplica`, advisory lock no Postgres) |
 | Auth | JWT (próprio) + Google OAuth |
 | Email | Resend ou Gmail SMTP (configurável por env) |
@@ -216,6 +217,23 @@ Faltando qualquer uma das três com `clicksign`, a assinatura externa fica
 desligada com erro no log — o boot não cai. O `setup-e2e.ts` força `simulado`
 e zera as `CLICKSIGN_*`: a suíte nunca fala com a Clicksign.
 
+### Cobrança da assinatura da loja
+
+```env
+COBRANCA_FORNECEDOR=""        # vazio = desligada (contratação some da tela, 503); simulado = em memória, recusado em produção; asaas
+COBRANCA_WEBHOOK_TOKEN=""     # token que o gateway devolve no cabeçalho; sem ele nenhum gateway liga
+ASAAS_API_KEY=""              # só com asaas; chave crua no cabeçalho access_token
+ASAAS_API_URL=""              # https://api-sandbox.asaas.com ou https://api.asaas.com, SEM /v3
+```
+
+Faltando qualquer uma das três com `asaas`, a cobrança fica desligada com erro
+no log — o boot não cai. O `setup-e2e.ts` força `simulado` e zera as `ASAAS_*`:
+a suíte nunca fala com a Asaas.
+
+**O bloqueio por vencimento continua valendo sem gateway.** Ele depende do trial
+e da carência, que são do banco; o que some é o caminho para pagar — quem
+desbloqueia é o super admin, à mão.
+
 ### Órfãs — presentes no `.env` mas sem nenhum código que as leia
 
 `REDIS_URL`, `SUPABASE_STORAGE_BUCKET` (aponta para `vehicle-images`; as fotos
@@ -305,7 +323,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 733 testes (516 na API, 217 no `shared`):
+são 821 testes (579 na API, 242 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -511,6 +529,40 @@ O porquê de cada regra: `docs/decisoes/vendas-e-contrato.md`.
 
 ---
 
+## Cobrança e bloqueio por vencimento
+
+O porquê de cada regra: `docs/decisoes/2026-09-25 cobranca e bloqueio por vencimento.md`.
+
+- **Cobrança por loja, faixa por volume de estoque, usuários ilimitados.**
+  Essencial (30 veículos, R$ 279), Crescimento (80, R$ 479), Pro (ilimitado,
+  R$ 799). Os valores moram **num lugar só**: `CATALOGO_DE_PLANOS` no shared.
+- **Gateway atrás de `ProvedorDeCobranca`** (`modules/cobranca/`), webhook
+  `POST /webhooks/cobranca` autenticado pelo token que a Asaas devolve em
+  `asaas-access-token` (comparação em tempo constante), corpo cru, idempotente
+  por `(provider, event_key)` e por `aplicarEventoDeCobranca`, que é pura.
+  Único lookup privilegiado: a loja da assinatura no webhook. ⚠ **O adaptador
+  da Asaas nunca falou com a Asaas** — ver "o que falta" na decisão.
+- **`avaliarCobranca` (shared) decide tudo**: o guard, a faixa no painel, a tela
+  de plano, o painel do super admin e o cron de avisos. Não duplique a regra.
+- **Trial vencido bloqueia na hora; fatura vencida tem 7 dias de carência.** O
+  teste grátis já são 14 dias; a carência é do boleto, que compensa em até 3
+  dias úteis.
+- **Modo somente leitura, nunca apagar.** `SomenteLeituraGuard` é **global**:
+  toda escrita passa por ele, e rota nova nasce bloqueada. `GET` passa sempre;
+  a exceção pede `@LiberadoNoBloqueio()` (cobrança, `/auth`, despublicar,
+  `/users/me`) e aparece no diff. Recusa é **402** com
+  `codigo: assinatura_somente_leitura`.
+- **A vitrine pública fica no ar**, e o lead de visitante continua entrando:
+  derrubá-la puniria o consumidor e mataria o inbound que pagaria a conta.
+- **O teto de estoque é conferido ao publicar, e nunca despublica** o que já
+  está no ar. Conta veículo **não arquivado**, rascunho incluído.
+- **A volta é imediata**: o webhook, a troca de plano e a extensão de trial
+  chamam `EstadoDaLojaService.invalidar()`. O cache de 30 s existe porque o
+  guard roda em toda escrita e o banco está a ~0,6 s de distância.
+- **O cron não bloqueia, ele avisa** (`vencimentos.cron.ts`, diário, sob
+  `executarEmUmaReplica`), idempotente por `lastNoticeAt` comparado ao marco da
+  situação — um e-mail por marco, não um por dia.
+
 ## Padrões do projeto
 
 ### API
@@ -552,14 +604,16 @@ O porquê de cada regra: `docs/decisoes/vendas-e-contrato.md`.
   não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
   foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
   migrations (ver *Testes e CI*).
-- Migrations atuais (15): `init`, `trade_in_and_dealer_setting`,
+- Migrations atuais (19): `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
   `add_announcements_invites_alerts_searches_goals`,
   `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`,
   `deals_vendas_e_custos`, `sales_goal_meta_em_reais`,
   `contrato_garantia_assinatura`, `consultas_veiculares`,
   `comprador_do_contrato`, `representante_legal`, `assinatura_externa`,
-  `funil_lead_anonimo`.
+  `funil_lead_anonimo`, `rascunho_de_anuncio`,
+  `rodizio_sla_carteira_motivo_perda`, `carteira_fechada_por_padrao`,
+  `cobranca_asaas`.
 
 ---
 
@@ -617,13 +671,14 @@ consulta custa ~0,6s de ida e volta. Por isso a transação do cadastro usa
 Tabela de módulos, pendências auditadas, fases do plano e próximos passos:
 `docs/planos/estado-e-pendencias.md`. Dois planos governam o trabalho:
 `docs/planos/plano-implementacao-vendas.md` (Fases 0 e 1 fechadas, Fase 2 com
-4 de 5, Fase 3 com a estrutura pronta — faltam fornecedor de consulta e
-adaptador Clicksign; faltam 4 e 5) e
-`docs/planos/plano-paridade-crm.md` (**Onda 0 fechada em 23/09/2026**; faltam
-1 a 5).
+4 de 5, Fase 3 com a estrutura pronta — falta fornecedor de consulta; faltam 4
+e 5) e `docs/planos/plano-paridade-crm.md` (**Ondas 0, 1 e 3 fechadas**;
+faltam 2, 4 e 5).
 
-**Bloqueiam uso real:** template de contrato sem revisão jurídica e ausência de
-fornecedor de consulta veicular.
+**Bloqueiam uso real:** template de contrato sem revisão jurídica, ausência de
+fornecedor de consulta veicular e **ausência de conta na Asaas** — a camada de
+cobrança está pronta e exercitada com o provedor simulado, mas o adaptador real
+nunca falou com a Asaas.
 
 **Dívidas que afetam código novo:** API e banco em regiões diferentes (~0,6s por
 consulta); nenhuma infraestrutura de feature flag; o teto por IP do formulário

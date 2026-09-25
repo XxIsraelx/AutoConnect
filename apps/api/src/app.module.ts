@@ -27,6 +27,7 @@ import { FipeModule } from './modules/fipe/fipe.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { RelatoriosModule } from './modules/relatorios/relatorios.module';
 import { CrmModule } from './modules/crm/crm.module';
+import { CobrancaModule } from './modules/cobranca/cobranca.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { CrmModule } from './modules/crm/crm.module';
     TasksModule,
     RelatoriosModule,
     CrmModule,
+    CobrancaModule,
   ],
   providers: [
     {

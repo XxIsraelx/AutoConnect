@@ -7,6 +7,13 @@ import { corpoCru } from './common/middleware/corpo-cru';
 export const ROTA_WEBHOOK_ASSINATURA = '/api/v1/webhooks/assinatura';
 
 /**
+ * Rota do webhook de cobrança. A Asaas não assina o corpo (a autenticidade é
+ * o token que ela devolve no cabeçalho), mas o cru é o que se guarda para
+ * auditoria e o que vira chave de idempotência quando o evento chega sem id.
+ */
+export const ROTA_WEBHOOK_COBRANCA = '/api/v1/webhooks/cobranca';
+
+/**
  * Configuração da aplicação — prefixo, filtros, pipes e CORS.
  *
  * Vive fora do `bootstrap()` para que os testes subam a app com exatamente a
@@ -19,6 +26,7 @@ export function configureApp(app: INestApplication): INestApplication {
   // HMAC do webhook é calculado sobre o corpo cru, e o JSON reserializado não
   // bateria. As demais rotas seguem com o parser padrão.
   app.use(ROTA_WEBHOOK_ASSINATURA, corpoCru(1024 * 1024));
+  app.use(ROTA_WEBHOOK_COBRANCA, corpoCru(1024 * 1024));
 
   // Um salto de proxy (a borda do Railway). Sem isto, `req.ip` é o IP do
   // proxy para todo mundo, e o limite por IP do formulário público — cinco

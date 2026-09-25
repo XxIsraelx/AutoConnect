@@ -304,6 +304,34 @@ export class EmailService implements OnApplicationBootstrap {
     await this.send(opts.to, subject, html, opts.link);
   }
 
+  /**
+   * Aviso de assinatura — fim de trial próximo, trial vencido, fatura vencida
+   * ou loja em somente leitura.
+   *
+   * Um e-mail só para os quatro casos, porque o que muda entre eles é a frase
+   * e não o formato — e porque quatro modelos quase iguais viram quatro
+   * lugares para o link da tela de plano ficar desatualizado.
+   */
+  async sendAvisoDeAssinatura(opts: {
+    to: string;
+    dealerName: string;
+    titulo: string;
+    corpo: string;
+    urgente: boolean;
+  }): Promise<void> {
+    const link = `${this.webUrl}/configuracoes/plano`;
+    const html = this.buildHtml(
+      `${opts.urgente ? '🔴' : '⏳'} ${esc(opts.titulo)}`,
+      `Olá, <strong>${esc(opts.dealerName)}</strong>.<br/><br/>${esc(opts.corpo)}` +
+        '<br/><br/>Nada foi apagado: seus veículos, leads, negócios e contratos continuam ' +
+        'todos lá, e você segue vendo e exportando tudo.',
+      link,
+      'Ver plano e cobrança',
+      'Você recebeu este e-mail porque é o administrador desta loja no AutoConnect.',
+    );
+    await this.send(opts.to, `${opts.titulo} — AutoConnect`, html, link);
+  }
+
   /** Cliente ofereceu um veículo na troca → avisa a concessionária */
   async sendTradeInReceived(opts: {
     to: string;

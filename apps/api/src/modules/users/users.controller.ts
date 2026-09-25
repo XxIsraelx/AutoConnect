@@ -3,6 +3,7 @@ import { UsersService } from './users.service';
 import { CurrentUser, TenantId } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { LiberadoNoBloqueio } from '../../common/guards/somente-leitura.guard';
 
 interface AuthUser { id: string; role: string; tenantId: string | null }
 
@@ -15,8 +16,15 @@ export class UsersController {
     return this.users.me(user.id);
   }
 
-  /** PATCH /users/me — atualiza o próprio perfil */
+  /**
+   * PATCH /users/me — atualiza o próprio perfil.
+   *
+   * `@LiberadoNoBloqueio()`: o perfil é da pessoa, não da loja. Travar o
+   * próprio nome e telefone por causa de uma fatura em aberto não protege
+   * nada e só faz a tela dar erro onde ninguém entenderia por quê.
+   */
   @Patch('me')
+  @LiberadoNoBloqueio()
   updateMe(
     @CurrentUser() user: { id: string },
     @Body() body: {
@@ -29,6 +37,7 @@ export class UsersController {
 
   /** POST /users/me/password — troca a senha */
   @Post('me/password')
+  @LiberadoNoBloqueio()
   changePassword(
     @CurrentUser() user: { id: string },
     @Body() body: { currentPassword: string; newPassword: string },

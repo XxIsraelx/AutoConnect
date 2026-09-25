@@ -361,20 +361,37 @@ coluna implícita crescia até o max-content do cartão mais largo (B9).
 **Pronto quando:** o lead do portal entra sozinho, cai no vendedor de plantão e
 é respondido pelo WhatsApp sem ninguém copiar e colar.
 
-## Onda 3 — cobrar (≈ 1 a 2 semanas)
+## Onda 3 — cobrar — **fechada em 25/09/2026**
 
-15. **Gateway com Pix e boleto** (Asaas, Pagar.me ou Iugu), assinatura por loja,
-    faixa por volume. Hoje plano e trial são trocados na mão pelo super admin e
-    não existe cobrança nenhuma.
-16. **Limite e bloqueio:** aplicar `seatsLimit`, avisar vencimento, bloquear por
-    inadimplência com carência.
+Decisão e o porquê de cada regra:
+[Cobrança: Asaas, faixa por estoque e somente leitura no vencimento](../decisoes/2026-09-25%20cobranca%20e%20bloqueio%20por%20vencimento.md).
 
-    Ficou mais urgente desde 25/09/2026: com o cadastro em autosserviço, o
-    trial agora **tem data de fim gravada** (`trialEndsAt`, 14 dias) e **nada
-    acontece quando ela passa**. A loja segue usando o produto de graça, sem
-    aviso e sem caminho para pagar.
+15. ✅ **Gateway com Pix e boleto — Asaas.** Camada neutra
+    (`ProvedorDeCobranca` no shared), fábrica por `COBRANCA_FORNECEDOR`,
+    provedor simulado fora de produção, webhook `POST /webhooks/cobranca`
+    autenticado por token em cabeçalho e idempotente. Assinatura **por loja**,
+    faixa por volume de estoque, usuários ilimitados: Essencial (30 veículos,
+    R$ 279), Crescimento (80, R$ 479), Pro (ilimitado, R$ 799).
+    Tela em `/configuracoes/plano`: plano atual, dias de trial, escolher plano,
+    link de pagamento, histórico de faturas e cancelamento — só `tenant_admin`.
+16. ✅ **Limite e bloqueio.** Trial vencido bloqueia na hora; fatura vencida tem
+    **7 dias de carência**. A loja entra em **modo somente leitura** — vê e
+    exporta tudo, não cria nem edita — por um guard **global**, e a vitrine
+    pública **continua no ar**. Avisos por e-mail e faixa no painel (3 dias
+    antes do fim do trial, no dia e a cada vencimento), por um cron diário sob
+    `executarEmUmaReplica`. A volta é imediata pelo webhook. O teto de estoque é
+    conferido **ao publicar** e nunca despublica o que já está no ar. O super
+    admin continua trocando plano e estendendo trial à mão, e isso destrava na
+    hora. `seatsLimit` **não** foi aplicado: a faixa é de estoque, e os usuários
+    são ilimitados de propósito.
 
 **Pronto quando:** um cliente assina e paga sozinho, sem você emitir nada à mão.
+
+⚠ **Ainda não está.** O adaptador da Asaas foi escrito **sem conta e sem
+sandbox** — nenhuma chamada dele jamais saiu. A lista do que precisa ser
+conferido com uma conta em mãos está no fim da decisão. Com
+`COBRANCA_FORNECEDOR` vazio, a contratação some da tela e o bloqueio segue
+valendo, desbloqueado à mão pelo super admin.
 
 ## Onda 4 — o que ninguém tem (≈ 2 semanas)
 
@@ -420,12 +437,16 @@ Aqui o produto deixa de ser "mais um CRM" e passa a ter argumento próprio.
 3. **Portais:** quais integrar primeiro depende de onde o cliente-piloto anuncia.
 4. **Conta de produção da Clicksign** e revisão jurídica do contrato: hoje
    bloqueiam a Onda 4 e o uso real do que já está pronto.
+5. **Conta na Asaas** (sandbox e produção): sem ela o adaptador de cobrança
+   permanece escrito e não exercitado, e ninguém paga sozinho.
 
 ## Sequência recomendada
 
 Onda 0 e 1 primeiro, porque são baratas e mudam a conversa de venda. A Onda 3
-(cobrança) pode ser antecipada se já houver cliente disposto a pagar — receber
-por fora no primeiro cliente é aceitável, mas não no terceiro. A Onda 2 é a mais
+(cobrança) **foi antecipada e fechada em 25/09/2026**, pelo motivo previsto
+aqui: receber por fora no primeiro cliente é aceitável, mas não no terceiro — e
+o trial com data de fim gravada, sem nada acontecendo no vencimento, tornou o
+item urgente. A Onda 2 é a mais
 cara e é o que separa "promissor" de "eu troco meu sistema por isso".
 
 **Os bloqueios do primeiro dia entraram na frente da Onda 2** (25/09/2026), e o

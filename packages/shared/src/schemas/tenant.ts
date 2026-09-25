@@ -160,5 +160,5 @@ export type UpdateBranchInput = z.infer<typeof updateBranchSchema>;
  * lista para os botões de plano e a API para recusar plano inexistente (antes
  * o valor ia cru para o Prisma e voltava como 500).
  */
-export const SUBSCRIPTION_PLANS = ['trial', 'starter', 'pro', 'enterprise'] as const;
+export const SUBSCRIPTION_PLANS = ['trial', 'essencial', 'crescimento', 'profissional'] as const;
 export type SubscriptionPlanValue = (typeof SUBSCRIPTION_PLANS)[number];

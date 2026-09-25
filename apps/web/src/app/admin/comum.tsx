@@ -98,9 +98,30 @@ export const ROLE_LABEL: Record<string, string> = {
 
 export const PLAN_COLOR: Record<string, string> = {
   trial: 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400',
-  starter: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400',
-  pro: 'bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400',
-  enterprise: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  essencial: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400',
+  crescimento: 'bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400',
+  profissional: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400',
+};
+
+/**
+ * Situação de cobrança da loja, como o painel a mostra. As cores seguem a
+ * gravidade, não o plano: o que o super admin procura aqui é quem está
+ * bloqueado e quem está prestes a bloquear.
+ */
+export const COBRANCA_COLOR: Record<string, string> = {
+  trial: 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400',
+  trial_terminando: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  ativa: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  em_carencia: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  somente_leitura: 'bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400',
+};
+
+export const COBRANCA_LABEL: Record<string, string> = {
+  trial: 'em teste',
+  trial_terminando: 'teste acabando',
+  ativa: 'em dia',
+  em_carencia: 'fatura vencida',
+  somente_leitura: 'somente leitura',
 };
 
 export const inputCls =

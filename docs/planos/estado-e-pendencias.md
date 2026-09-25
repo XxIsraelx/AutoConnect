@@ -24,6 +24,7 @@
 | **Custo do veículo** | ✅ completo | ✅ completo | aquisição + preparação; base da margem |
 | **Contrato** | ✅ completo | ✅ completo | PDF determinístico, hash, assinatura interna |
 | **Consulta veicular** | ✅ estrutura | ✅ completo | cache, idempotência e custo; **falta fornecedor real** |
+| **Cobrança e bloqueio** | ✅ completo | ✅ completo | camada neutra, faixas por estoque, somente leitura com carência, cron de avisos, painel do super admin; **adaptador Asaas escrito e NÃO exercitado — falta conta** ([decisão](../decisoes/2026-09-25%20cobranca%20e%20bloqueio%20por%20vencimento.md)) |
 | **Assinatura externa** | ✅ estrutura | ✅ completo | camada neutra, webhook com HMAC, provedor simulado e adaptador Clicksign (API 3.0, testado no sandbox); **ligado em sandbox; falta assinatura de ponta a ponta e conta de produção** ([decisão](../decisoes/2026-09-22%20assinatura%20externa.md)) |
 
 ## Pendências conhecidas
@@ -36,6 +37,13 @@ Auditadas em 04/09/2026, contra o repositório.
   como ponto de partida.
 - ⚠ **Sem fornecedor de consulta veicular.** Depende de contrato comercial. A
   estrutura está pronta e a API recusa em voz alta enquanto não houver.
+- ⚠ **Sem conta na Asaas** (25/09/2026). A camada de cobrança inteira está de
+  pé e exercitada com o provedor simulado, mas o adaptador real **nunca falou
+  com a Asaas** — nem com o sandbox. Com `COBRANCA_FORNECEDOR` vazio a
+  contratação some da tela e o bloqueio por vencimento segue valendo,
+  desbloqueado à mão pelo super admin. A lista do que conferir com a conta em
+  mãos está no fim da
+  [decisão](../decisoes/2026-09-25%20cobranca%20e%20bloqueio%20por%20vencimento.md).
 - **Assinatura eletrônica externa ligada em produção, em SANDBOX** (22/09/2026):
   webhook cadastrado com os 7 eventos, `ASSINATURA_FORNECEDOR=clicksign` no
   Railway, boot confirma o adaptador e o webhook recusa HMAC forjado (401).
@@ -47,7 +55,8 @@ Auditadas em 04/09/2026, contra o repositório.
 - **Feature flag.** O plano pede "feature nova atrás de flag até o piloto
   validar". Nada foi entregue atrás de flag — negócios, contrato e consulta
   entraram direto. Não há infraestrutura de flag no projeto. A assinatura
-  externa usa a própria configuração como chave: sem `ASSINATURA_FORNECEDOR`,
+  externa e a cobrança usam a própria configuração como chave: sem
+  `ASSINATURA_FORNECEDOR` nem `COBRANCA_FORNECEDOR`,
   a API responde 503 e a tela esconde a opção.
 
 **Dívidas de infraestrutura**
@@ -107,14 +116,14 @@ Auditadas em 04/09/2026, contra o repositório.
 
 ## Onde o plano de paridade de CRM está
 
-`docs/planos/plano-paridade-crm.md`. Estado em 23/09/2026:
+`docs/planos/plano-paridade-crm.md`. Estado em 25/09/2026:
 
 | Onda | Estado |
 |---|---|
 | 0 — o funil não pode vazar | ✅ portão fechado em 23/09/2026 |
 | 1 — o que a loja compara na primeira reunião | ✅ itens 6 a 11 fechados em 23/09/2026 |
 | 2 — WhatsApp oficial e portais | ⬜ |
-| 3 — cobrar | ⬜ |
+| 3 — cobrar | ✅ fechada em 25/09/2026 — **falta conta na Asaas** |
 | 4 — o que ninguém tem | ⬜ |
 
 Dívidas que a Onda 0 deixou declaradas:

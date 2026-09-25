@@ -16,6 +16,7 @@ import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import ThemeToggle from '@/components/ThemeToggle';
 import AvisoDeEmailNaoVerificado from '@/components/AvisoDeEmailNaoVerificado';
+import AvisoDeCobranca from '@/components/AvisoDeCobranca';
 
 /* ── Badge de leads novos ─────────────────────────────────── */
 
@@ -353,6 +354,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {ann && <AnnouncementBanner ann={ann} onDismiss={dismiss} />}
         <AvisoDeEmailNaoVerificado />
+        <AvisoDeCobranca />
         <div className="flex-1">{children}</div>
       </main>
     </div>

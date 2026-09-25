@@ -9,7 +9,10 @@ import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.s
 import { ehGlobal, type Escopo } from '../../common/escopo';
 import { EmailService } from '../../common/email/email.service';
 import { Prisma } from '@autoconnect/db';
-import { listarPendencias, pendenciasParaPublicar } from '@autoconnect/shared';
+import {
+  CATALOGO_DE_PLANOS, limiteDeVeiculos, listarPendencias, pendenciasParaPublicar,
+  STATUS_QUE_CONTA_NO_LIMITE,
+} from '@autoconnect/shared';
 import type { CreateVehicleInput, UpdateVehicleInput, VehicleQuery } from '@autoconnect/shared';
 import type { ImportRow } from './import.schema';
 
@@ -281,6 +284,45 @@ export class VehiclesService {
    * Recusa com 422 e diz o que falta. 400 seria "seu pedido está malformado",
    * e não está: o pedido é legítimo, o cadastro é que não está pronto.
    */
+  /**
+   * Recusa a publicação quando o estoque já enche a faixa contratada.
+   *
+   * Conta veículo **não arquivado** (`STATUS_QUE_CONTA_NO_LIMITE`), rascunho
+   * incluído: o que a faixa mede é estoque sob gestão, não anúncio no ar — ver
+   * `CATALOGO_DE_PLANOS` no shared. Arquivado não conta de propósito, para que
+   * ninguém precise apagar o próprio histórico para caber no plano.
+   *
+   * A contagem roda **dentro da mesma transação com contexto de tenant** da
+   * publicação, e não pelo cache do guard de cobrança: uma loja que acabou de
+   * arquivar um carro para abrir vaga não pode esperar meio minuto.
+   */
+  private async recusarSeEstourouAFaixa(tx: ScopedClient, tenantId: string): Promise<void> {
+    const assinatura = await tx.tenantSubscription.findUnique({
+      where: { tenantId },
+      select: { plan: true },
+    });
+    const plano = assinatura?.plan ?? 'trial';
+    const limite = limiteDeVeiculos(plano);
+    if (limite === null) return;
+
+    const usados = await tx.vehicle.count({
+      where: { tenantId, status: { in: [...STATUS_QUE_CONTA_NO_LIMITE] } },
+    });
+    if (usados <= limite) return;
+
+    const proxima = Object.values(CATALOGO_DE_PLANOS).find(
+      (f) => f.limiteVeiculos === null || f.limiteVeiculos > limite,
+    );
+
+    throw new UnprocessableEntityException(
+      `Seu plano cobre ${limite} veículos em estoque e você tem ${usados}. ` +
+        (proxima
+          ? `Mude para o plano ${proxima.nome} em Configurações › Plano e cobrança para publicar este anúncio. `
+          : '') +
+        'Os anúncios que já estão no ar continuam no ar.',
+    );
+  }
+
   async publicar(tenantId: string, id: string, actorUserId?: string): Promise<unknown> {
     return this.prisma.withTenant(tenantId, async (tx) => {
       const veiculo = await tx.vehicle.findFirst({
@@ -315,6 +357,23 @@ export class VehiclesService {
         throw new UnprocessableEntityException(
           `Para publicar, o anúncio precisa de ${listarPendencias(faltando)}.`,
         );
+      }
+
+      // ── Teto de estoque da faixa contratada ──────────────────────────
+      //
+      // O limite é conferido **ao publicar**, e não ao cadastrar: a loja
+      // continua registrando tudo o que tem no pátio, inclusive acima da
+      // faixa. O que a faixa compra é a vitrine.
+      //
+      // E **nunca despublica**: quem já está no ar continua no ar. Tirar do ar
+      // um anúncio que a loja vendeu a semana inteira para cobrar mais caro é
+      // cobrança por reféns, e é o oposto do que esta régua serve para fazer —
+      // dizer, na hora certa, que o próximo carro pede o plano de cima.
+      //
+      // Republicar o que já esteve no ar também passa: `publishedAt`
+      // preenchido significa que aquele anúncio já ocupava uma vaga.
+      if (veiculo.listingStatus !== 'published' && !veiculo.publishedAt) {
+        await this.recusarSeEstourouAFaixa(tx, tenantId);
       }
 
       const atualizado = await tx.vehicle.update({

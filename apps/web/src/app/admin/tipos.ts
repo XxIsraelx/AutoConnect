@@ -43,6 +43,23 @@ export interface Tenant {
   id: string; slug: string; tradeName: string; legalName: string; taxId: string | null;
   primaryEmail: string; isActive: boolean; createdAt: string;
   subscription: { plan: string; status: string; trialEndsAt?: string | null } | null;
+  /**
+   * O veredito de cobrança, calculado na API pela **mesma** `avaliarCobranca`
+   * que bloqueia a loja. O painel não recalcula nada: se ele tivesse a própria
+   * regra, diria "em dia" para quem a API está recusando — e é aqui que se
+   * olha quando alguém liga reclamando.
+   */
+  cobranca: {
+    plan: string | null;
+    status: string | null;
+    trialEndsAt: string | null;
+    situacao: string;
+    somenteLeitura: boolean;
+    diasRestantes: number | null;
+    prazoAte: string | null;
+    inadimplente: boolean;
+    ultimaFatura: { status: string; valor: string; vencimento: string; pagoEm: string | null } | null;
+  };
   branches: { city: string | null; state: string | null }[];
   legalRep: { configured: boolean; hasEmail: boolean };
   metrics: MetricasDaLoja;

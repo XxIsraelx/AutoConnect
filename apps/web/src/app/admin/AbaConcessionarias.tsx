@@ -7,7 +7,8 @@ import {
 import { SUBSCRIPTION_PLANS, deCentavos, formatarBRL } from '@autoconnect/shared';
 import { ErroAoCarregar } from '@/components/ErroAoCarregar';
 import {
-  Carregando, PLAN_COLOR, ROLE_LABEL, Vazio, botaoIconeCls, cartaoCls, fmtDate, fmtRelativo,
+  Carregando, COBRANCA_COLOR, COBRANCA_LABEL, PLAN_COLOR, ROLE_LABEL, Vazio,
+  botaoIconeCls, cartaoCls, fmtDate, fmtRelativo,
   inputCls, mensagemDaAcao, useCarga, type PropsDaAba,
 } from './comum';
 import { urlDoSite } from './AbaConvites';
@@ -35,6 +36,44 @@ function SeloRepresentante({ rep }: { rep: { configured: boolean; hasEmail: bool
     <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
       <UserCheck size={10} /> Representante ok
     </span>
+  );
+}
+
+/**
+ * O estado do dinheiro da loja, em uma linha.
+ *
+ * Mostra o que o super admin vem procurar: quem está prestes a bloquear, quem
+ * já bloqueou e quem deixou de pagar. O veredito vem pronto da API — a mesma
+ * `avaliarCobranca` que recusa a escrita —, para que painel e produto nunca
+ * discordem sobre quem está bloqueado.
+ */
+function SeloDeCobranca({ c }: { c: Tenant['cobranca'] }) {
+  return (
+    <span
+      title={c.prazoAte ? `Prazo: ${fmtDate(c.prazoAte)}` : undefined}
+      className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+        COBRANCA_COLOR[c.situacao] ?? COBRANCA_COLOR.trial
+      }`}
+    >
+      {COBRANCA_LABEL[c.situacao] ?? c.situacao}
+      {c.diasRestantes !== null && c.diasRestantes > 0 ? ` · ${c.diasRestantes}d` : ''}
+    </span>
+  );
+}
+
+function LinhaDeCobranca({ c }: { c: Tenant['cobranca'] }) {
+  return (
+    <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-slate-500">
+      {c.trialEndsAt && (
+        <span>Trial até {fmtDate(c.trialEndsAt)}</span>
+      )}
+      <span className={c.inadimplente ? 'text-rose-600 dark:text-rose-400 font-medium' : ''}>
+        Última fatura:{' '}
+        {c.ultimaFatura
+          ? `${formatarBRL(c.ultimaFatura.valor)} · ${c.ultimaFatura.status} · venc. ${fmtDate(c.ultimaFatura.vencimento)}`
+          : 'nenhuma'}
+      </span>
+    </div>
   );
 }
 
@@ -148,6 +187,7 @@ export function AbaConcessionarias({ chamar, avisar, sinal }: PropsDaAba) {
                 <p className="font-medium text-sm truncate max-w-full">{t.tradeName}</p>
                 {!t.isActive && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400">Inativa</span>}
                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full capitalize ${PLAN_COLOR[t.subscription?.plan ?? 'trial'] ?? PLAN_COLOR.trial}`}>{t.subscription?.plan ?? 'trial'}</span>
+                <SeloDeCobranca c={t.cobranca} />
                 <SeloRepresentante rep={t.legalRep} />
               </div>
               <div className="flex flex-wrap gap-x-3 mt-0.5 text-xs text-slate-400">
@@ -155,6 +195,7 @@ export function AbaConcessionarias({ chamar, avisar, sinal }: PropsDaAba) {
                 {t.branches[0]?.city && <span>{t.branches[0].city}/{t.branches[0].state}</span>}
                 <span>Desde {fmtDate(t.createdAt)}</span>
               </div>
+              <LinhaDeCobranca c={t.cobranca} />
               <LinhaDeMetricas m={t.metrics} />
             </button>
             <div className="flex gap-0.5 shrink-0">
@@ -278,7 +319,17 @@ function GavetaDaLoja({ loja, onFechar, onPlano, onTrial, onImpersonar }: {
           </div>
 
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Plano</h4>
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
+              Plano e cobrança
+            </h4>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <SeloDeCobranca c={loja.cobranca} />
+              {loja.cobranca.somenteLeitura && (
+                <span className="text-xs text-rose-600 dark:text-rose-400">
+                  Escrita bloqueada. Trocar o plano ou estender o trial aqui destrava na hora.
+                </span>
+              )}
+            </div>
             <div className="flex gap-2 flex-wrap">
               {SUBSCRIPTION_PLANS.map((p) => (
                 <button key={p} onClick={() => onPlano(p)}

@@ -34,6 +34,9 @@ import {
 import { acceptInviteSchema } from '../modules/invitations/invitations.controller';
 import { anularSchema, assinarSchema } from '../modules/contracts/contracts.controller';
 import { simularSchema } from '../modules/contracts/assinatura/assinatura-externa.controller';
+import {
+  contratarSchema, simularCobrancaSchema,
+} from '../modules/cobranca/cobranca.controller';
 import { consultarSchema } from '../modules/consultas/consultas.controller';
 import { tradeInSchema } from '../modules/catalog/trade-in.schema';
 import { importVehiclesSchema } from '../modules/vehicles/import.schema';
@@ -139,6 +142,12 @@ const ROTAS: Record<string, Declaracao> = {
   'POST /contracts/:p/assinatura-externa': { semCorpo: true },
   'POST /contracts/:p/assinatura-externa/cancelar': { semCorpo: true },
   'POST /contracts/:p/assinatura-externa/simular': { schema: simularSchema },
+
+  /* Plano e cobrança */
+  'POST /cobranca/contratar': { schema: contratarSchema },
+  'POST /cobranca/fatura/atualizar': { semCorpo: true },
+  'POST /cobranca/cancelar': { semCorpo: true },
+  'POST /cobranca/simular': { schema: simularCobrancaSchema },
 
   /* Veículos */
   'POST /vehicles': { schema: createVehicleSchema },

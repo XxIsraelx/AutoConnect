@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import {
-  Building2, Phone, Globe, Palette, MapPin,
+  Building2, Phone, Globe, Palette, MapPin, ChevronRight,
   Mail, Hash, Check, Loader2, AlertCircle, Save, Clock, Repeat, UsersRound,
 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -13,7 +14,15 @@ import {
 } from '@/lib/businessHours';
 import { AjustesDeCrm } from './AjustesDeCrm';
 import AvisoDeEnvioDeFotos from '@/components/AvisoDeEnvioDeFotos';
-import { mascararTelefoneBr } from '@autoconnect/shared';
+import { CATALOGO_DE_PLANOS, mascararTelefoneBr } from '@autoconnect/shared';
+
+/** Nome comercial de cada plano, vindo do catálogo único do shared. */
+const NOME_DO_PLANO: Record<string, string> = {
+  trial: 'Período de teste',
+  ...Object.fromEntries(
+    Object.values(CATALOGO_DE_PLANOS).map((f) => [f.plano, f.nome]),
+  ),
+};
 
 /* ── Tipos ───────────────────────────────────────────────── */
 
@@ -647,22 +656,30 @@ export default function ConfiguracoesPage() {
           </form>
         )}
 
-        {/* ── Plano ─────────────────────────────────────── */}
-        <Section title="Plano" icon={Hash}>
-          <div className="flex items-center justify-between">
+        {/* ── Plano e cobrança ──────────────────────────── */}
+        {/*
+          Só o resumo e o caminho: preço, faixa, fatura e cancelamento moram em
+          /configuracoes/plano. Esta tela já é a mais longa do painel, e a de
+          cobrança é a única que precisa continuar inteira com a loja
+          bloqueada — juntar as duas prenderia o pagamento atrás do bloqueio.
+        */}
+        <Section title="Plano e cobrança" icon={Hash}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-slate-900 dark:text-white capitalize">
-                {tenant?.subscription?.plan ?? 'Trial'}
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                {NOME_DO_PLANO[tenant?.subscription?.plan ?? 'trial'] ?? 'Período de teste'}
               </p>
-              <p className="text-xs text-slate-500 mt-0.5 capitalize">
-                Status: {tenant?.subscription?.status ?? 'ativo'}
+              <p className="text-xs text-slate-500 mt-0.5">
+                Preço por loja, com faixa por volume de estoque. Usuários ilimitados.
               </p>
             </div>
-            <span className="text-xs font-bold px-3 py-1.5 rounded-full
-                             bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400
-                             border border-blue-100 dark:border-blue-500/20">
-              {tenant?.subscription?.plan === 'pro' ? 'Pro' : 'Trial'}
-            </span>
+            <Link
+              href="/configuracoes/plano"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg
+                         bg-blue-600 text-white hover:bg-blue-700 transition"
+            >
+              Ver plano e faturas <ChevronRight size={13} />
+            </Link>
           </div>
         </Section>
 

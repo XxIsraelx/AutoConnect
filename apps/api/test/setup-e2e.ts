@@ -90,5 +90,16 @@ process.env.ASSINATURA_WEBHOOK_SECRET = 'segredo-de-webhook-de-teste';
 process.env.CLICKSIGN_ACCESS_TOKEN = '';
 process.env.CLICKSIGN_API_URL = '';
 
+// E para a cobrança: mesma regra. No dia em que o `.env` tiver a Asaas
+// configurada, a suíte criaria clientes e assinaturas de verdade na conta e
+// mandaria cobrança para lojas fictícias. O simulado roda em memória e não sai
+// do processo. Sobrescreve, não `??=`.
+process.env.COBRANCA_FORNECEDOR = 'simulado';
+process.env.COBRANCA_WEBHOOK_TOKEN = 'token-de-cobranca-de-teste';
+// E a credencial da Asaas zerada: mesmo que alguém troque o fornecedor acima
+// por engano, sem chave a fábrica cai no indisponível e nenhuma requisição sai.
+process.env.ASAAS_API_KEY = '';
+process.env.ASAAS_API_URL = '';
+
 /** Nome do banco de teste, para os testes afirmarem onde estão conectados. */
 export const BANCO_DE_TESTE = verificada.pathname.replace(/^\//, '');
