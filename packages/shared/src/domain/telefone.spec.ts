@@ -3,6 +3,9 @@ import {
   telefoneBrValido,
   formatarTelefoneBr,
   paraWhatsApp,
+  mascararTelefoneBr,
+  ehCelularBr,
+  escolherWhatsApp,
 } from './telefone';
 
 describe('normalizarTelefoneBr', () => {
@@ -92,5 +95,51 @@ describe('paraWhatsApp', () => {
 
   it('devolve null quando o número não é válido — link quebrado é pior que link ausente', () => {
     expect(paraWhatsApp('123')).toBeNull();
+  });
+});
+
+
+describe('mascararTelefoneBr', () => {
+  it('não estraga o fixo — o defeito que o dono viu no próprio número', () => {
+    // A máscara antiga agrupava sempre 5+4 e produzia "(31) 32718-080", que ia
+    // assim para o banco e para a página pública da loja.
+    expect(mascararTelefoneBr('3132718080')).toBe('(31) 3271-8080');
+    expect(mascararTelefoneBr('(31) 3271-8080')).toBe('(31) 3271-8080');
+  });
+
+  it('o décimo primeiro dígito é o que move o corte para 5+4', () => {
+    expect(mascararTelefoneBr('31988776655')).toBe('(31) 98877-6655');
+  });
+
+  it('acompanha a digitação sem exigir número completo', () => {
+    expect(mascararTelefoneBr('')).toBe('');
+    expect(mascararTelefoneBr('3')).toBe('(3');
+    expect(mascararTelefoneBr('31')).toBe('(31');
+    expect(mascararTelefoneBr('319')).toBe('(31) 9');
+    expect(mascararTelefoneBr('3198877')).toBe('(31) 9887-7');
+  });
+
+  it('descarta o que passa de onze dígitos em vez de embaralhar', () => {
+    expect(mascararTelefoneBr('319887766559999')).toBe('(31) 98877-6655');
+  });
+});
+
+describe('escolha do número do WhatsApp', () => {
+  it('fixo não é celular — o botão não pode apontar para ele', () => {
+    expect(ehCelularBr('(31) 3271-8080')).toBe(false);
+    expect(ehCelularBr('(31) 98877-6655')).toBe(true);
+    // Dez dígitos começando por 9 é celular antigo: a normalização completa o
+    // nono dígito, e o WhatsApp funciona.
+    expect(ehCelularBr('3198877665')).toBe(true);
+  });
+
+  it('pega o primeiro celular da lista, na ordem em que a tela prefere', () => {
+    expect(escolherWhatsApp('(31) 3271-8080', '(31) 98877-6655')).toBe('5531988776655');
+    expect(escolherWhatsApp('(31) 98877-6655', '(31) 3271-8080')).toBe('5531988776655');
+  });
+
+  it('só fixo: devolve null e a tela esconde o botão', () => {
+    expect(escolherWhatsApp('(31) 3271-8080', null, undefined)).toBeNull();
+    expect(escolherWhatsApp()).toBeNull();
   });
 });

@@ -12,19 +12,8 @@ import { useAuthStore } from '@/store/auth';
 import { useRouter } from 'next/navigation';
 import ChatDrawer from '@/components/ChatDrawer';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
+import { enviarAvatar } from '@/lib/uploadDeFotos';
 
-const CLOUD_NAME    = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ?? '';
-const UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? '';
-
-async function uploadToCloudinary(file: File): Promise<string> {
-  const form = new FormData();
-  form.append('file', file);
-  form.append('upload_preset', UPLOAD_PRESET);
-  form.append('folder', 'autoconnect/avatars');
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: 'POST', body: form });
-  if (!res.ok) throw new Error('Falha no upload');
-  return ((await res.json()) as { secure_url: string }).secure_url;
-}
 
 /* ── Tipos ─────────────────────────────────────────────── */
 interface SmallVehicle {
@@ -148,7 +137,7 @@ export default function PerfilPage() {
     if (!file || !token) return;
     setUploadingAvatar(true);
     try {
-      const url = await uploadToCloudinary(file);
+      const url = await enviarAvatar(file);
       await api('/users/me', { token, method: 'PATCH', body: { avatarUrl: url } });
       setProfile((p) => p ? { ...p, avatarUrl: url } : p);
       updateUser({ avatarUrl: url });

@@ -211,6 +211,79 @@ export function calcularPrazoDeResposta(
   return null;
 }
 
+/* ── Expediente como regra de agendamento ────────────────── */
+
+/**
+ * A loja está aberta neste instante?
+ *
+ * Mesmo expediente, mesmo fuso e mesmo `Intl` do relógio do SLA — de propósito.
+ * O agendamento público aceitava **domingo às 18:30** com a loja fechada porque
+ * nem a tela nem a API consultavam o expediente: os horários oferecidos eram
+ * uma lista fixa de 08:00 a 18:30 e a data aceitava qualquer dia. Uma segunda
+ * definição de "aberto" produziria a tela oferecendo o que a API recusa.
+ *
+ * Um compromisso que **começa** dentro da janela vale, ainda que termine
+ * depois: o cliente chega às 17:50 e o vendedor fica os dez minutos a mais.
+ * Recusar por causa do fim empurraria toda visita de fim de tarde para o dia
+ * seguinte.
+ */
+export function dentroDoExpediente(
+  instante: Date,
+  expediente: Expediente = EXPEDIENTE_PADRAO,
+  fuso: string = FUSO_PADRAO,
+): boolean {
+  const local = relogioLocal(instante, fuso);
+  const dia = expediente[String(local.diaDaSemana)];
+  if (!dia || dia.closed) return false;
+
+  const abre = minutosDe(dia.open);
+  const fecha = minutosDe(dia.close);
+  if (fecha <= abre) return false;
+
+  return local.minutosDoDia >= abre && local.minutosDoDia < fecha;
+}
+
+/** Os dias da semana em que a loja abre, 0 = domingo. Para a tela. */
+export function diasAbertos(expediente: Expediente = EXPEDIENTE_PADRAO): number[] {
+  return [0, 1, 2, 3, 4, 5, 6].filter((d) => {
+    const dia = expediente[String(d)];
+    return !!dia && !dia.closed && minutosDe(dia.close) > minutosDe(dia.open);
+  });
+}
+
+/**
+ * Os horários de início oferecidos num dia, de `passoMinutos` em
+ * `passoMinutos`. Lista vazia = dia fechado.
+ *
+ * A tela usa isto para só mostrar horário que a API aceita; sem ele, o cliente
+ * escolhia 18:30 de domingo e recebia "Agendamento solicitado!".
+ */
+export function horariosDoDia(
+  diaDaSemana: number,
+  expediente: Expediente = EXPEDIENTE_PADRAO,
+  passoMinutos = 30,
+): string[] {
+  const dia = expediente[String(diaDaSemana)];
+  if (!dia || dia.closed) return [];
+
+  const abre = minutosDe(dia.open);
+  const fecha = minutosDe(dia.close);
+  if (fecha <= abre || passoMinutos <= 0) return [];
+
+  const horarios: string[] = [];
+  for (let m = abre; m < fecha; m += passoMinutos) {
+    horarios.push(
+      `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`,
+    );
+  }
+  return horarios;
+}
+
+/** Dia da semana (0 = domingo) de um instante, no fuso da loja. */
+export function diaDaSemanaLocal(instante: Date, fuso: string = FUSO_PADRAO): number {
+  return relogioLocal(instante, fuso).diaDaSemana;
+}
+
 /* ── Etiqueta do lead na tela ─────────────────────────────── */
 
 export const SLA_SITUACOES = [

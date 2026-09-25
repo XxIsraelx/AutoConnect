@@ -8,6 +8,9 @@ import { ehGlobal, type Escopo } from '../../common/escopo';
 import { EmailService } from '../../common/email/email.service';
 import {
   DURACAO_PADRAO_MINUTOS,
+  FUSO_PADRAO,
+  dentroDoExpediente,
+  expedienteOuPadrao,
   type AgendamentoDaLojaInput,
   type AgendamentoDoClienteInput,
   type AtualizarAgendamentoInput,
@@ -140,10 +143,131 @@ export class AppointmentsService {
     );
   }
 
-  /** Cliente solicita agendamento */
+  /**
+   * Recusa horário fora do expediente da filial.
+   *
+   * Roda em `withPublic` porque quem agenda é o cliente, que não tem contexto
+   * de loja: sobra a policy `leitura_publica`, que é o que já está na vitrine.
+   * Loja inexistente ou inativa é 404 — a mesma resposta que o catálogo dá.
+   *
+   * Sem expediente configurado cai no padrão do shared (seg–sex 09–18, sáb
+   * 09–13) e **não** em "sempre aberto": o padrão errado para menos manda o
+   * cliente escolher outro horário; o padrão errado para mais manda o cliente
+   * para uma porta fechada.
+   */
+  private async exigirDentroDoExpediente(
+    tenantId: string,
+    branchId: string | null,
+    inicio: Date,
+  ): Promise<void> {
+    if (inicio.getTime() <= Date.now()) {
+      throw new BadRequestException('Escolha uma data e um horário no futuro.');
+    }
+
+    const loja = await this.prisma.withPublic(async (tx) => {
+      const t = await tx.tenant.findFirst({
+        where: { id: tenantId, isActive: true },
+        select: { timezone: true },
+      });
+      if (!t) return null;
+
+      const filial = branchId
+        ? await tx.dealershipBranch.findFirst({
+            where: { id: branchId, tenantId, isActive: true },
+            select: { businessHours: true },
+          })
+        : await tx.dealershipBranch.findFirst({
+            where: { tenantId, isActive: true },
+            orderBy: { createdAt: 'asc' },
+            select: { businessHours: true },
+          });
+
+      return { timezone: t.timezone, businessHours: filial?.businessHours ?? null };
+    });
+
+    if (!loja) throw new NotFoundException('Concessionária não encontrada');
+
+    const expediente = expedienteOuPadrao(loja.businessHours);
+    if (!dentroDoExpediente(inicio, expediente, loja.timezone || FUSO_PADRAO)) {
+      throw new BadRequestException(
+        'A loja está fechada nesse horário. Escolha um horário dentro do expediente.',
+      );
+    }
+  }
+
+  /**
+   * O lead aberto desta pessoa nesta loja, e quem responde por ele.
+   *
+   * Preferência pelo lead do **mesmo veículo**: quem agenda test drive do Onix
+   * e tem leads do Onix e do Argo quer o do Onix. Sem lead do carro, qualquer
+   * lead aberto serve — é a mesma pessoa, na mesma loja, e costurá-los é o que
+   * dá à loja uma visão só do cliente.
+   *
+   * `leadId` explícito no corpo vence tudo, mas é conferido: id de outra loja,
+   * ou de outra pessoa, é 404.
+   */
+  private async leadDaMesmaPessoa(
+    tenantId: string,
+    customerUserId: string,
+    leadIdPedido: string | null,
+    vehicleId: string | null,
+  ): Promise<{ leadId: string | null; salespersonId: string | null }> {
+    return this.prisma.withTenantAndUser(tenantId, customerUserId, async (tx) => {
+      if (leadIdPedido) {
+        const lead = await tx.lead.findFirst({
+          where: { id: leadIdPedido, tenantId, customerUserId },
+          select: { id: true, assignedTo: true },
+        });
+        if (!lead) throw new NotFoundException('Lead não encontrado');
+        return { leadId: lead.id, salespersonId: lead.assignedTo };
+      }
+
+      const abertos = await tx.lead.findMany({
+        where: {
+          tenantId,
+          customerUserId,
+          status: { in: ['new', 'contacted', 'qualified', 'negotiating'] },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, assignedTo: true, vehicleId: true },
+      });
+
+      const escolhido =
+        (vehicleId ? abertos.find((l) => l.vehicleId === vehicleId) : undefined) ?? abertos[0];
+
+      return {
+        leadId: escolhido?.id ?? null,
+        salespersonId: escolhido?.assignedTo ?? null,
+      };
+    });
+  }
+
+  /**
+   * Cliente solicita agendamento pela página pública.
+   *
+   * Duas coisas que faltavam, e que faziam a loja receber registros soltos:
+   *
+   *  1. **o expediente**. Os horários oferecidos eram fixos de 08:00 a 18:30 e
+   *     a data aceitava qualquer dia: dava para marcar test drive **domingo às
+   *     18:30**, com a loja fechada. A tela agora só oferece horário do
+   *     expediente da filial, e aqui a conferência é refeita — tela não valida
+   *     nada em tempo de execução;
+   *  2. **o lead da mesma pessoa**. Quem agenda quase sempre acabou de mandar
+   *     um interesse pelo mesmo carro. Sem o vínculo, a loja via duas coisas
+   *     sem relação, e o vendedor do lead não sabia da visita. Quando há lead
+   *     aberto dessa pessoa nessa loja, o agendamento entra nele — e herda o
+   *     responsável, que é como a visita ganha dono sem inventar um rodízio
+   *     próprio.
+   */
   async create(customerUserId: string, data: AgendamentoDoClienteInput): Promise<unknown> {
     const start = new Date(data.scheduledStart);
     const end   = new Date(start.getTime() + DURACAO_PADRAO_MINUTOS * 60 * 1000);
+
+    await this.exigirDentroDoExpediente(data.tenantId, data.branchId ?? null, start);
+
+    const vinculo = await this.leadDaMesmaPessoa(
+      data.tenantId, customerUserId, data.leadId ?? null, data.vehicleId ?? null,
+    );
 
     // Quem cria é o cliente, não a concessionária: o contexto é o do usuário.
     const appt = await this.prisma.withUser(customerUserId, (tx) =>
@@ -153,7 +277,8 @@ export class AppointmentsService {
           customerUserId,
           vehicleId:      data.vehicleId ?? null,
           branchId:       data.branchId  ?? null,
-          leadId:         data.leadId    ?? null,
+          leadId:         vinculo.leadId,
+          salespersonId:  vinculo.salespersonId,
           type:           data.type as never,
           status:         'scheduled',
           scheduledStart: start,

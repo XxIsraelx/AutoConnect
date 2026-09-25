@@ -25,6 +25,7 @@ import { LimitePorIp, chaveDoEnvio } from './limite-por-ip';
 import { CrmSettingsService, type AjustesDeCrm } from '../crm/crm-settings.service';
 import { RodizioService } from '../crm/rodizio.service';
 import { SlaService } from '../crm/sla.service';
+import { AtribuicaoDeLead, type LeadDistribuido } from '../crm/atribuicao.service';
 import { carteiraDe, type Ator } from './carteira';
 
 /** Dados do e-mail de "lead novo", montados dentro da transação e enviados fora. */
@@ -53,6 +54,7 @@ export class LeadsService {
     private readonly ajustes: CrmSettingsService,
     private readonly rodizio: RodizioService,
     private readonly sla: SlaService,
+    private readonly atribuicao: AtribuicaoDeLead,
   ) {}
 
   /* ── Rodízio e prazo, na criação do lead ───────────────── */
@@ -60,39 +62,17 @@ export class LeadsService {
   /**
    * Decide responsável e prazo de primeiro contato de um lead que vai nascer.
    *
-   * Roda **dentro** da transação de criação: `lerTravando` trava a linha de
-   * ajustes da loja, e é essa trava que impede dois leads simultâneos de
-   * caírem no mesmo vendedor. Uma leitura só serve aos dois usos — o prazo sai
-   * do mesmo `ajustes`, sem segunda ida ao banco (API e banco estão em regiões
-   * diferentes; cada consulta custa ~0,6s).
-   *
-   * `responsavelFixo` é quem a tela já escolheu (cadastro manual com vendedor
-   * indicado). Nesse caso não há rodízio a aplicar, mas o prazo continua
-   * valendo — o relógio é do lead, não da forma como ele chegou.
+   * A conta mora em `AtribuicaoDeLead` (módulo CRM) desde que o formulário de
+   * troca revelou que ela valia só para quem passava por aqui: o lead de troca
+   * nascia órfão e sem relógio porque o `CatalogService` não tinha como chamar
+   * um método privado. Este atalho fica para não reescrever as três chamadas.
    */
-  private async distribuirEAgendar(
+  private distribuirEAgendar(
     tx: ScopedClient,
     tenantId: string,
     opcoes: { branchId?: string | null; responsavelFixo?: string | null; criadoEm: Date },
-  ): Promise<{
-    assignedTo: string | null;
-    firstResponseDueAt: Date | null;
-    /** Houve rodízio a registrar na timeline? */
-    viaRodizio: boolean;
-  }> {
-    const ajustes = await this.ajustes.lerTravando(tx, tenantId);
-
-    const viaRodizio = !opcoes.responsavelFixo && ajustes.rodizioAtivo;
-    const assignedTo = opcoes.responsavelFixo
-      ?? (await this.rodizio.proximoVendedor(tx, tenantId, ajustes, opcoes.criadoEm));
-
-    const firstResponseDueAt = await this.sla.prazoDePrimeiroContato(tx, tenantId, {
-      branchId: opcoes.branchId ?? null,
-      minutos: ajustes.slaPrimeiroContatoMinutos,
-      criadoEm: opcoes.criadoEm,
-    });
-
-    return { assignedTo, firstResponseDueAt, viaRodizio };
+  ): Promise<LeadDistribuido> {
+    return this.atribuicao.distribuirEAgendar(tx, tenantId, opcoes);
   }
 
   /** Cria um lead. O userId vem do token JWT (customer logado). */

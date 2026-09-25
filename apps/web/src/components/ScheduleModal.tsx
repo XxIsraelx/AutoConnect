@@ -9,8 +9,13 @@ import { useRouter } from 'next/navigation';
 import {
   X, Calendar, Check, Loader2, AlertCircle, Car, MapPin, Clock,
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
+import {
+  diaDaSemanaLocal,
+  expedienteOuPadrao,
+  horariosDoDia,
+} from '@autoconnect/shared';
 
 export interface ScheduleVehicle {
   id: string;
@@ -24,6 +29,8 @@ export interface ScheduleBranch {
   name: string;
   city?: string | null;
   state?: string | null;
+  /** `DealershipBranch.businessHours`. Ausente = expediente padrão do shared. */
+  businessHours?: unknown;
 }
 
 interface Props {
@@ -34,11 +41,8 @@ interface Props {
   onClose: () => void;
 }
 
-/* Slots de 30 em 30min, 08:00–19:00 */
-const SLOTS: string[] = [];
-for (let h = 8; h < 19; h++) {
-  SLOTS.push(`${String(h).padStart(2, '0')}:00`, `${String(h).padStart(2, '0')}:30`);
-}
+/** Antecedência mínima para agendar no mesmo dia. */
+const ANTECEDENCIA_MINUTOS = 60;
 
 function todayISO(offsetDays = 0) {
   const d = new Date();
@@ -61,16 +65,35 @@ export default function ScheduleModal({ tenantId, dealerName, vehicle, branches,
 
   const isTestDrive = !!vehicle;
 
-  /* Slots passados ficam indisponíveis quando a data é hoje */
+  /**
+   * Os horários vêm do **expediente da filial**, não de uma lista fixa.
+   *
+   * Era uma lista fixa de 08:00 a 18:30 em qualquer dia: dava para agendar
+   * domingo às 18:30 com a loja fechada, e o produto respondia
+   * "Agendamento solicitado!". A API refaz a mesma conferência — tela não
+   * valida nada em tempo de execução —, e as duas usam a mesma função do
+   * `@autoconnect/shared` para não divergirem.
+   */
+  const expediente = useMemo(() => {
+    const filial = branches?.find(b => b.id === branchId) ?? branches?.[0];
+    return expedienteOuPadrao(filial?.businessHours);
+  }, [branches, branchId]);
+
   const availableSlots = useMemo(() => {
-    if (date !== todayISO()) return SLOTS;
-    const now = new Date();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
-    return SLOTS.filter(s => {
+    // Meio-dia: evita que a data solta ("2026-09-27") caia no dia anterior por
+    // causa do fuso ao virar para instante.
+    const diaEscolhido = diaDaSemanaLocal(new Date(`${date}T12:00:00`));
+    const doDia = horariosDoDia(diaEscolhido, expediente);
+
+    if (date !== todayISO()) return doDia;
+
+    const agora = new Date();
+    const agoraMin = agora.getHours() * 60 + agora.getMinutes();
+    return doDia.filter(s => {
       const [h, m] = s.split(':').map(Number);
-      return h * 60 + m > nowMin + 60; // pelo menos 1h de antecedência
+      return h * 60 + m > agoraMin + ANTECEDENCIA_MINUTOS;
     });
-  }, [date]);
+  }, [date, expediente]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -92,7 +115,14 @@ export default function ScheduleModal({ tenantId, dealerName, vehicle, branches,
       });
       setSent(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao agendar. Tente novamente.');
+      // A API é quem decide: ela refaz a conferência do expediente e a mensagem
+      // dela ("A loja está fechada nesse horário…") é mais útil que um texto
+      // genérico da tela.
+      setError(
+        err instanceof ApiError || err instanceof Error
+          ? err.message
+          : 'Erro ao agendar. Tente novamente.',
+      );
     } finally {
       setSending(false);
     }
@@ -251,7 +281,7 @@ export default function ScheduleModal({ tenantId, dealerName, vehicle, branches,
           </label>
           {availableSlots.length === 0 ? (
             <p className="text-xs text-slate-500 sup-tenue rounded-xl px-3 py-3">
-              Sem horários disponíveis hoje — escolha outra data.
+              A loja não abre nesta data (ou já passou do último horário) — escolha outro dia.
             </p>
           ) : (
             <div className="grid grid-cols-4 gap-1.5 max-h-32 overflow-y-auto pr-1">

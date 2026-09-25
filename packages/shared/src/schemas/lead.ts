@@ -231,12 +231,22 @@ export type CreateLeadInteractionInput = z.infer<typeof createLeadInteractionSch
 
 /* ── Lead anônimo (formulário público) ───────────────────── */
 
-const telefoneBr = z
+/**
+ * Telefone obrigatório de formulário público.
+ *
+ * Exportado porque o formulário de troca (`POST /catalog/trade-in`, cujo schema
+ * mora na API) precisa **do mesmo** campo: era ele que faltava para o lead de
+ * troca ter `contact_phone_normalized` e, portanto, para ele participar de
+ * qualquer comparação por telefone.
+ */
+export const telefoneBrSchema = z
   .string()
   .trim()
   .min(8, 'Informe seu telefone')
   .max(30)
   .refine(telefoneBrValido, 'Telefone inválido. Use DDD + número, ex.: (11) 98765-4321');
+
+const telefoneBr = telefoneBrSchema;
 
 /**
  * Formulário público de interesse — sem conta, sem token.

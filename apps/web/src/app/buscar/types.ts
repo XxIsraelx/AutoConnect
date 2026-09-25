@@ -83,5 +83,7 @@ export interface PublicDealer {
     email: string | null;
     latitude: number | null;
     longitude: number | null;
+    /** `DealershipBranch.businessHours` — o modal de agendamento vive dele. */
+    businessHours?: unknown;
   }[];
 }

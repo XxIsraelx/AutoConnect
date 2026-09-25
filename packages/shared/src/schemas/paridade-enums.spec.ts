@@ -2,6 +2,7 @@ import {
   LeadSource,
   LeadStatus,
   VehicleCondition,
+  VehicleStatus,
   UserRole,
   DealStatus,
   PaymentKind,
@@ -20,7 +21,7 @@ import {
 } from '@autoconnect/db';
 import { LEAD_SOURCES, LEAD_STATUSES, LEAD_SOURCES_MANUAIS } from './lead';
 import { APPOINTMENT_TYPES, APPOINTMENT_STATUSES } from './appointment';
-import { VEHICLE_CONDITIONS } from './vehicle';
+import { VEHICLE_CONDITIONS, VEHICLE_STATUSES, VEHICLE_STATUSES_MANUAIS } from './vehicle';
 import { LISTING_STATUSES } from '../domain/anuncio';
 import { INVITABLE_ROLES } from './auth';
 import {
@@ -84,6 +85,19 @@ describe('paridade entre os enums do Prisma e os schemas Zod', () => {
 
   it('VehicleCondition', () => {
     expect(conjunto(VEHICLE_CONDITIONS)).toEqual(conjunto(Object.values(VehicleCondition)));
+  });
+
+  it('VehicleStatus', () => {
+    expect(conjunto(VEHICLE_STATUSES)).toEqual(conjunto(Object.values(VehicleStatus)));
+  });
+
+  it('os estados que a tela grava são um subconjunto — "vendido" não entra', () => {
+    // Subconjunto de propósito: quem marca `sold` é o faturamento do negócio,
+    // que grava `soldAt` e congela a margem na mesma transação. Um teste de
+    // igualdade aqui abriria a porta no dia em que alguém o "consertasse".
+    const todos = conjunto(VEHICLE_STATUSES);
+    for (const s of VEHICLE_STATUSES_MANUAIS) expect(todos.has(s)).toBe(true);
+    expect(conjunto(VEHICLE_STATUSES_MANUAIS).has('sold' as never)).toBe(false);
   });
 
   it('ListingStatus', () => {

@@ -12,6 +12,8 @@ import {
   type BusinessHours, defaultBusinessHours, hasBusinessHours, WEEKDAYS_LONG,
 } from '@/lib/businessHours';
 import { AjustesDeCrm } from './AjustesDeCrm';
+import AvisoDeEnvioDeFotos from '@/components/AvisoDeEnvioDeFotos';
+import { mascararTelefoneBr } from '@autoconnect/shared';
 
 /* ── Tipos ───────────────────────────────────────────────── */
 
@@ -130,10 +132,15 @@ function BusinessHoursEditor({
       {WEEKDAYS_LONG.map((label, d) => {
         const day = value[d] ?? { closed: true, open: '09:00', close: '18:00' };
         return (
+          /* `flex-wrap` + `basis-full` nos horários: a 375 px a linha (dia +
+             interruptor + duas horas) media 501 px num cartão de 301, e o
+             horário de **fechamento** ficava fora da tela, sem barra de
+             rolagem aparente. O dono usa o celular; campo invisível é campo
+             que não existe. */
           <div key={d}
-               className="flex items-center gap-3 py-1.5 px-3 rounded-xl
+               className="flex flex-wrap items-center gap-x-3 gap-y-2 py-1.5 px-2 sm:px-3 rounded-xl
                           hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-            <span className="w-20 text-sm font-medium text-slate-700 dark:text-slate-300 shrink-0">
+            <span className="w-16 sm:w-20 text-sm font-medium text-slate-700 dark:text-slate-300 shrink-0">
               {label}
             </span>
 
@@ -152,21 +159,23 @@ function BusinessHoursEditor({
             {day.closed ? (
               <span className="text-sm text-slate-400 italic">Fechado</span>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0 basis-full sm:basis-auto">
                 <input
                   type="time" value={day.open}
                   onChange={e => setDay(d, { open: e.target.value })}
-                  className="rounded-lg border border-slate-200 dark:border-slate-700
-                             bg-white dark:bg-slate-800 px-2 py-1 text-sm outline-none
-                             focus:border-blue-500"
+                  aria-label={`${label}: abre às`}
+                  className="min-w-0 flex-1 sm:flex-none rounded-lg border border-slate-200
+                             dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-sm
+                             outline-none focus:border-blue-500"
                 />
-                <span className="text-slate-400 text-xs">às</span>
+                <span className="text-slate-400 text-xs shrink-0">às</span>
                 <input
                   type="time" value={day.close}
                   onChange={e => setDay(d, { close: e.target.value })}
-                  className="rounded-lg border border-slate-200 dark:border-slate-700
-                             bg-white dark:bg-slate-800 px-2 py-1 text-sm outline-none
-                             focus:border-blue-500"
+                  aria-label={`${label}: fecha às`}
+                  className="min-w-0 flex-1 sm:flex-none rounded-lg border border-slate-200
+                             dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-sm
+                             outline-none focus:border-blue-500"
                 />
               </div>
             )}
@@ -363,6 +372,11 @@ export default function ConfiguracoesPage() {
         </p>
       </div>
 
+      {/* Serviço externo mal configurado tem que aparecer para quem administra
+          a loja, e não só no console de quem instalou. Sem o envio de fotos
+          nenhum veículo é publicado — o catálogo público nasce vazio. */}
+      <AvisoDeEnvioDeFotos className="mb-6" />
+
       <div className="space-y-6">
 
         {/* ── Identidade da concessionária ─────────────── */}
@@ -379,8 +393,8 @@ export default function ConfiguracoesPage() {
                 <div className="relative">
                   <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input className={`${input} pl-9`} value={tenantForm.primaryPhone}
-                         onChange={e => setT('primaryPhone', e.target.value)}
-                         placeholder="(11) 99999-9999" />
+                         onChange={e => setT('primaryPhone', mascararTelefoneBr(e.target.value))}
+                         placeholder="(11) 3000-0000 ou (11) 99999-9999" />
                 </div>
               </Field>
             </div>
@@ -569,7 +583,9 @@ export default function ConfiguracoesPage() {
                 </Field>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              {/* Três colunas a 375 px davam ~90 px por campo: "30140-071"
+                  aparecia como "301400" e "Belo Horizonte" como "Belo Ho". */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 <div className="col-span-1">
                   <Field label="CEP">
                     <input className={input} value={branchForm.postalCode}
@@ -584,7 +600,7 @@ export default function ConfiguracoesPage() {
                            placeholder="São Paulo" />
                   </Field>
                 </div>
-                <div className="col-span-1">
+                <div className="col-span-2 sm:col-span-1">
                   <Field label="Estado (UF)">
                     <input className={input} value={branchForm.state}
                            onChange={e => setB('state', e.target.value.toUpperCase())}

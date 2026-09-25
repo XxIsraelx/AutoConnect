@@ -75,6 +75,58 @@ export function telefoneBrValido(bruto: string | null | undefined): boolean {
   return normalizarTelefoneBr(bruto) !== null;
 }
 
+/**
+ * Máscara **progressiva**, para o `onChange` de um campo de telefone.
+ *
+ * Diferente de `formatarTelefoneBr`: esta aceita número incompleto, porque roda
+ * a cada tecla. E diferente do que havia em `SignupContent` e em `cadastrar`,
+ * que agrupavam sempre 5+4 — o formato do celular — e portanto quebravam o
+ * fixo: `3132718080` virava **`(31) 32718-080`**, gravado assim no banco e
+ * exibido assim na página pública da loja no primeiro dia. Com dez dígitos o
+ * agrupamento é 4+4; só o décimo primeiro move o corte.
+ */
+export function mascararTelefoneBr(bruto: string | null | undefined): string {
+  const digitos = (bruto ?? '').replace(/\D/g, '').slice(0, 11);
+  if (digitos.length === 0) return '';
+  if (digitos.length <= 2) return `(${digitos}`;
+
+  const ddd = digitos.slice(0, 2);
+  const assinante = digitos.slice(2);
+  if (assinante.length <= 4) return `(${ddd}) ${assinante}`;
+
+  const corte = digitos.length === 11 ? 5 : 4;
+  return `(${ddd}) ${assinante.slice(0, corte)}-${assinante.slice(corte)}`;
+}
+
+/**
+ * É um celular? (onze dígitos canônicos, começando por 9 depois do DDD)
+ *
+ * Existe para a escolha do número do WhatsApp. A vitrine e o catálogo montavam
+ * `wa.me/55<telefone da loja>` com o telefone **comercial**, que numa revenda é
+ * quase sempre um fixo — e o botão levava a lugar nenhum. Não há campo de
+ * WhatsApp separado; até haver, a regra é: só oferece o botão quem informou um
+ * celular.
+ */
+export function ehCelularBr(bruto: string | null | undefined): boolean {
+  const canonico = normalizarTelefoneBr(bruto);
+  return !!canonico && canonico.length === 11 && canonico[2] === '9';
+}
+
+/**
+ * O primeiro número da lista que serve para WhatsApp, no formato do `wa.me`.
+ *
+ * `null` quando nenhum é celular — e aí o botão **não** é renderizado, que é
+ * melhor que um link que abre uma conversa inexistente.
+ */
+export function escolherWhatsApp(
+  ...candidatos: (string | null | undefined)[]
+): string | null {
+  for (const c of candidatos) {
+    if (ehCelularBr(c)) return paraWhatsApp(c);
+  }
+  return null;
+}
+
 /** `11987654321` → `(11) 98765-4321`. Só para exibição. */
 export function formatarTelefoneBr(bruto: string | null | undefined): string {
   const canonico = normalizarTelefoneBr(bruto);

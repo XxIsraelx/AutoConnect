@@ -11,6 +11,12 @@ import {
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
 import { textoDoErro } from '@/components/ErroAoCarregar';
+import {
+  ENVIO_DE_FOTOS_CONFIGURADO,
+  avisarSeNaoConfigurada,
+  enviarFotoDeVeiculo,
+} from '@/lib/uploadDeFotos';
+import AvisoDeEnvioDeFotos from '@/components/AvisoDeEnvioDeFotos';
 
 /* ── Tipos ───────────────────────────────────────────────── */
 interface Brand { id: string; name: string }
@@ -25,23 +31,11 @@ interface FipeEstimate {
 interface Model { id: string; name: string; category: string | null }
 interface UploadedImage { url: string; uploading?: boolean; name: string }
 
-/* ── Cloudinary ──────────────────────────────────────────── */
-const CLOUD_NAME    = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ?? '';
-const UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? '';
-
-async function uploadToCloudinary(file: File): Promise<string> {
-  const form = new FormData();
-  form.append('file', file);
-  form.append('upload_preset', UPLOAD_PRESET);
-  form.append('folder', 'autoconnect/vehicles');
-  const res = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
-    { method: 'POST', body: form },
-  );
-  if (!res.ok) throw new Error('Falha no upload da imagem');
-  const data = await res.json() as { secure_url: string };
-  return data.secure_url;
-}
+/**
+ * Teto de fotos por veículo. Uma constante só porque a tela dizia "Até 12
+ * imagens" e a de edição, "máx. 10 fotos" — dois números para a mesma regra.
+ */
+const MAX_IMAGENS = 12;
 
 /* ── Helpers ─────────────────────────────────────────────── */
 function brl(value: string): string {
@@ -344,6 +338,12 @@ export default function NewVehiclePage() {
   // existe — duplicando o catálogo global. Por isso a falha aparece no passo 1.
   const [erroCatalogo, setErroCatalogo] = useState<string | null>(null);
   const [tentativaCatalogo, setTentativaCatalogo] = useState(0);
+
+  // Deixa a ausência registrada no console do navegador, como o
+  // `DocumentosStorage` faz no boot da API. A faixa na etapa de fotos é para o
+  // lojista; isto é para quem instalou.
+  useEffect(() => { avisarSeNaoConfigurada(); }, []);
+
   useEffect(() => {
     setErroCatalogo(null);
     api<Brand[]>('/catalog/brands').then(setBrands)
@@ -416,17 +416,21 @@ export default function NewVehiclePage() {
 
   /* upload de imagens */
   async function handleFiles(files: FileList | File[]) {
-    const arr = Array.from(files).slice(0, 12 - images.length);
+    const arr = Array.from(files).slice(0, MAX_IMAGENS - images.length);
     for (const file of arr) {
       const placeholder: UploadedImage = { url: '', uploading: true, name: file.name };
       setImages((prev) => [...prev, placeholder]);
       try {
-        const url = await uploadToCloudinary(file);
+        const url = await enviarFotoDeVeiculo(file);
         setImages((prev) => prev.map((im) =>
           im === placeholder ? { url, name: file.name } : im));
-      } catch {
+      } catch (e) {
         setImages((prev) => prev.filter((im) => im !== placeholder));
-        setError('Falha ao enviar uma das imagens.');
+        // A causa vem do erro, não de um texto fixo: "Falha ao enviar uma das
+        // imagens" era a mesma frase para ambiente sem integração, preset
+        // errado e arquivo grande demais — e só a primeira não tem conserto do
+        // lado de quem está usando a tela.
+        setError(textoDoErro(e));
       }
     }
   }
@@ -724,20 +728,29 @@ export default function NewVehiclePage() {
       {/* ── PASSO 4: Fotos ── */}
       {step === 4 && (
         <div className="space-y-5">
+          <AvisoDeEnvioDeFotos />
+
           <div
-            onClick={() => fileRef.current?.click()}
+            onClick={() => ENVIO_DE_FOTOS_CONFIGURADO && fileRef.current?.click()}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
-            className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl
-                       p-8 text-center cursor-pointer hover:border-blue-400 transition-colors"
+            aria-disabled={!ENVIO_DE_FOTOS_CONFIGURADO}
+            className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors
+                       ${ENVIO_DE_FOTOS_CONFIGURADO
+                          ? 'border-slate-300 dark:border-slate-700 cursor-pointer hover:border-blue-400'
+                          : 'border-slate-200 dark:border-slate-800 opacity-60 cursor-not-allowed'}`}
           >
             <input ref={fileRef} type="file" accept="image/*" multiple hidden
               onChange={(e) => e.target.files && handleFiles(e.target.files)} />
             <Upload size={28} className="mx-auto text-slate-400 mb-2" />
             <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
-              Arraste as fotos aqui ou clique para selecionar
+              {ENVIO_DE_FOTOS_CONFIGURADO
+                ? 'Arraste as fotos aqui ou clique para selecionar'
+                : 'Envio de fotos desligado neste ambiente'}
             </p>
-            <p className="text-xs text-slate-400 mt-1">Até 12 imagens · a 1ª será a capa</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Até {MAX_IMAGENS} imagens · a 1ª será a capa
+            </p>
           </div>
 
           {images.length > 0 && (

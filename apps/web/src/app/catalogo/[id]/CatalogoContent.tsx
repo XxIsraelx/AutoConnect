@@ -22,6 +22,7 @@ import type {
   VehiclesPage, PublicBrand,
 } from '../../../app/buscar/types';
 import SeloProcedencia from './SeloProcedencia';
+import { escolherWhatsApp, formatarTelefoneBr } from '@autoconnect/shared';
 
 /* ── Helpers ─────────────────────────────────────────────── */
 
@@ -37,10 +38,6 @@ function formatPrice(v: string | number | null | undefined) {
 function formatKm(km: number) {
   if (km === 0) return '0 km';
   return `${new Intl.NumberFormat('pt-BR').format(km)} km`;
-}
-
-function formatPhone(phone: string) {
-  return phone.replace(/\D/g, '');
 }
 
 const condMap: Record<string, { label: string; cls: string }> = {
@@ -478,16 +475,16 @@ function VehicleDrawer({
 
   const imgs = vehicle?.images ?? [];
 
-  // WhatsApp link
-  const waPhone = vehicle
-    ? (dealerPhone ? formatPhone(dealerPhone) : null)
-    : null;
+  // WhatsApp: só com celular. O telefone da loja costuma ser fixo, e o botão
+  // apontava para ele — abria uma conversa que não existe. Sem celular, o
+  // botão simplesmente não é renderizado.
+  const waPhone = vehicle ? escolherWhatsApp(dealerPhone) : null;
   const waText = vehicle
     ? encodeURIComponent(
         `Olá! Tenho interesse no veículo: ${vehicle.brand.name} ${vehicle.model.name} ${vehicle.versionName ?? ''} ${vehicle.yearModel}. Poderia me dar mais informações?`
       )
     : '';
-  const waUrl = waPhone ? `https://wa.me/55${waPhone}?text=${waText}` : null;
+  const waUrl = waPhone ? `https://wa.me/${waPhone}?text=${waText}` : null;
 
   return (
     <>
@@ -1032,6 +1029,41 @@ export default function CatalogoContent() {
   }
 
 
+  /**
+   * Loja que não existe: a página inteira vira "não encontrado".
+   *
+   * Antes ela quebrava no servidor ("Application error"). Consertado o
+   * `generateMetadata`, o cliente passou a ver o cabeçalho da loja com "??" no
+   * lugar do nome, um "Como chegar" que aponta para lugar nenhum e uma lista
+   * vazia — uma casca de loja que não existe. Um link velho compartilhado no
+   * WhatsApp merece a resposta direta.
+   */
+  if (!loadingDealer && !dealer && erroDealer instanceof ApiError && erroDealer.status === 404) {
+    return (
+      <div className="min-h-screen sup-base txt-forte">
+        <header className="sticky top-0 z-30 sup-base/95 border-b borda backdrop-blur-md">
+          <div className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-3">
+            <Link
+              href="/buscar"
+              className="flex items-center gap-1.5 text-sm txt-fraco hover:txt-forte
+                         transition-colors font-medium group"
+            >
+              <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
+              Voltar ao mapa
+            </Link>
+          </div>
+        </header>
+        <div className="max-w-6xl mx-auto px-4">
+          <ErroAoCarregar
+            erro={erroDealer}
+            onTentarNovamente={() => setTentativaDealer(n => n + 1)}
+            contexto="a concessionária"
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen sup-base txt-forte">
 
@@ -1072,7 +1104,7 @@ export default function CatalogoContent() {
             <a href={`tel:${branch.phone}`}
                className="hidden sm:flex items-center gap-1.5 text-xs txt-fraco
                           hover:txt-forte transition-colors font-medium">
-              <Phone size={13} /> {branch.phone}
+              <Phone size={13} /> {formatarTelefoneBr(branch.phone)}
             </a>
           )}
           {dealer?.websiteUrl && (
@@ -1121,7 +1153,7 @@ export default function CatalogoContent() {
                     <>
                       <span className="txt-tenue">·</span>
                       <a href={`tel:${branch.phone}`} className="hover:text-blue-400 transition-colors flex items-center gap-1">
-                        <Phone size={12} />{branch.phone}
+                        <Phone size={12} />{formatarTelefoneBr(branch.phone)}
                       </a>
                     </>
                   )}

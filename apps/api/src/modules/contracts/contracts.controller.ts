@@ -16,13 +16,13 @@ const OPERA = ['salesperson', 'manager', 'tenant_admin', 'super_admin'];
 /** Anular contrato emitido é decisão de gerência, não do vendedor. */
 const ANULA = ['manager', 'tenant_admin', 'super_admin'];
 
-const assinarSchema = z.object({
+export const assinarSchema = z.object({
   role: z.enum(['customer', 'dealer']),
   signerName: z.string().min(3).max(160),
   signerDocument: z.string().max(20).optional(),
 });
 
-const anularSchema = z.object({ reason: z.string().min(5).max(500) });
+export const anularSchema = z.object({ reason: z.string().min(5).max(500) });
 
 @Controller()
 @UseGuards(RolesGuard)

@@ -24,7 +24,7 @@ const enviarSchema = z.object({
 
 const cancelarSchema = z.object({ motivo: z.string().min(3).max(300).optional() });
 
-const simularSchema = z.object({
+export const simularSchema = z.object({
   acao: z.enum(['assinar', 'recusar', 'expirar']),
   papel: z.enum(SIGNER_ROLES).optional(),
 });

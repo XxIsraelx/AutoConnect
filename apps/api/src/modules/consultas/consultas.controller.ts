@@ -19,7 +19,7 @@ interface AuthRequest {
  */
 const CONSULTA = ['manager', 'tenant_admin', 'super_admin'];
 
-const consultarSchema = z
+export const consultarSchema = z
   .object({
     plate: z.string().min(7).max(10).optional(),
     vin: z.string().length(17).optional(),

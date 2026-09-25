@@ -113,9 +113,28 @@ resistir aos dois desiste quando o vendedor não consegue entrar.**
 
 ## 3. Bugs
 
+> **Nove foram corrigidos em 25/09/2026** — B1, B2, B4, B5, B6, B9, B10, B12 e
+> B13, mais o teto de fotos do B17. O relatório fica como está: é o registro do
+> que foi encontrado, com a marca de correção em cada item. O que **não** foi
+> mexido, por ser decisão de produto: B3 (CNPJ da BrasilAPI), B7 (`branch_id` do
+> veículo e a contagem do mapa), B8 (coordenada da filial), B11 (chat do lead
+> anônimo), B14 (`?vehicleId` × `?v=`), B15 (catálogo global de marcas sem papel
+> nem Zod), B16 (FIPE escolhendo a variante errada) e o resto do B17.
+
 Ordenados por quanto custam. Os quatro primeiros impedem o uso.
 
 ### B1 — Foto de veículo falha em silêncio sem a Cloudinary, e sem foto não há vitrine
+
+> ✅ **Corrigido em 25/09/2026.** Um módulo só (`apps/web/src/lib/uploadDeFotos.ts`)
+> fala com a Cloudinary — foto de veículo **e** avatar, que tinha a mesma cópia do
+> `fetch`. Ele confere a configuração antes de tentar e distingue "não configurado
+> neste ambiente" de "falhou o envio" (a mensagem da Cloudinary é repetida, para
+> o lojista saber se o problema é a foto dele). A ausência aparece em três
+> lugares: no `next.config.mjs` (build e subida do web, como o `DocumentosStorage`
+> faz no boot da API), no console do navegador e numa faixa em `/configuracoes`,
+> `/veiculos/novo` e `/veiculos/[id]` — **antes** de a pessoa tentar.
+> `servicos-externos-do-web.spec.ts` impede a chamada direta de voltar para dentro
+> de uma página.
 **Gravidade: a mais alta. Trava o produto inteiro num ambiente novo.**
 
 1. Subir o web sem `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` / `..._UPLOAD_PRESET`.
@@ -135,6 +154,13 @@ ausentes: documentos não serão arquivados"* no boot. A Cloudinary, que é mais
 crítica, não diz nada.
 
 ### B2 — `PublicInvitationsController` não está registrado: nenhum convidado entra na equipe
+
+> ✅ **Corrigido em 25/09/2026.** O controller entrou em `controllers:` do
+> `InvitationsModule`. O fluxo inteiro tem e2e (`convite-equipe.e2e-spec.ts`):
+> convidar → aceitar → token expirado → token já usado → token inexistente →
+> corpo inválido. E `controllers-registrados.spec.ts` cruza todo `@Controller(`
+> com os `controllers:` dos módulos, porque controller órfão não é erro de
+> compilação. **Era o único do projeto.**
 **Gravidade: alta. Quebra a formação da equipe.**
 
 1. `/equipe` → "Convidar" → e-mail → o convite aparece em "Convites pendentes".
@@ -173,6 +199,11 @@ social" continua aceso ao lado do campo já preenchido com a razão social. O
 `setForm` direto e pula essa limpeza.
 
 ### B4 — "Horário de funcionamento" nunca é salvo, e a tela diz que salvou
+
+> ✅ **Corrigido em 25/09/2026.** `businessHours` entrou em `createBranchSchema`
+> com forma validada (dia 0–6, `HH:MM`, fechamento depois da abertura — um dia
+> invertido é silenciosamente ignorado pelo cálculo do SLA). O horário salva, o
+> item do onboarding fica verde e o relógio do SLA passa a usar o expediente real.
 **Gravidade: alta. Mente para o usuário e contamina o SLA.**
 
 1. `/configuracoes` → "Horário de funcionamento" → mudar sábado para 17:00.
@@ -198,6 +229,17 @@ Os defaults exibidos na tela pioram o quadro: ela **mostra** 09–18 como se
 estivesse configurado, então o dono nem desconfia.
 
 ### B5 — "Telefone principal" e "Aceitar veículo na troca" também são descartados pelo Zod
+
+> ✅ **Corrigido em 25/09/2026.** Os dois campos entraram no `updateTenantSchema`,
+> e **a classe foi fechada**: os schemas de `/tenant/me` e `/tenant/branch/:id`
+> são `.strict()` — campo desconhecido vira 400 com o nome do campo (o `ZodFilter`
+> passou a traduzir `unrecognized_keys` para `fieldErrors`), em vez de sumir.
+> `corpos-do-web.spec.ts` varre os `api(...)` de escrita do `apps/web`, extrai as
+> chaves de cada corpo e confere contra o schema da rota. Ele achou um **quarto**
+> caso: `PATCH /vehicles/:id` mandava `status` (o `select` "Status *" da tela do
+> veículo) e `updateVehicleSchema` não o tinha — reservar, arquivar ou pôr em
+> manutenção pela tela não funcionava. `sold` continua fora: quem o grava é o
+> faturamento do negócio, junto de `soldAt` e da margem congelada.
 **Gravidade: alta. Desliga a funcionalidade de troca inteira.**
 
 1. `/configuracoes` → ligar "Aceitar veículo na troca" → "Salvar".
@@ -219,6 +261,14 @@ proibidos são **recusados**; nada prova que os campos que a tela **manda** são
 schema correspondente o reconhece pegaria os três de uma vez.
 
 ### B6 — A máscara de telefone estraga o número fixo da loja, no banco
+
+> ✅ **Corrigido em 25/09/2026.** `mascararTelefoneBr` (shared) agrupa 4+4 até dez
+> dígitos e 5+4 no décimo primeiro: `3132718080` → `(31) 3271-8080`. Uma
+> implementação só, usada por `/signup`, `/cadastrar` e `/configuracoes`.
+> O botão de WhatsApp passou por `escolherWhatsApp`, que **só** aceita celular e
+> devolve `null` para fixo — e aí o botão não é renderizado, o que é melhor que
+> um link para uma conversa que não existe. Campo de WhatsApp separado do
+> telefone comercial continua faltando (ver §4).
 **Gravidade: média-alta. O número público da loja sai errado.**
 
 1. `/signup` → etapa Endereço → "Telefone comercial" (cujo *placeholder* é
@@ -258,6 +308,15 @@ Aimorés, aparece em `-19.9227,-43.9451` (Praça Sete, ~1,5 km), e o botão "Com
 chegar" leva o cliente para lá. Duas lojas na mesma cidade caem no mesmo ponto.
 
 ### B9 — O lead de troca é um lead de segunda classe
+
+> ✅ **Corrigido em 25/09/2026.** A conta de dono e relógio saiu de dentro do
+> `LeadsService` para `AtribuicaoDeLead` (módulo CRM), e o formulário de troca
+> passou por ela: rodízio, prazo de primeiro contato, interação `created` na
+> timeline. O telefone virou **obrigatório** e é guardado na forma canônica; o
+> consentimento LGPD entrou no formulário e é gravado por cópia, como no
+> formulário irmão. **Deduplicação continua não se aplicando à troca, de
+> propósito**: quem oferece dois carros fez duas propostas, cada uma com placa,
+> quilometragem e valor próprios.
 **Gravidade: média-alta. É o lead mais valioso de uma revenda.**
 
 Depois de enviar uma proposta de troca pelo catálogo, a linha em `leads`:
@@ -278,6 +337,15 @@ A Onda 1 diz "aplicado nos três caminhos de criação"; a troca é um quarto
 caminho que ficou de fora.
 
 ### B10 — Agendamento público aceita domingo às 18:30, sem vendedor e sem lead
+
+> ✅ **Corrigido em 25/09/2026.** Os horários passaram a sair do `businessHours`
+> da filial (`horariosDoDia`, no shared), e a API refaz a conferência
+> (`dentroDoExpediente`) — tela não valida nada em tempo de execução. Data no
+> passado e loja inexistente também são recusadas. E o agendamento entra no lead
+> **aberto da mesma pessoa** nessa loja, preferindo o do mesmo veículo, herdando
+> dele o vendedor responsável. Marcar pela loja (`POST /appointments/dealer`)
+> **não** passa pela conferência: entrega combinada fora do horário é decisão da
+> loja, não engano do cliente.
 **Gravidade: média.**
 
 1. Catálogo → "Agendar test drive" → escolher **domingo** e **18:30**.
@@ -301,6 +369,11 @@ clientes diretamente pela plataforma"; para o lead que ele mesmo captura, não h
 conversa.
 
 ### B12 — Em 375 px o horário de fechamento fica fora da tela
+
+> ✅ **Corrigido em 25/09/2026.** A linha do expediente passou a quebrar
+> (`flex-wrap`, horários em `basis-full` abaixo de `sm`) e os campos de CEP e
+> cidade ganharam duas colunas em vez de três. Medido a 375 px: 367/367, sem
+> overflow, e os sete horários de fechamento visíveis.
 **Gravidade: média (o dono usa o celular).**
 `/configuracoes`, a 375 px: a seção da filial tem `scrollWidth 501` para
 `clientWidth 301`. Cada linha do expediente mostra o dia, o switch, a hora de
@@ -310,6 +383,13 @@ também aparecem cortados. Mesmo que o campo salvasse (B4), no celular ele não
 seria editável.
 
 ### B13 — `/catalogo/<id>` derruba a página pública com 500 quando o id não é de loja
+
+> ✅ **Corrigido em 25/09/2026.** Os dois lados: `GET /catalog/dealer/:id`,
+> `/catalog/slug/:slug` e `/catalog/vehicles/:id` respondem **404** em vez de 200
+> vazio, e `fetchDealerMeta` faz `await res.json()` (devolver a promessa de dentro
+> do `try` anulava o `catch`). A página inteira vira "Não encontramos esta
+> página", sem o cabeçalho com "??" e sem botão de tentar de novo — 404 não
+> melhora com repetição.
 **Gravidade: média.**
 
 1. Abrir `/catalogo/<qualquer-uuid-que-não-seja-tenant>`.
@@ -374,8 +454,8 @@ cadastro que está certo. (Fiat Argo 2019 funcionou: `fipeReference: 49864`.)
   de R$ 0,00.
 - `/agendamentos` escreve **"Domingo, 27 De Set."** (título em caixa alta
   aplicado a uma data em português).
-- O assistente de cadastro diz **"Até 12 imagens"**; a tela do veículo, **"máx.
-  10 fotos"**.
+- ~~O assistente de cadastro diz **"Até 12 imagens"**; a tela do veículo, **"máx.
+  10 fotos"**.~~ ✅ 25/09/2026 — uma constante só (`MAX_IMAGENS = 12`) nas duas telas.
 - O texto ao lado do interruptor de plantão é **fixo** (`equipe/page.tsx:486`):
   diz *"Desligado, sai do rodízio…"* mesmo para quem está de plantão. O piloto
   anterior anotou "o texto é o mesmo nos dois estados"; é pior — ele **afirma**
@@ -477,7 +557,7 @@ prometer "Criar conta grátis" cinco vezes e passa a ter um formulário honesto 
 porta na cara. Junto, e no mesmo dia: um caminho para criar o **primeiro**
 super admin, porque sem ele um ambiente novo não pode ter nem a primeira loja.
 
-**2ª — Tornar impossível um ambiente sem upload de foto passar despercebido.**
+**2ª — Tornar impossível um ambiente sem upload de foto passar despercebido.** ✅ *(25/09/2026 — B1)*
 Sem a Cloudinary, o produto inteiro para: nada é publicado, nada aparece na
 vitrine, nada chega ao mapa, nenhum lead entra pelo catálogo. E a única pista que
 o usuário recebe é "Falha ao enviar uma das imagens". Uma verificação na
@@ -485,13 +565,13 @@ inicialização do web (ou uma faixa no painel) e uma mensagem que nomeie a caus
 custam meia hora e são a diferença entre "está quebrado" e "falta configurar".
 Vale a mesma disciplina para qualquer serviço externo que o *navegador* chame.
 
-**3ª — Registrar o `PublicInvitationsController` e cobrir o aceite com um e2e.**
+**3ª — Registrar o `PublicInvitationsController` e cobrir o aceite com um e2e.** ✅ *(25/09/2026 — B2)*
 Uma linha de código. Sem ela, o CRM é monousuário — o dono não consegue colocar
 o vendedor dentro do sistema, que é a razão de existir do produto. E o e2e
 importa tanto quanto a correção: a rota nunca foi testada, o que significa que o
 portão verde não protege esse caminho hoje.
 
-**4ª — Fechar o buraco "o Zod descartou e a tela comemorou".**
+**4ª — Fechar o buraco "o Zod descartou e a tela comemorou".** ✅ *(25/09/2026 — B4, B5 e um quarto caso que o teste novo achou sozinho)*
 Três campos de `/configuracoes` se perdem assim (horário, telefone principal,
 aceitar troca) e cada um desliga algo maior: o horário contamina o relógio do
 SLA e trava um item do onboarding para sempre; a troca desliga uma
@@ -502,7 +582,7 @@ que o `apps/web` envia e confira que o schema correspondente os reconhece. É o
 irmão gêmeo da armadilha nº 1 do CLAUDE.md: aqui a tela existe, a rota existe, e
 o que se perde é o dado.
 
-**5ª — Dar dono e relógio a todo lead, e costurar a mesma pessoa.**
+**5ª — Dar dono e relógio a todo lead, e costurar a mesma pessoa.** 🟡 *(25/09/2026 — troca e agendamento feitos; o chat do lead anônimo continua aberto)*
 O funil da Onda 0 funciona muito bem por um caminho só. O lead de troca entra
 órfão, sem prazo e sem consentimento LGPD; o agendamento entra sem vendedor e
 sem vínculo; e o lead anônimo — o que o produto foi construído para capturar —
@@ -512,7 +592,7 @@ a proposta de troca mais valiosa da semana dorme sem responsável e sem alarme.
 Na ordem: rodízio e SLA no lead de troca e no agendamento; consentimento no
 formulário de troca; e o chat aberto para lead sem conta.
 
-**Fora da lista, mas anote:** B6 (a máscara que estraga o telefone fixo) custa
+**Fora da lista, mas anote:** ✅ *(as duas foram feitas em 25/09/2026)* B6 (a máscara que estraga o telefone fixo) custa
 três linhas e evita que o dono veja o próprio número errado na página pública no
 primeiro dia — é pequeno e é exatamente o tipo de erro que faz um lojista de 50
 anos parar de confiar no resto dos números. E B13 (a página pública que devolve

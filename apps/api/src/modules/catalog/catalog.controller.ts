@@ -1,9 +1,12 @@
 import {
-  Body, Controller, Delete, Get, Param,
-  ParseUUIDPipe, Patch, Post, Query, Req,
+  Body, Controller, Delete, Get, NotFoundException, Param,
+  ParseUUIDPipe, Patch, Post, Query, Req, UseGuards,
 } from '@nestjs/common';
 import { CatalogService } from './catalog.service';
 import { Public } from '../../common/decorators/public.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { criarMarcaSchema, criarModeloSchema } from '@autoconnect/shared';
 import { tradeInSchema } from './trade-in.schema';
 
 interface AuthRequest {
@@ -26,26 +29,45 @@ export class CatalogController {
     return this.catalog.findModelsByBrand(id);
   }
 
-  /** POST /catalog/brands — cria nova marca (lojista) */
+  /**
+   * POST /catalog/brands — cria nova marca.
+   *
+   * O catálogo é **global**: o que uma loja cria, todas veem. Por isso a rota
+   * exige papel de equipe e corpo validado — antes, qualquer usuário logado,
+   * inclusive `customer`, escrevia aqui.
+   */
   @Post('brands')
-  createBrand(@Body() body: { name: string }) {
-    return this.catalog.createBrand(body.name);
+  @UseGuards(RolesGuard)
+  @Roles('super_admin', 'tenant_admin', 'manager', 'salesperson')
+  createBrand(@Body() body: unknown) {
+    const { name } = criarMarcaSchema.parse(body);
+    return this.catalog.createBrand(name);
   }
 
-  /** POST /catalog/brands/:id/models — cria novo modelo (lojista) */
+  /** POST /catalog/brands/:id/models — cria novo modelo. Mesma regra da marca. */
   @Post('brands/:id/models')
-  createModel(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { name: string; category?: string },
-  ) {
-    return this.catalog.createModel(id, body.name, body.category);
+  @UseGuards(RolesGuard)
+  @Roles('super_admin', 'tenant_admin', 'manager', 'salesperson')
+  createModel(@Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    const { name, category } = criarModeloSchema.parse(body);
+    return this.catalog.createModel(id, name, category);
   }
 
-  /** GET /catalog/dealer/:tenantId — perfil público da concessionária */
+  /**
+   * GET /catalog/dealer/:tenantId — perfil público da concessionária.
+   *
+   * 404 quando não existe, e não 200 com corpo vazio. A resposta vazia
+   * derrubava a página pública: o `generateMetadata` de `/catalogo/[id]` fazia
+   * `res.json()` sobre `Content-Length: 0` e o `SyntaxError` virava
+   * "Application error: a server-side exception has occurred" — um link velho
+   * compartilhado no WhatsApp virava tela branca para o consumidor.
+   */
   @Public()
   @Get('dealer/:tenantId')
   async findDealer(@Param('tenantId', ParseUUIDPipe) tenantId: string) {
-    return this.catalog.findPublicDealer(tenantId);
+    const dealer = await this.catalog.findPublicDealer(tenantId);
+    if (!dealer) throw new NotFoundException('Concessionária não encontrada');
+    return dealer;
   }
 
   /** POST /catalog/trade-in — cliente oferece um veículo na troca (público) */
@@ -56,11 +78,19 @@ export class CatalogController {
     return this.catalog.createTradeIn(parsed);
   }
 
-  /** GET /catalog/vehicles/:id — detalhe de um veículo */
+  /**
+   * GET /catalog/vehicles/:id — detalhe de um veículo.
+   *
+   * 404 pelo mesmo motivo do perfil da loja: a tela já trata `ApiError` 404
+   * ("veículo não encontrado"), mas recebia 200 com corpo vazio e caía no erro
+   * genérico de JSON malformado.
+   */
   @Public()
   @Get('vehicles/:id')
   async findVehicle(@Param('id', ParseUUIDPipe) id: string) {
-    return this.catalog.findPublicVehicle(id);
+    const veiculo = await this.catalog.findPublicVehicle(id);
+    if (!veiculo) throw new NotFoundException('Veículo não encontrado');
+    return veiculo;
   }
 
   /**
@@ -145,11 +175,13 @@ export class CatalogController {
     return this.catalog.getFavorites(req.user.id);
   }
 
-  /** GET /catalog/slug/:slug — perfil público por slug */
+  /** GET /catalog/slug/:slug — perfil público por slug. 404 pelo mesmo motivo. */
   @Public()
   @Get('slug/:slug')
-  findDealerBySlug(@Param('slug') slug: string): Promise<unknown> {
-    return this.catalog.findPublicDealerBySlug(slug);
+  async findDealerBySlug(@Param('slug') slug: string): Promise<unknown> {
+    const dealer = await this.catalog.findPublicDealerBySlug(slug);
+    if (!dealer) throw new NotFoundException('Concessionária não encontrada');
+    return dealer;
   }
 
   /* ── Vistos recentemente ────────────────────────────── */

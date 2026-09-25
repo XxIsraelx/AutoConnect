@@ -4,6 +4,7 @@ import { CrmService } from './crm.service';
 import { CrmSettingsService } from './crm-settings.service';
 import { RodizioService } from './rodizio.service';
 import { SlaService } from './sla.service';
+import { AtribuicaoDeLead } from './atribuicao.service';
 
 /**
  * Distribuição de leads e prazo de primeiro contato.
@@ -14,7 +15,7 @@ import { SlaService } from './sla.service';
  */
 @Module({
   controllers: [CrmController],
-  providers: [CrmService, CrmSettingsService, RodizioService, SlaService],
-  exports: [CrmSettingsService, RodizioService, SlaService],
+  providers: [CrmService, CrmSettingsService, RodizioService, SlaService, AtribuicaoDeLead],
+  exports: [CrmSettingsService, RodizioService, SlaService, AtribuicaoDeLead],
 })
 export class CrmModule {}

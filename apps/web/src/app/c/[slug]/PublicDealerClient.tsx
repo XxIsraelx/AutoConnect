@@ -15,6 +15,7 @@ import ScheduleModal from '@/components/ScheduleModal';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import TradeInModal from '@/components/TradeInModal';
 import FormularioDeInteresse from '@/components/FormularioDeInteresse';
+import { escolherWhatsApp, formatarTelefoneBr } from '@autoconnect/shared';
 
 /* ── Tipos ─────────────────────────────────────────────── */
 interface Dealer {
@@ -26,6 +27,7 @@ interface Dealer {
     id: string; name: string; city: string; state: string;
     addressLine: string | null; addressNumber: string | null;
     neighborhood: string | null; postalCode: string | null;
+    businessHours?: unknown;
     phone: string | null; email: string | null;
   }[];
 }
@@ -145,6 +147,10 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
   }
 
   const branch = dealer.branches[0];
+  /** O que a loja publica como telefone: o da filial, ou o da concessionária. */
+  const telefoneDaLoja = branch?.phone ?? dealer.primaryPhone ?? null;
+  /** Só um celular serve para WhatsApp — ver `escolherWhatsApp` no shared. */
+  const whatsappDaLoja = escolherWhatsApp(branch?.phone, dealer.primaryPhone);
   const totalPages = Math.ceil(total / limit);
   const brandColor = dealer.brandColor ?? '#2563eb';
 
@@ -180,18 +186,21 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
-              {(branch?.phone ?? dealer.primaryPhone) && (
+              {telefoneDaLoja && (
                 <a
-                  href={`tel:${(branch?.phone ?? dealer.primaryPhone)?.replace(/\D/g, '')}`}
+                  href={`tel:${telefoneDaLoja.replace(/\D/g, '')}`}
                   className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium hover:border-blue-400 transition"
                 >
                   <Phone size={14} />
-                  {branch?.phone ?? dealer.primaryPhone}
+                  {formatarTelefoneBr(telefoneDaLoja)}
                 </a>
               )}
-              {(branch?.phone ?? dealer.primaryPhone) && (
+              {/* Só aparece quando a loja informou um **celular**: o botão
+                  apontava para o telefone comercial, que numa revenda é quase
+                  sempre um fixo, e levava a uma conversa que não existe. */}
+              {whatsappDaLoja && (
                 <a
-                  href={`https://wa.me/55${(branch?.phone ?? dealer.primaryPhone)?.replace(/\D/g, '')}`}
+                  href={`https://wa.me/${whatsappDaLoja}`}
                   target="_blank" rel="noreferrer"
                   className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition"
                 >
@@ -401,7 +410,10 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
         <ScheduleModal
           tenantId={dealer.id}
           dealerName={dealer.tradeName}
-          branches={dealer.branches.map(b => ({ id: b.id, name: b.name, city: b.city, state: b.state }))}
+          branches={dealer.branches.map(b => ({
+            id: b.id, name: b.name, city: b.city, state: b.state,
+            businessHours: b.businessHours,
+          }))}
           onClose={() => setShowSchedule(false)}
         />
       )}

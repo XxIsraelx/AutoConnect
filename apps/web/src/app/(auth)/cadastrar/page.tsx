@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronRight, ChevronLeft, Check, UserX } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { mascararTelefoneBr } from '@autoconnect/shared';
 
 const steps = ['Acesso', 'Dados pessoais', 'Endereço'];
 
@@ -34,13 +35,8 @@ function formatCpf(v: string) {
     .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
 }
 
-function formatPhone(v: string) {
-  return v
-    .replace(/\D/g, '')
-    .slice(0, 11)
-    .replace(/(\d{2})(\d)/, '($1) $2')
-    .replace(/(\d{5})(\d{1,4})$/, '$1-$2');
-}
+/** Mesma máscara do cadastro da loja — a local quebrava telefone fixo. */
+const formatPhone = mascararTelefoneBr;
 
 function formatCep(v: string) {
   return v.replace(/\D/g, '').slice(0, 8).replace(/(\d{5})(\d{1,3})$/, '$1-$2');

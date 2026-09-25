@@ -218,6 +218,47 @@ primeira.
 **Pronto quando:** dá para demonstrar o ciclo inteiro numa reunião de 20 minutos
 e responder "como o lead chega no vendedor certo?" sem constrangimento.
 
+## Bloqueios do primeiro dia — feitos antes da Onda 2 (25/09/2026)
+
+O [piloto do primeiro dia](../produto/piloto-simulado-primeiro-dia.md) encenou
+um dono chegando sozinho num ambiente novo e achou paredes que a Onda 2 não
+cobria. Nenhuma delas é funcionalidade nova: são fios soltos entre o que já
+existe. Foram feitas **antes** da Onda 2 porque cada uma impede o uso.
+
+- **O convite de equipe não podia ser aceito** (B2): o
+  `PublicInvitationsController` existia e não estava montado — 404 em produção,
+  e um CRM em que só o dono entra não é um CRM. Registrado, com e2e do fluxo
+  inteiro e um teste que cruza todo `@Controller(` com os `controllers:` dos
+  módulos.
+- **"O Zod descartou e a tela comemorou"** (B4, B5): `businessHours`,
+  `primaryPhone` e `acceptsTradeIn` sumiam no parse e a tela mostrava "salvo!".
+  Corrigidos os schemas; os corpos de `/tenant/me` e `/tenant/branch/:id` são
+  `.strict()`, e um teste varre os `api(...)` de escrita do `apps/web` conferindo
+  cada campo contra o schema da rota. Ele achou um quarto caso sozinho
+  (`status` do veículo). O horário salvo é o que faz **o relógio da Onda 1 rodar
+  no expediente real da loja**, e não no padrão do shared.
+- **Todo lead tem dono e relógio** (B9): a conta de rodízio e SLA saiu de dentro
+  do `LeadsService` para `AtribuicaoDeLead`, no módulo CRM, e o formulário de
+  troca passou por ela — com consentimento LGPD e telefone canônico. A Onda 1
+  dizia "aplicado nos três caminhos de criação"; a troca era um quarto.
+  Deduplicação continua **não** se aplicando à troca, de propósito.
+- **Agendamento respeita o expediente** (B10): horários vindos do
+  `businessHours` da filial, conferidos de novo na API, e o agendamento entra no
+  lead aberto da mesma pessoa, herdando o vendedor. É o primeiro pedaço do
+  "costurar a mesma pessoa".
+- **Sem a Cloudinary, o produto diz que falta configurar** (B1) — em vez de
+  "Falha ao enviar uma das imagens", que travava a publicação inteira num
+  ambiente novo. E a página pública parou de cair com id inválido (B13), a
+  máscara parou de estragar telefone fixo e o WhatsApp só aparece para celular
+  (B6), e o expediente ficou editável a 375 px (B12).
+
+**Continuam abertos, por serem decisão de produto:** o desalinhamento entre a
+home e o cadastro por convite (veredito 1º do piloto), o catálogo global de
+marcas nascer vazio e sem `@Roles`/Zod na escrita (B15), o `branch_id` que o
+assistente não atribui e zera a contagem do mapa (B7), a coordenada da filial
+(B8), a FIPE escolhendo a variante errada (B16) e **o chat do lead anônimo**
+(B11) — este último é o que falta do 5º item do veredito e pertence à Onda 2.
+
 ## Onda 2 — reordenada pelo piloto simulado (25/09/2026)
 
 O [piloto simulado](../produto/piloto-simulado-operacao.md) encenou uma semana
@@ -362,3 +403,10 @@ Onda 0 e 1 primeiro, porque são baratas e mudam a conversa de venda. A Onda 3
 (cobrança) pode ser antecipada se já houver cliente disposto a pagar — receber
 por fora no primeiro cliente é aceitável, mas não no terceiro. A Onda 2 é a mais
 cara e é o que separa "promissor" de "eu troco meu sistema por isso".
+
+**Os bloqueios do primeiro dia entraram na frente da Onda 2** (25/09/2026), e o
+motivo vale ser lembrado: eles não aparecem numa loja com dados, que é onde os
+dois pilotos anteriores olharam. Aparecem no dia zero, com o cliente sozinho —
+e é o dia zero que decide se existe um segundo dia. Antes de qualquer
+funcionalidade nova da Onda 2, vale repetir o roteiro do primeiro dia contra um
+banco vazio: foi ele que encontrou nove defeitos que o portão verde não pegava.

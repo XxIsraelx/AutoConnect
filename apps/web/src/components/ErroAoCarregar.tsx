@@ -20,6 +20,9 @@ const SUPORTE = 'contato@autoconnect.app';
  *    login não muda nada — quem resolve é o administrador da concessionária.
  *  - 401: a sessão caiu. Entrar de novo resolve, mas com um clique consciente;
  *    redirecionar sozinho parece que o app "expulsou" a pessoa sem explicação.
+ *  - 404: o recurso não existe. "Tentar novamente" não muda nada e ainda
+ *    sugere que é falha passageira — quem chega aqui veio de um link velho
+ *    compartilhado, e precisa ouvir que o item saiu do ar.
  *  - demais: pode ser transitório. Vale tentar de novo, e só então acionar o
  *    suporte do AutoConnect.
  */
@@ -38,12 +41,15 @@ export function ErroAoCarregar({
   const status = erro instanceof ApiError ? erro.status : undefined;
   const semPermissao = status === 403;
   const sessaoExpirada = status === 401;
+  const naoEncontrado = status === 404;
 
   const titulo = semPermissao
     ? 'Acesso não permitido'
     : sessaoExpirada
       ? 'Sua sessão expirou'
-      : `Não foi possível carregar${contexto ? ` ${contexto}` : ''}`;
+      : naoEncontrado
+        ? 'Não encontramos esta página'
+        : `Não foi possível carregar${contexto ? ` ${contexto}` : ''}`;
 
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 px-6 text-center">
@@ -62,7 +68,7 @@ export function ErroAoCarregar({
         <p className="text-xs text-slate-500 mt-1">{textoDoErro(erro)}</p>
       </div>
 
-      {semPermissao ? null : sessaoExpirada ? (
+      {semPermissao || naoEncontrado ? null : sessaoExpirada ? (
         <Link
           href="/login"
           className="mt-1 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm
@@ -104,7 +110,9 @@ export function textoDoErro(err: unknown): string {
     return 'Seu usuário não tem permissão para ver esta área. Peça ao administrador da sua concessionária para revisar seu cargo.';
   }
   if (status === 401) return 'Entre novamente para continuar de onde parou.';
-  if (status === 404) return 'O recurso não foi encontrado no servidor.';
+  if (status === 404) {
+    return 'O link pode estar desatualizado, ou este item saiu do ar.';
+  }
   if (status && status >= 500) return 'O servidor falhou ao responder.';
   if (err instanceof TypeError) return 'Não conseguimos falar com o servidor. Verifique sua conexão.';
   return (err as Error)?.message || 'Erro inesperado ao buscar os dados.';

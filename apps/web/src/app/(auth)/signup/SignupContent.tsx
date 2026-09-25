@@ -9,6 +9,7 @@ import {
   User, MapPin, Lock, Ticket, AlertCircle, Loader2,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { mascararTelefoneBr } from '@autoconnect/shared';
 import { useAuthStore, type AuthUser } from '@/store/auth';
 
 // ─── Utilitários ──────────────────────────────────────────────────────────────
@@ -26,11 +27,14 @@ function fmtCPF(v: string) {
     .replace(/(\d{3})(\d)/, '$1.$2')
     .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
 }
-function fmtPhone(v: string) {
-  return v.replace(/\D/g, '').slice(0, 11)
-    .replace(/(\d{2})(\d)/, '($1) $2')
-    .replace(/(\d{5})(\d{1,4})$/, '$1-$2');
-}
+/**
+ * Máscara de telefone — do `@autoconnect/shared`.
+ *
+ * A implementação local agrupava sempre 5+4 (o formato do celular) e quebrava o
+ * fixo: `3132718080` virava `(31) 32718-080` e era gravado assim. O dono via o
+ * próprio telefone errado na página pública no primeiro dia.
+ */
+const fmtPhone = mascararTelefoneBr;
 function fmtCEP(v: string) {
   return v.replace(/\D/g, '').slice(0, 8)
     .replace(/(\d{5})(\d{1,3})$/, '$1-$2');

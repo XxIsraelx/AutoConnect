@@ -15,6 +15,12 @@ import { EtiquetaDoAnuncio, BotaoDePublicacao } from '@/components/EstadoDoAnunc
 import CustoDoVeiculo from './CustoDoVeiculo';
 import ConsultaVeicular from './ConsultaVeicular';
 import NegocioDoVeiculo from './NegocioDoVeiculo';
+import AvisoDeEnvioDeFotos from '@/components/AvisoDeEnvioDeFotos';
+import {
+  ENVIO_DE_FOTOS_CONFIGURADO,
+  avisarSeNaoConfigurada,
+  enviarFotoDeVeiculo,
+} from '@/lib/uploadDeFotos';
 
 /* ── Tipos ───────────────────────────────────────────────── */
 
@@ -55,25 +61,13 @@ interface VehicleDetail {
   images: VehicleImage[];
 }
 
-/* ── Cloudinary upload ───────────────────────────────────── */
-
-const CLOUD_NAME  = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ?? '';
-const UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? '';
-
-async function uploadToCloudinary(file: File): Promise<string> {
-  const form = new FormData();
-  form.append('file', file);
-  form.append('upload_preset', UPLOAD_PRESET);
-  form.append('folder', 'autoconnect/vehicles');
-
-  const res = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
-    { method: 'POST', body: form },
-  );
-  if (!res.ok) throw new Error('Falha no upload da imagem');
-  const data = await res.json() as { secure_url: string };
-  return data.secure_url;
-}
+/**
+ * Teto de fotos por veículo — o mesmo de `/veiculos/novo`.
+ *
+ * Os dois números divergiam: o assistente dizia "Até 12 imagens" e esta tela,
+ * "máx. 10 fotos".
+ */
+const MAX_IMAGENS = 12;
 
 /* ── ImageManager ────────────────────────────────────────── */
 
@@ -118,6 +112,10 @@ function ImageManager({
 
   useEffect(() => { carregar(); }, [carregar]);
 
+  // Deixa a ausência de configuração no console, como o `DocumentosStorage`
+  // faz no boot da API. A faixa acima da zona de upload é para o lojista.
+  useEffect(() => { avisarSeNaoConfigurada(); }, []);
+
   // Um efeito só, sobre o estado final: avisar dentro de cada handler daria
   // uma contagem por caminho, e o de upload roda em laço.
   useEffect(() => {
@@ -128,13 +126,13 @@ function ImageManager({
     if (!token) return;
     setUploading(true);
     setError(null);
-    const fileArr = Array.from(files).slice(0, 10 - images.length);
+    const fileArr = Array.from(files).slice(0, MAX_IMAGENS - images.length);
     const newNames = fileArr.map(f => f.name);
     setUploadProgress(newNames);
 
     for (const file of fileArr) {
       try {
-        const url = await uploadToCloudinary(file);
+        const url = await enviarFotoDeVeiculo(file);
         const isFirst = images.length === 0;
         const img = await api<VehicleImage>(`/vehicles/${vehicleId}/images`, {
           method: 'POST',
@@ -147,7 +145,9 @@ function ImageManager({
           return next;
         });
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Erro ao fazer upload');
+        // A causa vem do erro: "Falha no upload da imagem" era a mesma frase
+        // para ambiente sem integração, preset errado e arquivo recusado.
+        setError(textoDoErro(e));
       }
     }
     setUploading(false);
@@ -258,8 +258,10 @@ function ImageManager({
             </div>
           )}
 
+          <AvisoDeEnvioDeFotos className="mb-3" />
+
           {/* Upload zone */}
-          {images.length < 10 && (
+          {images.length < MAX_IMAGENS && ENVIO_DE_FOTOS_CONFIGURADO && (
             <div
               onDrop={handleDrop}
               onDragOver={e => e.preventDefault()}
@@ -276,7 +278,7 @@ function ImageManager({
                     {uploading ? 'Enviando…' : 'Clique ou arraste fotos aqui'}
                   </p>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    JPG, PNG, WebP — máx. 10 fotos ({10 - images.length} restante{10 - images.length !== 1 ? 's' : ''})
+                    JPG, PNG, WebP — máx. {MAX_IMAGENS} fotos ({MAX_IMAGENS - images.length} restante{MAX_IMAGENS - images.length !== 1 ? 's' : ''})
                   </p>
                 </div>
               </div>
@@ -479,7 +481,11 @@ export default function EditVehiclePage() {
           yearModel: Number(form.yearModel), yearMake: Number(form.yearMake),
           color: form.color || undefined, mileageKm: Number(form.mileageKm),
           fuel: form.fuel || undefined, transmission: form.transmission || undefined,
-          condition: form.condition, status: form.status,
+          condition: form.condition,
+          // `sold` não vai: é o faturamento do negócio que o grava, e a API
+          // recusa. Reenviá-lo ao salvar qualquer outro campo de um carro já
+          // vendido derrubaria o formulário inteiro.
+          status: form.status === 'sold' ? undefined : form.status,
           price: Number(form.price),
           promoPrice: form.promoPrice ? Number(form.promoPrice) : undefined,
           description: form.description || undefined,
@@ -674,10 +680,22 @@ export default function EditVehiclePage() {
                 className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-accent">
                 <option value="available">Disponível</option>
                 <option value="reserved">Reservado</option>
-                <option value="sold">Vendido</option>
                 <option value="in_maintenance">Em manutenção</option>
                 <option value="archived">Arquivado</option>
+                {/* "Vendido" só aparece quando já é o estado do carro, e
+                    desabilitado: quem marca vendido é o faturamento do negócio,
+                    que grava a data da venda e congela a margem. Escolher aqui
+                    produziria um carro vendido sem negócio e sem margem. */}
+                {form.status === 'sold' && (
+                  <option value="sold" disabled>Vendido (pelo negócio)</option>
+                )}
               </select>
+              {form.status === 'sold' && (
+                <p className="text-xs text-slate-500 mt-1">
+                  Este carro foi vendido em um negócio. Para devolvê-lo ao estoque,
+                  distrate o negócio.
+                </p>
+              )}
             </div>
           </div>
         </section>

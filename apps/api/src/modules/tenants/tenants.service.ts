@@ -3,6 +3,7 @@ import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.ser
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
 import { ehGlobal, type Escopo } from '../../common/escopo';
 import { Prisma } from '@autoconnect/db';
+import type { UpdateBranchInput, UpdateTenantInput } from '@autoconnect/shared';
 
 /* ── Haversine distance (km) ─────────────────────────────── */
 function haversine(
@@ -268,21 +269,7 @@ export class TenantsService {
   }
 
   /** Atualiza dados do tenant */
-  async updateTenant(
-    tenantId: string,
-    data: {
-      tradeName?: string;
-      primaryPhone?: string;
-      logoUrl?: string;
-      brandColor?: string;
-      websiteUrl?: string;
-      acceptsTradeIn?: boolean;
-      legalRepName?: string;
-      legalRepCpf?: string;
-      legalRepRole?: string;
-      legalRepEmail?: string;
-    },
-  ): Promise<unknown> {
+  async updateTenant(tenantId: string, data: UpdateTenantInput): Promise<unknown> {
     return this.prisma.withTenant(tenantId, (tx) =>
       tx.tenant.update({
         where: { id: tenantId },
@@ -501,20 +488,12 @@ export class TenantsService {
   async updateBranch(
     tenantId: string,
     branchId: string,
-    data: {
-      name?: string;
-      phone?: string;
-      email?: string;
-      addressLine?: string;
-      addressNumber?: string;
-      complement?: string;
-      neighborhood?: string;
-      city?: string;
-      state?: string;
-      postalCode?: string;
-      businessHours?: Prisma.InputJsonValue;
-    },
+    data: UpdateBranchInput,
   ): Promise<unknown> {
+    // `businessHours` sai do Zod como objeto tipado e entra no Prisma como
+    // Json. A conversão é explícita para que trocar a forma do expediente no
+    // shared quebre aqui, e não em silêncio no banco.
+    const { businessHours, ...resto } = data;
     return this.prisma.withTenant(tenantId, async (tx) => {
       const branch = await tx.dealershipBranch.findFirst({
         where: { id: branchId, tenantId },
@@ -523,7 +502,10 @@ export class TenantsService {
 
       return tx.dealershipBranch.update({
         where: { id: branchId },
-        data,
+        data: {
+          ...resto,
+          ...(businessHours ? { businessHours: businessHours as Prisma.InputJsonValue } : {}),
+        },
       });
     });
   }

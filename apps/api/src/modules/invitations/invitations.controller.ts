@@ -16,7 +16,7 @@ import { CurrentUser, TenantId } from '../../common/decorators/current-user.deco
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Public } from '../../common/decorators/public.decorator';
 
-const acceptInviteSchema = z.object({
+export const acceptInviteSchema = z.object({
   token: z.string().min(10),
   fullName: z.string().min(2).max(200),
   password: z.string().min(8).max(128),

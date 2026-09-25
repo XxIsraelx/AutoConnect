@@ -4,6 +4,34 @@ import { LISTING_STATUSES } from '../domain/anuncio';
 /** Espelha `VehicleCondition` do Prisma — a paridade é verificada em vehicle.spec.ts. */
 export const VEHICLE_CONDITIONS = ['new', 'used', 'semi_new', 'demo'] as const;
 
+/** Espelha `VehicleStatus` do Prisma. Paridade em `paridade-enums.spec.ts`. */
+export const VEHICLE_STATUSES = [
+  'available',
+  'reserved',
+  'sold',
+  'in_maintenance',
+  'archived',
+] as const;
+
+/**
+ * Os estados que a tela do veículo pode gravar à mão.
+ *
+ * `sold` fica **de fora**: quem marca vendido é o faturamento do negócio
+ * (`deal-state.service.ts`), que na mesma transação grava `soldAt`, congela o
+ * custo e calcula a margem. Um PATCH marcando "vendido" produziria um carro
+ * vendido sem data, sem negócio e sem margem — o número que o dono usa para
+ * decidir preço.
+ *
+ * O `select` da tela recusa por conta própria; esta lista é o que faz a recusa
+ * valer também para quem chama a rota direto.
+ */
+export const VEHICLE_STATUSES_MANUAIS = [
+  'available',
+  'reserved',
+  'in_maintenance',
+  'archived',
+] as const;
+
 export const createVehicleSchema = z.object({
   branchId: z.string().uuid().optional(),
   brandId: z.string().uuid(),
@@ -35,7 +63,25 @@ export const createVehicleSchema = z.object({
 });
 export type CreateVehicleInput = z.infer<typeof createVehicleSchema>;
 
-export const updateVehicleSchema = createVehicleSchema.partial();
+/**
+ * `status` só existe aqui, não na criação: todo veículo nasce `available`.
+ *
+ * Faltava nos dois, e a tela de edição do veículo mandava o campo — com um
+ * `select` obrigatório, rotulado "Status *". O Zod descartava em silêncio e o
+ * lojista não conseguia reservar nem arquivar carro nenhum pela tela que existe
+ * para isso. Mesmo defeito de `businessHours`, achado pelo teste que varre os
+ * corpos do `apps/web`.
+ */
+export const updateVehicleSchema = createVehicleSchema.partial().extend({
+  status: z
+    .enum(VEHICLE_STATUSES_MANUAIS, {
+      errorMap: () => ({
+        message:
+          'Estado inválido. "Vendido" é gravado ao faturar o negócio, não por aqui.',
+      }),
+    })
+    .optional(),
+});
 export type UpdateVehicleInput = z.infer<typeof updateVehicleSchema>;
 
 export const vehicleQuerySchema = z.object({
@@ -63,3 +109,22 @@ export const vehicleQuerySchema = z.object({
   perPage: z.coerce.number().min(1).max(100).default(20),
 });
 export type VehicleQuery = z.infer<typeof vehicleQuerySchema>;
+
+/**
+ * Marca e modelo do catálogo **global**, compartilhado por todas as lojas.
+ *
+ * Até 25/09/2026 as duas rotas de escrita não tinham papel exigido nem Zod: um
+ * cliente final logado inseria no catálogo que todas as concessionárias veem.
+ * O piloto do primeiro dia achou isso ao cadastrar o primeiro veículo, porque
+ * o catálogo nasce vazio e a loja precisa digitar a marca à mão.
+ */
+export const criarMarcaSchema = z
+  .object({ name: z.string().trim().min(2, 'Informe o nome da marca').max(60) })
+  .strict();
+
+export const criarModeloSchema = z
+  .object({
+    name: z.string().trim().min(1, 'Informe o nome do modelo').max(80),
+    category: z.string().trim().max(40).optional(),
+  })
+  .strict();

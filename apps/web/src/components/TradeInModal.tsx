@@ -6,9 +6,25 @@
    Não exige login (vira lead com dados de contato). */
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { X, Repeat, Check, Loader2, AlertCircle, Car } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
+import { textoDoErro } from '@/components/ErroAoCarregar';
 import { useAuthStore } from '@/store/auth';
+
+/**
+ * O texto exibido no aceite. É gravado junto do lead, **por cópia**: quando
+ * esta frase mudar, os consentimentos antigos continuam guardando o termo que
+ * a pessoa de fato leu. Alterar a frase aqui é publicar uma versão nova.
+ *
+ * A troca coleta nome, e-mail, telefone e **placa** — e entrava sem registro de
+ * consentimento nenhum, enquanto o formulário irmão na mesma página exigia
+ * aceite explícito.
+ */
+export const TEXTO_DE_CONSENTIMENTO_DA_TROCA =
+  'Autorizo o contato desta concessionária por telefone, WhatsApp ou e-mail sobre ' +
+  'a avaliação do meu veículo e o tratamento dos meus dados para esse fim, ' +
+  'conforme a Política de Privacidade.';
 
 export interface TradeInDesired {
   id: string;
@@ -46,9 +62,11 @@ export default function TradeInModal({ tenantId, dealerName, desired, onClose }:
     expectedValue: '', notes: '',
     contactName: user?.fullName ?? '', contactEmail: user?.email ?? '', contactPhone: '',
   });
+  const [consentimento, setConsentimento] = useState(false);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errosDeCampo, setErrosDeCampo] = useState<Record<string, string>>({});
 
   function set<K extends keyof typeof f>(k: K, v: (typeof f)[K]) {
     setF((prev) => ({ ...prev, [k]: v }));
@@ -60,6 +78,7 @@ export default function TradeInModal({ tenantId, dealerName, desired, onClose }:
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setErrosDeCampo({});
 
     const yearMake = Number(f.yearMake);
     const yearModel = Number(f.yearModel);
@@ -69,6 +88,10 @@ export default function TradeInModal({ tenantId, dealerName, desired, onClose }:
     if (!Number.isInteger(yearMake) || yearMake < 1950 || yearMake > THIS_YEAR + 1) { setError('Ano de fabricação inválido.'); return; }
     if (!Number.isInteger(mileageKm) || mileageKm < 0) { setError('Quilometragem inválida.'); return; }
     if (!f.contactName.trim() || !f.contactEmail.trim()) { setError('Informe seu nome e e-mail para contato.'); return; }
+    // Obrigatório: é por ele que a loja liga para dar o valor da avaliação, e é
+    // dele que sai o telefone canônico guardado no lead.
+    if (!f.contactPhone.trim()) { setError('Informe seu telefone para a loja retornar a avaliação.'); return; }
+    if (!consentimento) { setError('É preciso aceitar o uso dos seus dados para a loja avaliar seu carro.'); return; }
 
     setSending(true);
     try {
@@ -79,9 +102,11 @@ export default function TradeInModal({ tenantId, dealerName, desired, onClose }:
           desiredVehicleId: desired?.id,
           contactName: f.contactName.trim(),
           contactEmail: f.contactEmail.trim(),
-          contactPhone: f.contactPhone.trim() || undefined,
+          contactPhone: f.contactPhone.trim(),
           expectedValue: f.expectedValue ? Number(f.expectedValue) : undefined,
           message: f.notes.trim() || undefined,
+          consentimento,
+          consentText: TEXTO_DE_CONSENTIMENTO_DA_TROCA,
           vehicle: {
             brandName: f.brandName.trim(),
             modelName: f.modelName.trim(),
@@ -99,7 +124,14 @@ export default function TradeInModal({ tenantId, dealerName, desired, onClose }:
       });
       setSent(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao enviar proposta. Tente novamente.');
+      // `fieldErrors` vem do ZodFilter: marca o campo errado em vez de exibir
+      // "Validation failed" solto no rodapé.
+      if (err instanceof ApiError && err.fieldErrors.length > 0) {
+        setErrosDeCampo(Object.fromEntries(err.fieldErrors.map((c) => [c.field, c.message])));
+        setError('Confira os campos destacados.');
+      } else {
+        setError(textoDoErro(err));
+      }
     } finally {
       setSending(false);
     }
@@ -204,9 +236,36 @@ export default function TradeInModal({ tenantId, dealerName, desired, onClose }:
         <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider pt-1">Seu contato</p>
         <div className="grid grid-cols-2 gap-2.5">
           <input className={inputCls} placeholder="Nome *" value={f.contactName} onChange={(e) => set('contactName', e.target.value)} />
-          <input className={inputCls} placeholder="Telefone" value={f.contactPhone} onChange={(e) => set('contactPhone', e.target.value)} />
+          <div>
+            <input className={inputCls} placeholder="Telefone *" value={f.contactPhone} onChange={(e) => set('contactPhone', e.target.value)} />
+            {errosDeCampo.contactPhone && (
+              <p className="text-[11px] text-rose-500 mt-1">{errosDeCampo.contactPhone}</p>
+            )}
+          </div>
         </div>
         <input className={inputCls} type="email" placeholder="E-mail *" value={f.contactEmail} onChange={(e) => set('contactEmail', e.target.value)} />
+
+        <div>
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={consentimento}
+              onChange={(e) => setConsentimento(e.target.checked)}
+              className="mt-0.5 w-4 h-4 shrink-0 rounded border-slate-300 dark:border-slate-600
+                         text-emerald-600 focus:ring-2 focus:ring-emerald-500/30"
+            />
+            <span className="text-[11px] leading-relaxed txt-fraco">
+              {TEXTO_DE_CONSENTIMENTO_DA_TROCA.replace(' conforme a Política de Privacidade.', '')} conforme a{' '}
+              <Link href="/privacidade" target="_blank" className="text-emerald-500 hover:underline font-medium">
+                Política de Privacidade
+              </Link>
+              .
+            </span>
+          </label>
+          {errosDeCampo.consentimento && (
+            <p className="text-[11px] text-rose-500 mt-1">{errosDeCampo.consentimento}</p>
+          )}
+        </div>
 
         {error && (
           <div className="flex items-center gap-2 text-rose-400 text-xs bg-rose-500/10 rounded-xl px-3 py-2">

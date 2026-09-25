@@ -3,6 +3,8 @@ import { Prisma } from '@autoconnect/db';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { EmailService } from '../../common/email/email.service';
 import { FipeService } from '../fipe/fipe.service';
+import { normalizarTelefoneBr } from '@autoconnect/shared';
+import { AtribuicaoDeLead } from '../crm/atribuicao.service';
 import type { TradeInInput } from './trade-in.schema';
 
 /**
@@ -30,6 +32,11 @@ export class CatalogService {
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
     private readonly fipe: FipeService,
+    /**
+     * Dono e relógio do lead — o mesmo serviço que o formulário de interesse e
+     * o cadastro manual usam. É o que tira o lead de troca da segunda classe.
+     */
+    private readonly atribuicao: AtribuicaoDeLead,
   ) {}
 
   findBrands() {
@@ -111,6 +118,10 @@ export class CatalogService {
             email: true,
             latitude: true,
             longitude: true,
+            // O modal de agendamento precisa dele para só oferecer horário em
+            // que a loja abre — sem isso a tela oferecia 08:00–18:30 todo dia,
+            // inclusive domingo.
+            businessHours: true,
           },
         },
       },
@@ -449,6 +460,7 @@ export class CatalogService {
             addressLine: true, addressNumber: true, neighborhood: true, postalCode: true,
             phone: true, email: true,
             latitude: true, longitude: true,
+            businessHours: true,
           },
         },
       },
@@ -565,21 +577,56 @@ export class CatalogService {
       appraisal: { status: 'pending' as const },
     };
 
-    await this.prisma.withTenant(input.tenantId, (tx) =>
-      tx.lead.create({
-      data: {
-        tenantId: input.tenantId,
-        vehicleId: input.desiredVehicleId ?? null,
-        contactName: input.contactName,
-        contactEmail: input.contactEmail,
-        contactPhone: input.contactPhone ?? null,
-        source: 'trade_in',
-        status: 'new',
-        message: input.message ?? null,
-        metadata: { tradeIn: tradeInMeta } as Prisma.InputJsonValue,
-      },
-      }),
-    );
+    /**
+     * O lead de troca entra pelo mesmo caminho dos outros.
+     *
+     * Antes ele nascia sem responsável, sem prazo de primeira resposta, sem
+     * consentimento e sem telefone canônico — um lead de segunda classe
+     * justamente no pedido mais valioso de uma revenda. Sem prazo ele nunca
+     * estourava, então o gerente nunca era avisado de que estava sendo
+     * ignorado.
+     *
+     * **Não** passa pela deduplicação, e isso é decisão registrada: quem
+     * oferece dois carros na troca fez duas propostas, cada uma com placa,
+     * quilometragem e valor próprios. Fundi-las num lead só perderia a segunda
+     * avaliação — o oposto do que a deduplicação existe para fazer no
+     * formulário de interesse, onde o segundo envio é a mesma intenção
+     * repetida.
+     */
+    await this.prisma.withTenant(input.tenantId, async (tx) => {
+      const criadoEm = new Date();
+      const distribuicao = await this.atribuicao.distribuirEAgendar(tx, input.tenantId, {
+        criadoEm,
+      });
+
+      const lead = await tx.lead.create({
+        data: {
+          tenantId: input.tenantId,
+          vehicleId: input.desiredVehicleId ?? null,
+          contactName: input.contactName,
+          contactEmail: input.contactEmail,
+          contactPhone: input.contactPhone,
+          contactPhoneNormalized: normalizarTelefoneBr(input.contactPhone),
+          source: 'trade_in',
+          status: 'new',
+          message: input.message ?? null,
+          assignedTo: distribuicao.assignedTo,
+          firstResponseDueAt: distribuicao.firstResponseDueAt,
+          consentedAt: criadoEm,
+          consentText: input.consentText,
+          metadata: { tradeIn: tradeInMeta } as Prisma.InputJsonValue,
+        },
+      });
+
+      await this.atribuicao.registrarNaTimeline(tx, input.tenantId, lead.id, {
+        // Sem ator: não há usuário da loja por trás do envio, e inventar um
+        // atribuiria a alguém o que o visitante fez.
+        actorUserId: null,
+        comoChegou: 'formulário de troca do catálogo',
+        criadoEm,
+        distribuicao,
+      });
+    });
 
     const offered = `${input.vehicle.brandName} ${input.vehicle.modelName} ${input.vehicle.versionName ?? ''} ${input.vehicle.yearModel}`.replace(/\s+/g, ' ').trim();
     const dealerEmail = tenant.branches[0]?.email;

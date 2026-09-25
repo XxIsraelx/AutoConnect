@@ -15,7 +15,13 @@ async function fetchDealerMeta(tenantId: string): Promise<DealerMeta | null> {
   try {
     const res = await fetch(`${API}/catalog/dealer/${tenantId}`, { next: { revalidate: 300 } });
     if (!res.ok) return null;
-    return res.json() as Promise<DealerMeta>;
+    // `await` e não `return res.json()`: devolver a promessa **de dentro** do
+    // `try` faz o `catch` nunca disparar, e o `SyntaxError` de um corpo vazio
+    // subia e matava o `generateMetadata` — "Application error: a server-side
+    // exception has occurred" para qualquer link velho compartilhado. A API
+    // agora responde 404 em vez de 200 vazio; este `await` é o cinto de
+    // segurança do outro lado.
+    return (await res.json()) as DealerMeta;
   } catch {
     // Só alimenta o <title> e a descrição; sem isso cai no título genérico
     // e a página em si (client) carrega e trata o próprio erro.
