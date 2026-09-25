@@ -218,13 +218,39 @@ primeira.
 **Pronto quando:** dá para demonstrar o ciclo inteiro numa reunião de 20 minutos
 e responder "como o lead chega no vendedor certo?" sem constrangimento.
 
-## Onda 2 — o ciclo que o mercado considera obrigatório (≈ 3 a 4 semanas)
+## Onda 2 — reordenada pelo piloto simulado (25/09/2026)
+
+O [piloto simulado](../produto/piloto-simulado-operacao.md) encenou uma semana
+de operação nas telas e **contrariou a ordem que estava escrita aqui**. O
+gargalo não é entrada de lead: é o que acontece com o lead **depois** que ele
+entra, e o dinheiro do negócio. Os três primeiros são dias de trabalho, não
+semanas, e vêm antes de WhatsApp e portais.
+
+12a. **Lead manual completo.** Lead de balcão e de telefone nasce sem veículo e
+     não tem como ganhar um depois (`PATCH /leads/:id` só move status), então
+     não vira negócio. É a porta de entrada do lead que a loja gera sozinha —
+     justamente o que nenhum portal traz. Trazer mais lead de fora antes disso é
+     aumentar uma fila que não converte.
+12b. **Preço negociável no negócio aberto.** Negociar é o que o vendedor faz o
+     dia inteiro e não há onde digitar: o negócio aberto pelo card do lead nasce
+     no preço de tabela e nunca muda. O `updateDealSchema` já aceita `discount` e
+     `saleValue` — falta a tela. Sem isso o funil por valor mostra números que
+     não são os da venda.
+12c. **Uma base só para comissão.** Hoje a mesma pessoa aparece com R$ 147,50
+     numa tela e R$ 1.950,00 em outra. Num piloto real isso não aparece na
+     demonstração: aparece no quinto dia, na conversa sobre pagamento, e depois
+     dele o lojista deixa de acreditar em todos os outros números — inclusive na
+     margem, que está certa.
+
+**Depois, e só depois, o ciclo que o mercado cobra (≈ 3 a 4 semanas):**
+
 
 12. **WhatsApp oficial (API da Meta):** caixa de entrada dentro do sistema,
     conversa ligada ao lead e ao veículo, modelos aprovados para lembrete de
     agendamento e retorno de proposta. É pré-requisito, não diferencial: 11 dos
     15 concorrentes têm.
-13. **Entrada de leads dos portais:** OLX, Webmotors, iCarros e Mercado Livre.
+13. **Entrada de leads dos portais** (o piloto rebaixou para depois do
+    WhatsApp — entrada de lead não era o gargalo)**:** OLX, Webmotors, iCarros e Mercado Livre.
     Começar pela **ingestão** (webhook ou leitura da caixa de e-mail que o portal
     já manda), que é o que a loja sente. Publicação automática vem depois.
 14. **App do vendedor na prática:** notificação push de verdade (service worker
