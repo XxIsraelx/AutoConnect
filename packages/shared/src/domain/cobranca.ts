@@ -254,6 +254,18 @@ export function avaliarCobranca(
     return { situacao: 'ativa', somenteLeitura: false, diasRestantes: null, prazoAte: null, aviso: null };
   }
 
+  // Trial **sem data** é dado anterior ao autosserviço (o cadastro antigo não
+  // gravava `trialEndsAt`), não prazo esgotado. Bloquear por ausência de dado
+  // puniria justamente quem entrou antes de a cobrança existir — e foi o que
+  // aconteceu em produção no dia em que ela foi ligada. Sem data, a loja segue
+  // ativa até alguém definir um prazo.
+  // `== null` de propósito: campo **ausente**. Data preenchida com lixo continua
+  // vencendo (o teste "data inválida não vira não vencido" fixa isso) — o que
+  // não bloqueia é o dado que nunca existiu.
+  if (!pago && assinatura.trialEndsAt == null) {
+    return { situacao: 'ativa', somenteLeitura: false, diasRestantes: null, prazoAte: null, aviso: null };
+  }
+
   // Plano pago com fatura vencida, ou trial que acabou: a carência manda.
   const vencido = pago
     ? assinatura.status === 'past_due'

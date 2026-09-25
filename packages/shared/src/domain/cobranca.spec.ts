@@ -68,6 +68,17 @@ describe('limite de estoque', () => {
 });
 
 describe('avaliarCobranca', () => {
+  it('trial sem data não bloqueia — é dado antigo, não prazo esgotado', () => {
+    // Em 25/09/2026, ligar a cobrança pôs em somente leitura uma loja criada
+    // antes do autosserviço, cujo `trialEndsAt` nunca foi gravado.
+    const v = avaliarCobranca(
+      { plan: 'trial', status: 'active', trialEndsAt: null },
+      new Date('2026-09-25T12:00:00Z'),
+    );
+    expect(v.somenteLeitura).toBe(false);
+    expect(v.situacao).toBe('ativa');
+  });
+
   it('loja sem assinatura nenhuma não é bloqueada', () => {
     // Dado anterior ao autosserviço: inventar um bloqueio para quem nunca teve
     // trial trancaria um cliente por causa de uma migração.
