@@ -56,26 +56,39 @@ export default function NovoLeadModal({
   const [equipe, setEquipe] = useState<Membro[]>([]);
   const [veiculos, setVeiculos] = useState<VeiculoDaLoja[]>([]);
   // As duas listas são conveniência: sem elas dá para cadastrar do mesmo jeito,
-  // então a falha vira aviso no campo, não bloqueio da tela.
-  const [erroDasListas, setErroDasListas] = useState('');
+  // então a falha vira aviso no campo, não bloqueio da tela. **Um aviso por
+  // lista**: juntas num `Promise.all`, o 403 de `/users` descartava o estoque
+  // que tinha voltado 200, e o vendedor ficava com "Nenhum" como única opção de
+  // veículo — que é como o lead de balcão nascia sem carro e morria no card.
+  const [erroDaEquipe, setErroDaEquipe] = useState('');
+  const [erroDoEstoque, setErroDoEstoque] = useState('');
 
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
   const [errosDeCampo, setErrosDeCampo] = useState<Record<string, string>>({});
 
+  // `GET /users` é de gerente para cima. Pedir a lista como vendedor é pedir um
+  // 403 conhecido de antemão — e o vendedor não escolhe responsável de
+  // qualquer forma: o lead dele fica com ele.
+  const podeEscolherResponsavel =
+    user?.role === 'manager' || user?.role === 'tenant_admin' || user?.role === 'super_admin';
+
   useEffect(() => {
     if (!token) return;
-    Promise.all([
-      api<Membro[]>('/users', { token }),
-      api<{ items: VeiculoDaLoja[] }>('/vehicles?status=available&perPage=100', { token }),
-    ])
-      .then(([m, v]) => {
-        setEquipe(m.filter((x) => x.role !== 'customer'));
-        setVeiculos(v.items ?? []);
-        setErroDasListas('');
-      })
-      .catch((e) => setErroDasListas(textoDoErro(e)));
-  }, [token]);
+    let vivo = true;
+
+    if (podeEscolherResponsavel) {
+      api<Membro[]>('/users', { token })
+        .then((m) => { if (vivo) { setEquipe(m.filter((x) => x.role !== 'customer')); setErroDaEquipe(''); } })
+        .catch((e) => { if (vivo) setErroDaEquipe(textoDoErro(e)); });
+    }
+
+    api<{ items: VeiculoDaLoja[] }>('/vehicles?status=available&perPage=100', { token })
+      .then((v) => { if (vivo) { setVeiculos(v.items ?? []); setErroDoEstoque(''); } })
+      .catch((e) => { if (vivo) setErroDoEstoque(textoDoErro(e)); });
+
+    return () => { vivo = false; };
+  }, [token, podeEscolherResponsavel]);
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
@@ -170,13 +183,22 @@ export default function NovoLeadModal({
               </div>
               <div>
                 <label htmlFor="nl-vendedor" className="text-[11px] font-semibold text-slate-500 block mb-1.5">Responsável</label>
-                <select id="nl-vendedor" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}
-                  className={`${campo} ${borda()}`}>
-                  <option value="">
-                    {user?.role === 'salesperson' ? 'Eu mesmo' : 'Rodízio (próximo de plantão)'}
-                  </option>
-                  {equipe.map((m) => <option key={m.id} value={m.id}>{m.fullName}</option>)}
-                </select>
+                {podeEscolherResponsavel ? (
+                  <>
+                    <select id="nl-vendedor" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}
+                      className={`${campo} ${borda()}`}>
+                      <option value="">Rodízio (próximo de plantão)</option>
+                      {equipe.map((m) => <option key={m.id} value={m.id}>{m.fullName}</option>)}
+                    </select>
+                    {erroDaEquipe && (
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                        Equipe não carregou ({erroDaEquipe}). O lead vai para o rodízio.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p id="nl-vendedor" className={`${campo} ${borda()} text-slate-500`}>Eu mesmo</p>
+                )}
               </div>
             </div>
 
@@ -193,6 +215,12 @@ export default function NovoLeadModal({
                   </option>
                 ))}
               </select>
+              {erroDoEstoque && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                  Estoque não carregou ({erroDoEstoque}). Dá para cadastrar agora e
+                  vincular o veículo pelo card do lead depois.
+                </p>
+              )}
             </div>
 
             <div>
@@ -201,13 +229,6 @@ export default function NovoLeadModal({
                 placeholder="O que o cliente procura, prazo, forma de pagamento…"
                 className={`${campo} ${borda()} resize-none`} />
             </div>
-
-            {erroDasListas && (
-              <p className="text-[11px] text-amber-600 dark:text-amber-400">
-                Não foi possível carregar equipe e estoque ({erroDasListas}). Dá para cadastrar
-                mesmo assim e completar depois.
-              </p>
-            )}
 
             {erro && (
               <div role="alert" className="flex items-start gap-2 text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30 rounded-lg px-3 py-2">

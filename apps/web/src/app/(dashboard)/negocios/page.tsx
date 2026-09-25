@@ -3,7 +3,9 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Handshake, Plus, Filter } from 'lucide-react';
-import { DEAL_STATUSES, formatarBRL, somar, type DealStatusValue } from '@autoconnect/shared';
+import {
+  DEAL_STATUSES, formatarBRL, rotuloDoMotivo, somar, type DealStatusValue,
+} from '@autoconnect/shared';
 import { ErroAoCarregar } from '@/components/ErroAoCarregar';
 import { useNegocios, type DealResumo } from './dados';
 import { ROTULO_STATUS, COR_STATUS, ETAPAS_FUNIL } from './rotulos';
@@ -147,6 +149,17 @@ export default function NegociosPage() {
                         {n.customer?.fullName ?? 'Sem cliente vinculado'}
                         {n.salesperson && ` · ${n.salesperson.fullName}`}
                       </p>
+                      {/* Por que o dinheiro não entrou. O código era gravado e
+                          não aparecia em lugar nenhum — nem aqui, nem no
+                          detalhe, nem no histórico. */}
+                      {n.cancelReasonCode && (
+                        <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 mt-1">
+                          {rotuloDoMotivo(n.cancelReasonCode)}
+                          {n.cancelReason && (
+                            <span className="font-normal text-slate-400"> · {n.cancelReason}</span>
+                          )}
+                        </p>
+                      )}
                     </div>
                     <div className="text-right shrink-0">
                       <p className="font-bold">{formatarBRL(n.saleValue)}</p>

@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { Prisma, type Deal, type DealStatus } from '@autoconnect/db';
-import { canTransition, isDealTerminal, type DealStatusValue } from '@autoconnect/shared';
+import {
+  canTransition, isDealTerminal, rotuloDoMotivo, type DealStatusValue,
+} from '@autoconnect/shared';
 import type { ScopedClient } from '../../common/prisma/prisma.service';
 import { MarginService } from './margin.service';
 
@@ -87,6 +89,14 @@ export class DealStateService {
 
     const atualizado = await tx.deal.update({ where: { id: negocio.id }, data: dados });
 
+    // O motivo estruturado entra no texto do evento, e não só na coluna do
+    // negócio: o histórico registrava "Proposta → Cancelado" e mais nada, e
+    // quem abrisse o negócio no dia seguinte não sabia por que o dinheiro não
+    // entrou — que é exatamente o que o código estruturado existe para
+    // responder. O texto livre continua sendo complemento, não substituto.
+    const rotulo = motivoCodigo ? rotuloDoMotivo(motivoCodigo) : null;
+    const razao = [rotulo, motivo].filter(Boolean).join(' — ') || null;
+
     await tx.dealStatusEvent.create({
       data: {
         tenantId: negocio.tenantId,
@@ -94,7 +104,7 @@ export class DealStateService {
         fromStatus: origem as DealStatus,
         toStatus: destino as DealStatus,
         actorUserId: atorId,
-        reason: motivo,
+        reason: razao,
         occurredAt: agora,
       },
     });

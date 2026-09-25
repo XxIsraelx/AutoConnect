@@ -226,21 +226,63 @@ gargalo não é entrada de lead: é o que acontece com o lead **depois** que ele
 entra, e o dinheiro do negócio. Os três primeiros são dias de trabalho, não
 semanas, e vêm antes de WhatsApp e portais.
 
-12a. **Lead manual completo.** Lead de balcão e de telefone nasce sem veículo e
-     não tem como ganhar um depois (`PATCH /leads/:id` só move status), então
-     não vira negócio. É a porta de entrada do lead que a loja gera sozinha —
-     justamente o que nenhum portal traz. Trazer mais lead de fora antes disso é
-     aumentar uma fila que não converte.
-12b. **Preço negociável no negócio aberto.** Negociar é o que o vendedor faz o
-     dia inteiro e não há onde digitar: o negócio aberto pelo card do lead nasce
-     no preço de tabela e nunca muda. O `updateDealSchema` já aceita `discount` e
-     `saleValue` — falta a tela. Sem isso o funil por valor mostra números que
-     não são os da venda.
-12c. **Uma base só para comissão.** Hoje a mesma pessoa aparece com R$ 147,50
-     numa tela e R$ 1.950,00 em outra. Num piloto real isso não aparece na
-     demonstração: aparece no quinto dia, na conversa sobre pagamento, e depois
-     dele o lojista deixa de acreditar em todos os outros números — inclusive na
-     margem, que está certa.
+12a. ✅ **Lead manual completo** (25/09/2026). O modal "Novo lead" parou de
+     pedir `/users` quando o papel não pode vê-la e passou a carregar equipe e
+     estoque **em chamadas separadas** — juntas num `Promise.all`, o 403 de
+     `/users` descartava o estoque que tinha voltado 200, e o `select` de
+     veículo ficava só com "Nenhum". Cada lista avisa da própria falha.
+
+     `PATCH /leads/:id` passou a aceitar `vehicleId` (e `null`, que desfaz o
+     vínculo), com o mesmo recorte de carteira do resto: o lead do colega
+     responde **404, não 403**, e veículo de outra loja é 404. Vincular, trocar
+     e remover escrevem na timeline — é o histórico que responde "por que este
+     lead virou negócio do Corolla se ele ligou perguntando do Onix?". Com
+     veículo, o card ganha o botão "Negócio" que já existia.
+
+     `status` virou opcional no schema, e o corpo vazio é recusado: um PATCH
+     que não pede nada é bug do chamador, e aceitá-lo em silêncio o esconde.
+
+12b. ✅ **Preço negociável no negócio aberto** (25/09/2026). Cartão "Preço" em
+     `/negocios/[id]`, com tabela e desconto; o valor de venda sai da conta e é
+     conferido em `Decimal` pela API, como sempre. O campo aceita o formato que
+     a tela exibe (`84.900,00`) e diz o que esperava em vez de devolver
+     "Validation failed". Margem, funil por valor e comissão acompanham.
+
+     Quem edita: a gerência e **o vendedor do próprio negócio** — negociar
+     desconto é o trabalho dele, e um desconto que só o gerente digita não é
+     negociação, é fila.
+
+     **Contrato emitido congela o preço.** O PDF arquivado tem os valores
+     impressos e um hash conferido no download; mudar o preço por baixo dele
+     faria o hash confirmar um valor que não é mais o do sistema. A tela diz
+     para anular o contrato e emitir outro, e a API recusa com 409. O porquê
+     está em
+     [base da comissão e preço negociável](../decisoes/2026-09-25%20base%20da%20comissao%20e%20preco%20negociavel.md).
+
+12c. ✅ **Uma base só para comissão** (25/09/2026). **Percentual do perfil ×
+     valor de venda dos negócios faturados, pela data de fechamento.** Uma
+     função no shared (`calcularComissao`), consumida por `/equipe`,
+     `/relatorios` e pelo próprio negócio — que passou a mostrar a comissão,
+     que é onde o vendedor pergunta por ela. Cada tela cita a base junto do
+     número.
+
+     A base é o valor de venda, e não a margem, por três razões: a margem é
+     informação de gerência (comissão sobre ela seria uma divisão para deduzir
+     o custo do carro), a comissão é ela própria um custo que entra na margem
+     (cálculo circular), e margem negativa daria comissão negativa. Decisão
+     registrada em
+     [base da comissão e preço negociável](../decisoes/2026-09-25%20base%20da%20comissao%20e%20preco%20negociavel.md).
+
+**Junto com os três, porque moram no mesmo caminho** (25/09/2026): emitir o
+contrato move o negócio para "contrato emitido" — e rascunho não emite, porque
+a máquina de estados não vai de `draft` para lá (B10); o botão de emitir nasce
+desabilitado em negócio terminal, dizendo por quê (B11); o motivo do
+cancelamento aparece na lista, no detalhe e no histórico (B12); comparecimento
+e falta só a partir do horário marcado, na API e na tela (B14); o motivo da
+perda aparece assim que é salvo, porque a lista passou a usar o lead que o
+PATCH devolveu em vez de copiar só o status (B7). De quebra, o detalhe do
+negócio parou de rolar de lado em 375 px — a grade estava sem `grid-cols-1` e a
+coluna implícita crescia até o max-content do cartão mais largo (B9).
 
 **Depois, e só depois, o ciclo que o mercado cobra (≈ 3 a 4 semanas):**
 

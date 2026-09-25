@@ -8,7 +8,9 @@ import { Prisma, type DealStatus } from '@autoconnect/db';
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
 import { ehGlobal, type Escopo } from '../../common/escopo';
-import { isDealEditable, type DealStatusValue } from '@autoconnect/shared';
+import {
+  calcularComissao, isDealEditable, DEAL_FATURADO_STATUSES, type DealStatusValue,
+} from '@autoconnect/shared';
 import type {
   CreateDealInput,
   UpdateDealInput,
@@ -42,6 +44,18 @@ const INCLUDE_DETALHE = {
     include: { actor: { select: { id: true, fullName: true } } },
   },
 } satisfies Prisma.DealInclude;
+
+/** Quem está pedindo. Decide se a comissão do negócio vem preenchida. */
+export interface QuemPede {
+  id: string;
+  role: string;
+}
+
+/**
+ * Quem vê a comissão **do colega**. Mesma lista de `VE_CUSTO`: é informação de
+ * gestão. O vendedor vê a própria em qualquer negócio que ele possa abrir.
+ */
+const VE_COMISSAO_DE_TERCEIRO = ['manager', 'tenant_admin', 'super_admin'];
 
 @Injectable()
 export class DealsService {
@@ -237,18 +251,67 @@ export class DealsService {
     return this.prisma.withTenant(escopo.tenantId, consulta);
   }
 
-  async findOne(escopo: Escopo, id: string) {
+  /**
+   * Detalhe do negócio, com a comissão de quem vendeu.
+   *
+   * A comissão vem junto porque é aqui que o vendedor pergunta — e enquanto
+   * ela só existia em `/equipe` e `/relatorios` (com duas bases diferentes, o
+   * que é outra história) a resposta era "abra outra tela e confie". A base é
+   * o **valor de venda**, definida em `calcularComissao`, e por isso pode ser
+   * mostrada a quem a recebe: sobre margem, o vendedor deduziria o custo do
+   * carro com uma divisão.
+   */
+  async findOne(escopo: Escopo, id: string, quem?: QuemPede) {
     const buscar = async (tx: ScopedClient) => {
       const negocio = await tx.deal.findFirst({
         where: { id, ...(ehGlobal(escopo) ? {} : { tenantId: escopo.tenantId }) },
         include: INCLUDE_DETALHE,
       });
       if (!negocio) throw new NotFoundException('Negócio não encontrado');
-      return negocio;
+
+      return { ...negocio, comissao: await this.comissaoDoNegocio(tx, negocio, quem) };
     };
 
     if (ehGlobal(escopo)) return buscar(this.privilegiado);
     return this.prisma.withTenant(escopo.tenantId, buscar);
+  }
+
+  /**
+   * Comissão deste negócio para o vendedor dele.
+   *
+   * `null` em três casos distintos, e a tela diz qual: sem vendedor atribuído,
+   * sem permissão (o vendedor vê a própria, gerência vê a de todos) e sem
+   * percentual configurado no perfil. O último devolve `{ percentual: null }`
+   * em vez de sumir — "ninguém informou quanto ela ganha" é uma resposta, e
+   * some diferente de "não há comissão".
+   */
+  private async comissaoDoNegocio(
+    tx: ScopedClient,
+    negocio: { salespersonId: string | null; saleValue: Prisma.Decimal; status: string },
+    quem?: QuemPede,
+  ) {
+    if (!negocio.salespersonId || !quem) return null;
+
+    const proprio = negocio.salespersonId === quem.id;
+    if (!proprio && !VE_COMISSAO_DE_TERCEIRO.includes(quem.role)) return null;
+
+    const perfil = await tx.salespersonProfile.findUnique({
+      where: { userId: negocio.salespersonId },
+      select: { commissionPct: true },
+    });
+    const percentual = perfil?.commissionPct?.toFixed(2) ?? null;
+
+    return {
+      percentual,
+      base: negocio.saleValue.toFixed(2),
+      valor: calcularComissao(negocio.saleValue.toFixed(2), percentual),
+      /**
+       * Comissão de negócio não faturado é estimativa: o valor de venda ainda
+       * pode mudar e o negócio ainda pode ser cancelado. É o mesmo recorte que
+       * `/equipe` e `/relatorios` somam.
+       */
+      faturada: (DEAL_FATURADO_STATUSES as readonly string[]).includes(negocio.status),
+    };
   }
 
   async update(escopo: Escopo, id: string, input: UpdateDealInput) {
@@ -263,6 +326,32 @@ export class DealsService {
           `Negócio em "${negocio.status}" não aceita alteração de valores — ` +
             'há contrato assinado.',
         );
+      }
+
+      const mexeEmDinheiro =
+        input.listPrice !== undefined ||
+        input.discount !== undefined ||
+        input.saleValue !== undefined;
+
+      // Contrato emitido é um documento com os valores impressos, hash
+      // conferido no download e imutável por trigger. Mudar o preço por baixo
+      // dele produziria um negócio de R$ 80.000 com um PDF de R$ 84.900
+      // arquivado — e o hash, que existe para responder "qual documento essa
+      // pessoa recebeu?", passaria a confirmar um valor que não é o do
+      // sistema. Anular o contrato e emitir de novo é o caminho: custa um
+      // clique e mantém a trilha.
+      if (mexeEmDinheiro) {
+        const emitido = await tx.dealContract.findFirst({
+          where: { dealId: id, tenantId, status: { in: ['issued', 'signed'] } },
+          select: { id: true, status: true },
+        });
+        if (emitido) {
+          throw new ConflictException(
+            'Este negócio tem contrato emitido com os valores atuais. ' +
+              'Anule o contrato antes de alterar preço, desconto ou valor de venda — ' +
+              'e emita um novo depois.',
+          );
+        }
       }
 
       const lista = input.listPrice ?? negocio.listPrice.toFixed(2);

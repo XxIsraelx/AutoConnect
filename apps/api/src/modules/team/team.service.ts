@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@autoconnect/db';
 import { Prisma } from '@autoconnect/db';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { calcularComissao, DEAL_FATURADO_STATUSES } from '@autoconnect/shared';
 
 const MEMBER_ROLES: UserRole[] = [
   UserRole.tenant_admin, UserRole.manager, UserRole.salesperson,
@@ -72,10 +73,13 @@ export class TeamService {
         // antes ele vinha de `lead.vehicle.price`, o preço de **tabela**, e
         // a comissão saía sobre um valor que o cliente nunca pagou — sempre
         // acima do real, porque desconto é a regra e não a exceção.
+        //
+        // O recorte (faturado, por `closedAt`) é o mesmo de `/relatorios`;
+        // muda só a janela, que aqui é o mês escolhido.
         negocios: await tx.deal.findMany({
           where: {
             tenantId,
-            status: { in: ['invoiced', 'documentation', 'delivered'] },
+            status: { in: [...DEAL_FATURADO_STATUSES] },
             closedAt: { gte: start, lt: end },
           },
           select: { salespersonId: true, saleValue: true },
@@ -115,14 +119,12 @@ export class TeamService {
       const won = wonLeads.length;
       const vendido = vendidoPor.get(mem.id) ?? new Prisma.Decimal(0);
       const conversion = assigned > 0 ? Math.round((won / assigned) * 100) : 0;
-      const commissionPct =
-        mem.salespersonProfile?.commissionPct != null
-          ? Number(mem.salespersonProfile.commissionPct)
-          : null;
-      const commission =
-        commissionPct != null
-          ? vendido.times(commissionPct).dividedBy(100).toFixed(2)
-          : null;
+      const pct = mem.salespersonProfile?.commissionPct ?? null;
+      const commissionPct = pct != null ? Number(pct) : null;
+      // Uma definição só, no shared: esta tela aplicava o percentual sobre o
+      // faturamento e `/relatorios` sobre a margem bruta — a mesma pessoa
+      // aparecia com R$ 1.950,00 aqui e R$ 147,50 lá, no mesmo mês.
+      const commission = calcularComissao(vendido.toFixed(2), pct?.toFixed(2) ?? null);
       return {
         id: mem.id, email: mem.email, fullName: mem.fullName, role: mem.role,
         status: mem.status, lastLoginAt: mem.lastLoginAt, avatarUrl: mem.avatarUrl,

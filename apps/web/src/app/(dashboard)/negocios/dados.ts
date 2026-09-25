@@ -23,6 +23,11 @@ export interface DealResumo {
   saleValue: string;
   createdAt: string;
   closedAt: string | null;
+  canceledAt: string | null;
+  /** Código da lista fechada do shared. Preenchido em cancelado e distratado. */
+  cancelReasonCode: string | null;
+  /** Complemento em texto livre, quando houve. */
+  cancelReason: string | null;
   vehicle: {
     id: string;
     versionName: string | null;
@@ -49,6 +54,19 @@ export interface DealResumo {
     reason: string | null; occurredAt: string;
     actor: { id: string; fullName: string } | null;
   }[];
+  /**
+   * Comissão do vendedor deste negócio.
+   *
+   * `null` quando não há vendedor atribuído ou quando quem pede não pode ver a
+   * comissão do colega. `percentual: null` é outra coisa: há vendedor, mas
+   * ninguém informou quanto ele ganha.
+   */
+  comissao: {
+    percentual: string | null;
+    base: string;
+    valor: string | null;
+    faturada: boolean;
+  } | null;
 }
 
 export interface PaginaDeNegocios {
@@ -128,6 +146,31 @@ export function useTransicionar(id: string) {
       qc.invalidateQueries({ queryKey: ['negocios'] });
       qc.invalidateQueries({ queryKey: ['negocio-margem', id] });
       qc.invalidateQueries({ queryKey: ['veiculo-custo'] });
+    },
+  });
+}
+
+/**
+ * Preço de tabela, desconto e valor de venda de um negócio aberto.
+ *
+ * Negociar preço é o que o vendedor faz o dia inteiro, e até aqui não havia
+ * onde digitar: o negócio aberto pelo card do lead nascia no preço de tabela e
+ * nunca mudava, e o funil por valor mostrava números que não eram os da venda.
+ *
+ * Invalida a margem junto: mudar o valor de venda muda a margem bruta, e o
+ * cartão ao lado mostraria a anterior.
+ */
+export function useAtualizarValores(id: string) {
+  const token = useToken();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (v: { listPrice: string; discount: string; saleValue: string }) =>
+      api<DealResumo>(`/deals/${id}`, { method: 'PATCH', token, body: v }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['negocio', id] });
+      qc.invalidateQueries({ queryKey: ['negocios'] });
+      qc.invalidateQueries({ queryKey: ['negocio-margem', id] });
     },
   });
 }

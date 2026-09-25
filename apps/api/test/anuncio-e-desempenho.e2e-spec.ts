@@ -384,8 +384,11 @@ describe('Onda 1 — rascunho de anúncio e desempenho (e2e)', () => {
       // Dinheiro atravessa o JSON como string, com os dois decimais.
       expect(ana.faturamento).toBe('80000.00');
       expect(ana.margem).toBe('9000.00');
-      // 3% de 9.000 = 270,00 — calculado em Decimal, não em ponto flutuante.
-      expect(ana.comissaoEstimada).toBe('270.00');
+      // A base é o **valor de venda**, não a margem: 3% de 80.000 = 2.400,00.
+      // Até 25/09/2026 este relatório usava a margem e `/equipe` usava o
+      // faturamento — a mesma pessoa tinha dois valores de comissão no mesmo
+      // mês. O porquê da base está em `shared/domain/comissao.ts`.
+      expect(ana.comissaoEstimada).toBe('2400.00');
 
       expect(bruno.leadsRecebidos).toBe(1);
       expect(bruno.leadsAtendidos).toBe(0);

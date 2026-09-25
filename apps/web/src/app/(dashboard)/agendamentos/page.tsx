@@ -417,10 +417,30 @@ function DetailDrawer({ appt, members, token, onClose, onUpdate }: {
     if (await patch({ scheduledStart: new Date(newDt).toISOString() })) setReschedule(false);
   }
 
-  const actions: { label: string; status: string; Icon: React.ElementType; cls: string }[] = [
+  /**
+   * Comparecimento é fato consumado.
+   *
+   * Dava para marcar falta num test drive de **amanhã**, sem aviso — e o
+   * indicador de comparecimento, que é o número que a loja não tem na
+   * planilha, aceitava ser contaminado. A API recusa com 409; aqui o botão já
+   * nasce desabilitado, dizendo por quê.
+   */
+  const aindaNaoComecou = new Date(appt.scheduledStart).getTime() > Date.now();
+
+  const actions: {
+    label: string; status: string; Icon: React.ElementType; cls: string; bloqueio?: string;
+  }[] = [
     { label: 'Confirmar', status: 'confirmed', Icon: CheckCircle2, cls: 'bg-emerald-600 hover:bg-emerald-700 text-white' },
-    { label: 'Concluir', status: 'completed', Icon: Check, cls: 'bg-blue-600 hover:bg-blue-700 text-white' },
-    { label: 'Não compareceu', status: 'no_show', Icon: AlertCircle, cls: 'border border-orange-300 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950/20' },
+    {
+      label: 'Concluir', status: 'completed', Icon: Check,
+      cls: 'bg-blue-600 hover:bg-blue-700 text-white',
+      bloqueio: aindaNaoComecou ? 'Só a partir do horário marcado.' : undefined,
+    },
+    {
+      label: 'Não compareceu', status: 'no_show', Icon: AlertCircle,
+      cls: 'border border-orange-300 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950/20',
+      bloqueio: aindaNaoComecou ? 'Só a partir do horário marcado.' : undefined,
+    },
     { label: 'Cancelar', status: 'canceled', Icon: XCircle, cls: 'border border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20' },
   ];
 
@@ -521,11 +541,18 @@ function DetailDrawer({ appt, members, token, onClose, onUpdate }: {
         )}
         <div className="border-t border-slate-200 dark:border-slate-800 p-4 grid grid-cols-2 gap-2 shrink-0">
           {actions.map((a) => (
-            <button key={a.status} onClick={() => void patch({ status: a.status })} disabled={busy || appt.status === a.status}
+            <button key={a.status} onClick={() => void patch({ status: a.status })}
+              disabled={busy || appt.status === a.status || !!a.bloqueio}
+              title={a.bloqueio}
               className={cn('flex items-center justify-center gap-1.5 py-2.5 text-sm font-semibold rounded-lg transition disabled:opacity-40', a.cls)}>
               <a.Icon size={15} /> {a.label}
             </button>
           ))}
+          {aindaNaoComecou && (
+            <p className="col-span-2 text-[11px] text-slate-400">
+              Comparecimento e falta só podem ser registrados a partir do horário marcado.
+            </p>
+          )}
         </div>
       </aside>
     </>

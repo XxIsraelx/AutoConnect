@@ -12,7 +12,7 @@ import {
   leadPublicoSchema,
   listLeadsSchema,
   slaStatsSchema,
-  updateLeadStatusSchema,
+  updateLeadSchema,
   createLeadInteractionSchema,
 } from '@autoconnect/shared';
 import { escopoDa } from '../../common/escopo';
@@ -119,16 +119,20 @@ export class LeadsController {
 
   /**
    * PATCH /leads/:id
-   * Atualiza status de um lead (dealer/admin).
+   * Move o status e/ou corrige o veículo de interesse (dealer/admin).
+   *
+   * O veículo entrou aqui porque o lead de balcão nasce sem um: sem veículo
+   * não há botão de negócio, e até então não existia rota nenhuma para
+   * vinculá-lo depois.
    */
   @Patch(':id')
-  updateStatus(
+  atualizar(
     @Req() req: AuthRequest,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: unknown,
   ): Promise<unknown> {
-    const parsed = updateLeadStatusSchema.parse(body);
-    return this.leads.updateStatus(req.user.tenantId!, id, atorDa(req), parsed);
+    const parsed = updateLeadSchema.parse(body);
+    return this.leads.atualizar(req.user.tenantId!, id, atorDa(req), parsed);
   }
 
   /**

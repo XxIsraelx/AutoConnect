@@ -5,8 +5,8 @@ import { Prisma, type DealContract } from '@autoconnect/db';
 import {
   validarGarantia, GARANTIA_LEGAL_DIAS, formatarCpf,
   qualificarComprador, qualificarVendedor,
-  ASSINATURA_EXTERNA_VIVAS,
-  type ProvedorDeAssinatura, type SignerRoleValue,
+  ASSINATURA_EXTERNA_VIVAS, canTransition,
+  type DealStatusValue, type ProvedorDeAssinatura, type SignerRoleValue,
 } from '@autoconnect/shared';
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
@@ -15,6 +15,7 @@ import { ContractPdfService } from './contract-pdf.service';
 import { DocumentosStorage } from '../../common/armazenamento/documentos.storage';
 import { TEMPLATE_PADRAO, type Bloco, type SnapshotContrato } from './blocos';
 import { PROVEDOR_DE_ASSINATURA } from './assinatura/provedor';
+import { DealStateService } from '../deals/deal-state.service';
 
 /** Uma assinatura a gravar — interna (com ip/userAgent) ou externa (com ids do provedor). */
 export interface AssinaturaAGravar {
@@ -44,6 +45,8 @@ export class ContractsService {
     private readonly privilegiado: PrivilegedPrismaService,
     private readonly pdf: ContractPdfService,
     private readonly storage: DocumentosStorage,
+    /** Emitir o contrato move o negócio de etapa — pela máquina de estados. */
+    private readonly estado: DealStateService,
     @Inject(PROVEDOR_DE_ASSINATURA)
     private readonly provedor: ProvedorDeAssinatura,
   ) {}
@@ -104,6 +107,16 @@ export class ContractsService {
 
       if (negocio.status === 'canceled' || negocio.status === 'rescinded') {
         throw new ConflictException(`Negócio em "${negocio.status}" não emite contrato.`);
+      }
+
+      // Rascunho não emite: `draft` não alcança `contract_issued` na máquina
+      // de estados, e emitir sem mover deixaria dinheiro com contrato dentro
+      // da coluna de rascunho do funil. Melhor recusar dizendo onde clicar.
+      if (negocio.status === 'draft') {
+        throw new ConflictException(
+          'Mova o negócio para "Proposta" antes de emitir o contrato — ' +
+            'um rascunho não vira documento.',
+        );
       }
 
       // Sem identificar o comprador, o contrato diria "portador(a) do documento
@@ -229,6 +242,22 @@ export class ContractsService {
           reason: `Contrato emitido (${hash.slice(0, 12)}…)`,
         },
       });
+
+      // A emissão move o negócio de etapa.
+      //
+      // Antes não movia: dava para emitir o contrato do Fiat Argo com o
+      // negócio em "Proposta" e ele continuava em "Proposta" — o funil por
+      // valor, que é a peça que o dono olha, passava a contar como proposta um
+      // dinheiro que já tinha documento emitido. A transição vai pela máquina
+      // de estados de sempre, então grava o próprio evento e vale a mesma
+      // tabela que a tela consulta.
+      //
+      // Reemissão (depois de anular) não mexe em nada: `contract_issued` e o
+      // que vem depois dele não têm para onde ir, e voltar de "assinado" para
+      // "contrato emitido" seria desfazer uma assinatura que existe.
+      if (canTransition(negocio.status as DealStatusValue, 'contract_issued')) {
+        await this.estado.transicionar(tx, negocio, 'contract_issued', atorId);
+      }
 
       return contrato;
     });

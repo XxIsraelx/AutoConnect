@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { FileText, Download, PenLine, Ban, ShieldCheck, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
-import { assinaturaExternaViva } from '@autoconnect/shared';
+import { assinaturaExternaViva, isDealTerminal, type DealStatusValue } from '@autoconnect/shared';
+import { ROTULO_STATUS } from '../rotulos';
 import {
   useContratos, useEmitirContrato, useAssinarContrato, useAnularContrato,
   useCapacidadeAssinatura, baixarPdf, type Contrato as ContratoTipo,
@@ -33,7 +34,13 @@ const data = (iso: string) =>
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 
-export default function Contrato({ dealId }: { dealId: string }) {
+export default function Contrato({
+  dealId, statusDoNegocio,
+}: {
+  dealId: string;
+  /** Decide se a emissão é oferecida — ver `motivoParaNaoEmitir`. */
+  statusDoNegocio: DealStatusValue;
+}) {
   const token = useAuthStore((s) => s.token);
   const papel = useAuthStore((s) => s.user?.role) ?? '';
   const nome = useAuthStore((s) => s.user?.fullName) ?? '';
@@ -69,6 +76,13 @@ export default function Contrato({ dealId }: { dealId: string }) {
   const campo =
     'text-sm bg-transparent border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1.5';
 
+  // A mesma regra que a API aplica na emissão, dita antes do clique.
+  const impedimento = isDealTerminal(statusDoNegocio)
+    ? `Negócio ${ROTULO_STATUS[statusDoNegocio].toLowerCase()} não emite contrato.`
+    : statusDoNegocio === 'draft'
+      ? 'Mova o negócio para "Proposta" antes de emitir o contrato.'
+      : null;
+
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 md:col-span-2">
       <div className="flex items-center justify-between mb-3">
@@ -77,7 +91,8 @@ export default function Contrato({ dealId }: { dealId: string }) {
         </p>
         <button
           onClick={() => emitir.mutate()}
-          disabled={emitir.isPending}
+          disabled={emitir.isPending || !!impedimento}
+          title={impedimento ?? undefined}
           className="text-sm bg-brand-accent text-white px-3 py-1.5 rounded-lg font-medium
                      hover:bg-blue-600 transition disabled:opacity-50 inline-flex items-center gap-1.5"
         >
@@ -85,6 +100,13 @@ export default function Contrato({ dealId }: { dealId: string }) {
           {contratos?.length ? 'Emitir novo' : 'Emitir contrato'}
         </button>
       </div>
+
+      {/* O botão ficava habilitado em negócio cancelado: a API recusava com
+          409 e não havia dano, mas era um convite ao erro — e o vendedor
+          concluía que o sistema quebrou. */}
+      {impedimento && (
+        <p className="text-[11px] text-slate-400 mb-3">{impedimento}</p>
+      )}
 
       {emitir.error && (
         <p className="text-sm text-rose-600 dark:text-rose-400 mb-3">{textoDoErro(emitir.error)}</p>

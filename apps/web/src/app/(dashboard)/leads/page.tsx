@@ -415,6 +415,109 @@ function AbrirNegocio({ lead }: { lead: Lead }) {
   );
 }
 
+/* ── VeiculoDoLead ───────────────────────────────────────── */
+
+/**
+ * Vincula (ou corrige) o veículo de interesse do lead.
+ *
+ * É o que faltava para o lead de balcão e o de telefone existirem de verdade:
+ * eles nascem sem carro — quem entra na loja ainda está escolhendo — e, sem
+ * veículo, não há botão de negócio. "Completar depois" era uma promessa que o
+ * produto não cumpria, porque `PATCH /leads/:id` só movia status.
+ *
+ * O estoque é pedido só quando o menu abre: o card não vai buscar 100 veículos
+ * por lead da lista.
+ */
+function VeiculoDoLead({ lead, onAtualizado }: { lead: Lead; onAtualizado: (l: Lead) => void }) {
+  const token = useAuthStore(s => s.token);
+  const [aberto, setAberto] = useState(false);
+  const [estoque, setEstoque] = useState<LeadVehicle[] | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!aberto || estoque || !token) return;
+    api<{ items: LeadVehicle[] }>('/vehicles?status=available&perPage=100', { token })
+      .then((v) => setEstoque(v.items ?? []))
+      .catch((e) => setErro(textoDoErro(e)));
+  }, [aberto, estoque, token]);
+
+  if (lead.status === 'lost' || lead.status === 'archived') return null;
+
+  async function vincular(vehicleId: string | null) {
+    if (!token) return;
+    setSalvando(true);
+    setErro(null);
+    try {
+      const atualizado = await api<Lead>(`/leads/${lead.id}`, {
+        method: 'PATCH', token, body: { vehicleId },
+      });
+      setAberto(false);
+      onAtualizado(atualizado);
+    } catch (e) {
+      setErro(textoDoErro(e));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setAberto(v => !v)}
+        disabled={salvando}
+        className="flex items-center gap-1.5 text-xs font-semibold text-slate-400
+                   hover:text-brand-accent transition-colors disabled:opacity-50"
+      >
+        {salvando ? <Loader2 size={11} className="animate-spin" /> : <Car size={11} />}
+        {lead.vehicle ? 'Trocar veículo' : 'Vincular veículo'}
+      </button>
+
+      {aberto && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setAberto(false)} />
+          <div className="absolute right-0 top-full mt-1 z-20 w-64 max-h-72 overflow-y-auto
+                          rounded-xl border borda bg-white dark:bg-[#0f172a] shadow-xl p-1">
+            {erro ? (
+              <p className="text-[11px] text-rose-500 px-2 py-1.5">{erro}</p>
+            ) : !estoque ? (
+              <p className="text-[11px] text-slate-500 px-2 py-1.5">Carregando estoque…</p>
+            ) : estoque.length === 0 ? (
+              <p className="text-[11px] text-slate-500 px-2 py-1.5">
+                Nenhum veículo disponível no estoque.
+              </p>
+            ) : (
+              estoque.map((v) => (
+                <button
+                  key={v.id}
+                  onClick={() => void vincular(v.id)}
+                  disabled={salvando || v.id === lead.vehicle?.id}
+                  className="w-full text-left px-2.5 py-1.5 text-xs rounded-lg
+                             hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-40"
+                >
+                  {v.brand.name} {v.model.name} {v.versionName ?? ''}
+                  <span className="text-slate-500"> · {v.yearModel}</span>
+                </button>
+              ))
+            )}
+            {lead.vehicle && (
+              <button
+                onClick={() => void vincular(null)}
+                disabled={salvando}
+                className="w-full text-left px-2.5 py-1.5 text-xs rounded-lg text-rose-500
+                           hover:bg-rose-50 dark:hover:bg-rose-950/30 disabled:opacity-50
+                           border-t borda mt-1 pt-2"
+              >
+                Remover vínculo
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ── StatusDropdown ──────────────────────────────────────── */
 
 function StatusDropdown({
@@ -424,7 +527,8 @@ function StatusDropdown({
 }: {
   leadId: string;
   current: LeadStatus;
-  onUpdate: (id: string, status: LeadStatus) => void;
+  /** Recebe o lead **como a API o gravou** — ver o comentário em `change`. */
+  onUpdate: (lead: Lead) => void;
 }) {
   const token = useAuthStore(s => s.token);
   const [open, setOpen]     = useState(false);
@@ -447,7 +551,11 @@ function StatusDropdown({
     setSaving(true);
     setErro(null);
     try {
-      await api(`/leads/${leadId}`, {
+      // A resposta é o lead gravado, e é ela que entra na lista. A atualização
+      // otimista anterior copiava só o status: o card mostrava "SEM MOTIVO
+      // INFORMADO" logo depois de o vendedor escolher o motivo, com o código
+      // certo no banco — e convidava a escolher de novo.
+      const atualizado = await api<Lead>(`/leads/${leadId}`, {
         method: 'PATCH',
         token,
         body: {
@@ -458,7 +566,7 @@ function StatusDropdown({
         },
       });
       fechar();
-      onUpdate(leadId, status);
+      onUpdate(atualizado);
     } catch (err) {
       // Antes ia só para o console: mover para "Ganho" sem negócio ligado é
       // recusado com 409, e a tela não dava sinal nenhum — o clique
@@ -862,7 +970,7 @@ function LeadCard({
   lead, onStatusChange, onShowHistory, onChat, chatLoading, onRecarregar, slaAlerta,
 }: {
   lead: Lead;
-  onStatusChange: (id: string, s: LeadStatus) => void;
+  onStatusChange: (lead: Lead) => void;
   onRecarregar:   () => void;
   onShowHistory:  (lead: Lead) => void;
   onChat:         (lead: Lead) => void;
@@ -937,6 +1045,7 @@ function LeadCard({
           ancorados na direita — à esquerda eles vazariam pela borda do card. */}
       <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 mb-3">
         <AtribuirVendedor lead={lead} onAtribuido={onRecarregar} />
+        <VeiculoDoLead lead={lead} onAtualizado={onStatusChange} />
         <AbrirNegocio lead={lead} />
         <StatusDropdown leadId={lead.id} current={lead.status} onUpdate={onStatusChange} />
       </div>
@@ -1117,8 +1226,15 @@ export default function LeadsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, responsavel, filtroSla, token]);
 
-  function handleStatusChange(leadId: string, newStatus: LeadStatus) {
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: newStatus } : l));
+  /**
+   * Substitui o lead da lista pelo que a API devolveu.
+   *
+   * Não é otimismo: a resposta do PATCH é a linha gravada, com motivo da perda
+   * e veículo já no formato do card. Copiar só o campo alterado é o que fazia
+   * o motivo aparecer como "sem motivo informado" até recarregar a página.
+   */
+  function handleLeadAtualizado(atualizado: Lead) {
+    setLeads(prev => prev.map(l => (l.id === atualizado.id ? { ...l, ...atualizado } : l)));
     loadStats();
   }
 
@@ -1374,7 +1490,7 @@ export default function LeadsPage() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map(lead => (
-              <LeadCard key={lead.id} lead={lead} onStatusChange={handleStatusChange} onShowHistory={setHistoryLead} onChat={openChat} chatLoading={chatLoadingId === lead.id} onRecarregar={() => loadLeads(true)} slaAlerta={slaAlerta} />
+              <LeadCard key={lead.id} lead={lead} onStatusChange={handleLeadAtualizado} onShowHistory={setHistoryLead} onChat={openChat} chatLoading={chatLoadingId === lead.id} onRecarregar={() => loadLeads(true)} slaAlerta={slaAlerta} />
             ))}
           </div>
 

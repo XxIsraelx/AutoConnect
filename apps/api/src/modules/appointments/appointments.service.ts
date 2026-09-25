@@ -1,5 +1,6 @@
 import {
-  BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException,
+  BadRequestException, ConflictException, ForbiddenException, Injectable, Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
@@ -348,6 +349,21 @@ export class AppointmentsService {
     const updated = await this.prisma.withTenant(tenantId, async (tx) => {
       const appt = await tx.appointment.findFirst({ where: { id, tenantId } });
       if (!appt) throw new NotFoundException('Agendamento não encontrado');
+
+      // Comparecimento é fato consumado: não se registra presença nem falta de
+      // um test drive que ainda não começou. Dava para marcar falta no
+      // agendamento de amanhã sem nenhum aviso, e o indicador de
+      // comparecimento — que é o número que a loja não tem na planilha — aceita
+      // ser contaminado em silêncio. A data de referência é o **início**
+      // marcado: quem não apareceu, não apareceu na hora marcada.
+      const desfecho = data.status === 'completed' || data.status === 'no_show';
+      const inicio = data.scheduledStart ? new Date(data.scheduledStart) : appt.scheduledStart;
+      if (desfecho && inicio.getTime() > Date.now()) {
+        throw new ConflictException(
+          'Este agendamento ainda não começou. Registre comparecimento ou falta ' +
+            'a partir do horário marcado.',
+        );
+      }
 
       return tx.appointment.update({
         where: { id },

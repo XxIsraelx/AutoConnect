@@ -6,7 +6,7 @@ import {
   exigeDetalhe,
   rotuloDoMotivo,
 } from './motivo-perda';
-import { updateLeadStatusSchema } from '../schemas/lead';
+import { updateLeadSchema } from '../schemas/lead';
 import { transitionDealSchema } from '../schemas/deal';
 
 describe('lista de motivos', () => {
@@ -62,21 +62,21 @@ describe('rótulo', () => {
 
 describe('motivo obrigatório ao perder o lead', () => {
   it('recusa "lost" sem código, apontando o campo', () => {
-    const r = updateLeadStatusSchema.safeParse({ status: 'lost' });
+    const r = updateLeadSchema.safeParse({ status: 'lost' });
 
     expect(r.success).toBe(false);
     expect(r.error?.issues[0].path).toEqual(['lostReasonCode']);
   });
 
   it('recusa código fora da lista', () => {
-    const r = updateLeadStatusSchema.safeParse({ status: 'lost', lostReasonCode: 'nao_gostei' });
+    const r = updateLeadSchema.safeParse({ status: 'lost', lostReasonCode: 'nao_gostei' });
 
     expect(r.success).toBe(false);
   });
 
   it('recusa "outro" sem o texto livre', () => {
     // Sem isto "outro" vira o depósito de tudo e a lista não informa nada.
-    const r = updateLeadStatusSchema.safeParse({
+    const r = updateLeadSchema.safeParse({
       status: 'lost', lostReasonCode: 'outro', lostReason: '   ',
     });
 
@@ -85,7 +85,7 @@ describe('motivo obrigatório ao perder o lead', () => {
   });
 
   it('aceita "outro" com o texto', () => {
-    const r = updateLeadStatusSchema.safeParse({
+    const r = updateLeadSchema.safeParse({
       status: 'lost', lostReasonCode: 'outro', lostReason: 'Mudou de cidade',
     });
 
@@ -93,7 +93,7 @@ describe('motivo obrigatório ao perder o lead', () => {
   });
 
   it('não cobra motivo nos demais status', () => {
-    expect(updateLeadStatusSchema.safeParse({ status: 'contacted' }).success).toBe(true);
+    expect(updateLeadSchema.safeParse({ status: 'contacted' }).success).toBe(true);
   });
 });
 

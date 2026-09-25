@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Users, Download, RefreshCw, Loader2 } from 'lucide-react';
-import { formatarBRL } from '@autoconnect/shared';
+import { EXPLICACAO_DA_COMISSAO, formatarBRL } from '@autoconnect/shared';
 import { api, baixarArquivo } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
@@ -220,7 +220,7 @@ export default function DesempenhoVendedores({ days }: { days: number }) {
                     <>
                       <th className="text-right py-2 px-2 font-medium">Faturamento</th>
                       <th className="text-right py-2 px-2 font-medium">Margem</th>
-                      <th className="text-right py-2 pl-2 font-medium" title="Margem × percentual de comissão do perfil">Comissão</th>
+                      <th className="text-right py-2 pl-2 font-medium" title={EXPLICACAO_DA_COMISSAO}>Comissão</th>
                     </>
                   )}
                 </tr>
@@ -298,6 +298,7 @@ export default function DesempenhoVendedores({ days }: { days: number }) {
               ? 'Tempo de primeira resposta indisponível no momento.'
               : 'Tempo de primeira resposta medido da chegada do lead até o primeiro contato de saída.'}
             {!temDinheiro && ' Faturamento, margem e comissão são visíveis para gerência.'}
+            {temDinheiro && ` ${EXPLICACAO_DA_COMISSAO} É a mesma conta que aparece em Equipe e no negócio.`}
           </p>
         </>
       ) : (

@@ -73,25 +73,48 @@ export const createLeadSchema = z.object({
 export type CreateLeadInput = z.infer<typeof createLeadSchema>;
 
 /**
- * Mudança de status do lead.
+ * Alteração de um lead pelo painel: status e/ou veículo de interesse.
  *
  * Mover para `lost` exige motivo: a lista de perda é a única fonte que diz por
  * que a loja não vende, e "perdido" sem motivo é a linha que o relatório não
  * consegue usar. Quando o motivo é `outro`, o texto livre passa a ser
  * obrigatório — senão "outro" vira o depósito de tudo e a lista não informa
  * nada.
+ *
+ * `vehicleId` entrou em 25/09/2026. Até então a rota só movia status, e o lead
+ * de balcão — que nasce sem veículo, porque quem chega no balcão ainda está
+ * escolhendo — não tinha como ganhar um depois. Sem veículo não há botão de
+ * negócio, então ele morria no card: "completar depois" era uma promessa que o
+ * produto não cumpria. `null` desfaz o vínculo (o cliente mudou de carro), e
+ * por isso é `nullable` e não apenas `optional`: ausente significa "não mexe",
+ * e as duas coisas precisam ser distinguíveis.
+ *
+ * `status` virou opcional para que a tela possa só vincular o veículo, mas o
+ * corpo vazio é recusado — um PATCH que não pede nada é bug do chamador, e
+ * aceitá-lo em silêncio esconde o bug.
  */
-export const updateLeadStatusSchema = z
+export const updateLeadSchema = z
   .object({
-    status: z.enum(LEAD_STATUSES),
+    status: z.enum(LEAD_STATUSES).optional(),
     /** Obrigatório em `lost`; ignorado nos demais. */
     lostReasonCode: z.enum(CODIGOS_DE_PERDA_DE_LEAD).optional(),
     /** Complemento em texto livre. Obrigatório quando o código é `outro`. */
     lostReason: z.string().trim().max(500).optional(),
     /** Anotação opcional que entra na timeline junto da mudança. */
     reason: z.string().trim().max(500).optional(),
+    /** Veículo de interesse. `null` remove o vínculo. */
+    vehicleId: z.string().uuid().nullable().optional(),
   })
   .superRefine((v, ctx) => {
+    if (v.status === undefined && v.vehicleId === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['status'],
+        message: 'Informe o novo status ou o veículo de interesse.',
+      });
+      return;
+    }
+
     if (v.status !== 'lost') return;
 
     if (!v.lostReasonCode) {
@@ -110,7 +133,7 @@ export const updateLeadStatusSchema = z
       });
     }
   });
-export type UpdateLeadStatusInput = z.infer<typeof updateLeadStatusSchema>;
+export type UpdateLeadInput = z.infer<typeof updateLeadSchema>;
 
 /* ── Filtros da lista ────────────────────────────────────── */
 

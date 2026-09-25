@@ -10,7 +10,7 @@ import { api} from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
-import { formatarBRL } from '@autoconnect/shared';
+import { BASE_DA_COMISSAO, formatarBRL } from '@autoconnect/shared';
 
 /* ── Tipos ──────────────────────────────────────────────── */
 interface MemberStat {
@@ -555,7 +555,8 @@ function MemberDrawer({ member, period, isAdmin, busy, erro, onClose, onChangeRo
               <>
                 <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{member.commission ? formatarBRL(member.commission) : '—'}</p>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  {member.commissionPct.toLocaleString('pt-BR')}% sobre {formatarBRL(member.valueSold)} vendidos
+                  {member.commissionPct.toLocaleString('pt-BR')}% sobre {formatarBRL(member.valueSold)} —
+                  {' '}{BASE_DA_COMISSAO} no mês.
                 </p>
               </>
             ) : (

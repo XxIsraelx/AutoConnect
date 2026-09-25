@@ -15,7 +15,7 @@ import {
   type ExportLeadsInput,
   type ListLeadsInput,
   type SlaStatsInput,
-  type UpdateLeadStatusInput,
+  type UpdateLeadInput,
   type LeadPublicoInput,
   type LeadManualInput,
   type LeadInteractionKind,
@@ -695,22 +695,42 @@ export class LeadsService {
     });
   }
 
-  /** Atualiza status de um lead (dealer/admin) */
-  async updateStatus(
+  /**
+   * Move o status e/ou corrige o veículo de interesse (dealer/admin).
+   *
+   * O veículo é a metade que faltava: o lead de balcão e o de telefone nascem
+   * sem carro — quem chega no balcão ainda está escolhendo —, e um lead sem
+   * veículo não ganha botão de negócio. Sem esta rota ele morria no card.
+   */
+  async atualizar(
     tenantId: string,
     leadId: string,
     ator: Ator,
-    input: UpdateLeadStatusInput,
+    input: UpdateLeadInput,
   ): Promise<unknown> {
     return this.prisma.withTenant(tenantId, async (tx) => {
       const ajustes = await this.ajustes.ler(tx, tenantId);
       const lead = await tx.lead.findFirst({
         where: {
           id: leadId, tenantId,
+          // A carteira vale igual para vincular veículo: o lead do colega
+          // responde 404, não 403 — confirmar que ele existe já entrega que
+          // há um cliente com aquele id do outro lado, e o id circula por link.
           ...carteiraDe(ator, ajustes.vendedorVeTodosOsLeads),
         },
       });
       if (!lead) throw new NotFoundException('Lead não encontrado');
+
+      // O veículo tem de ser desta loja. O `withTenant` já limita a consulta,
+      // e o `where` explícito repete o filtro porque a aplicação ainda conecta
+      // como dona das tabelas em parte dos ambientes.
+      if (input.vehicleId) {
+        const veiculo = await tx.vehicle.findFirst({
+          where: { id: input.vehicleId, tenantId },
+          select: { id: true },
+        });
+        if (!veiculo) throw new NotFoundException('Veículo não encontrado');
+      }
 
       // `won` deixou de ser o fim do lead e passou a significar "gerou
       // negócio". Sem esta checagem o funil de leads e o de negócios divergem:
@@ -730,36 +750,85 @@ export class LeadsService {
       // Perder exige motivo, e o Zod da rota já garantiu que ele veio. Aqui
       // ele é gravado; e voltar de "perdido" para qualquer outro status
       // **limpa** o motivo, senão o relatório contaria como perda por preço um
-      // lead que está em negociação.
-      const motivo = input.status === 'lost'
-        ? { lostReasonCode: input.lostReasonCode ?? null, lostReason: input.lostReason ?? null }
-        : { lostReasonCode: null, lostReason: null };
+      // lead que está em negociação. Sem mudança de status, o motivo fica como
+      // está: vincular um veículo não é sair da perda.
+      const motivo = input.status === undefined
+        ? {}
+        : input.status === 'lost'
+          ? { lostReasonCode: input.lostReasonCode ?? null, lostReason: input.lostReason ?? null }
+          : { lostReasonCode: null, lostReason: null };
 
       const atualizado = await tx.lead.update({
         where: { id: leadId },
-        data: { status: input.status, ...motivo, lastActivityAt: new Date() },
+        data: {
+          ...(input.status !== undefined && { status: input.status }),
+          ...(input.vehicleId !== undefined && { vehicleId: input.vehicleId }),
+          ...motivo,
+          lastActivityAt: new Date(),
+        },
+        // A tela substitui o lead da lista pelo que volta daqui — foi assim
+        // que o motivo da perda aparecia como "sem motivo informado" logo
+        // depois de salvo, com o valor certo no banco. Sem as relações, o card
+        // perderia foto e nome do veículo recém-vinculado.
+        include: {
+          vehicle: {
+            select: {
+              id: true, versionName: true, yearModel: true, price: true,
+              brand: { select: { name: true } },
+              model: { select: { name: true } },
+              images: { where: { isCover: true }, take: 1, select: { url: true } },
+            },
+          },
+          customer: { select: { id: true, fullName: true, email: true, phone: true } },
+          assignee: { select: { id: true, fullName: true, email: true, role: true } },
+        },
       });
 
       // A mudança de status não deixava rastro nenhum na timeline: o lead
       // aparecia "Perdido" e o histórico não dizia quem, quando nem por quê.
-      const detalhe = input.status === 'lost'
-        ? ` — ${rotuloDoMotivo(input.lostReasonCode)}${input.lostReason ? `: ${input.lostReason}` : ''}`
-        : input.reason ? ` — ${input.reason}` : '';
+      if (input.status !== undefined) {
+        const detalhe = input.status === 'lost'
+          ? ` — ${rotuloDoMotivo(input.lostReasonCode)}${input.lostReason ? `: ${input.lostReason}` : ''}`
+          : input.reason ? ` — ${input.reason}` : '';
 
-      await tx.leadInteraction.create({
-        data: {
-          leadId,
-          tenantId,
-          actorUserId: ator.id,
-          kind: 'status_change' satisfies LeadInteractionKind,
-          content: `Status: ${lead.status} → ${input.status}${detalhe}`,
-          payload: {
-            de: lead.status,
-            para: input.status,
-            lostReasonCode: input.lostReasonCode ?? null,
-          } as never,
-        },
-      });
+        await tx.leadInteraction.create({
+          data: {
+            leadId,
+            tenantId,
+            actorUserId: ator.id,
+            kind: 'status_change' satisfies LeadInteractionKind,
+            content: `Status: ${lead.status} → ${input.status}${detalhe}`,
+            payload: {
+              de: lead.status,
+              para: input.status,
+              lostReasonCode: input.lostReasonCode ?? null,
+            } as never,
+          },
+        });
+      }
+
+      // Vincular e desvincular veículo também deixam rastro: é o histórico que
+      // responde "por que este lead virou negócio do Corolla se ele ligou
+      // perguntando do Onix?".
+      if (input.vehicleId !== undefined && input.vehicleId !== lead.vehicleId) {
+        const de = await this.descreverVeiculo(tx, lead.vehicleId);
+        const para = await this.descreverVeiculo(tx, input.vehicleId);
+
+        await tx.leadInteraction.create({
+          data: {
+            leadId,
+            tenantId,
+            actorUserId: ator.id,
+            kind: 'other' satisfies LeadInteractionKind,
+            content: lead.vehicleId
+              ? input.vehicleId
+                ? `Veículo de interesse: ${de} → ${para}`
+                : `Veículo de interesse removido (era ${de})`
+              : `Veículo de interesse: ${para}`,
+            payload: { de: lead.vehicleId, para: input.vehicleId } as never,
+          },
+        });
+      }
 
       return atualizado;
     });

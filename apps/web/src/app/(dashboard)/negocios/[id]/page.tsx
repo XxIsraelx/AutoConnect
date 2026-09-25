@@ -6,15 +6,19 @@ import { useParams } from 'next/navigation';
 import { ArrowLeft, Plus, History, TrendingUp } from 'lucide-react';
 import {
   DEAL_TRANSITIONS, MOTIVOS_DE_CANCELAMENTO_DE_NEGOCIO, PAYMENT_KINDS,
-  exigeDetalhe, formatarBRL, somar, subtrair,
+  exigeDetalhe, formatarBRL, rotuloDoMotivo, somar, subtrair,
   isDealEditable, type DealStatusValue, type PaymentKindValue,
 } from '@autoconnect/shared';
 import { useAuthStore } from '@/store/auth';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
-import { useNegocio, useMargem, useTransicionar, useAdicionarPagamento } from '../dados';
+import {
+  useNegocio, useMargem, useTransicionar, useAdicionarPagamento, useContratos,
+} from '../dados';
 import Contrato from './Contrato';
 import Partes from './Partes';
 import Comprador from './Comprador';
+import Preco from './Preco';
+import Comissao from './Comissao';
 import { ROTULO_STATUS, COR_STATUS, ROTULO_PAGAMENTO } from '../rotulos';
 
 const VE_CUSTO = ['manager', 'tenant_admin', 'super_admin'];
@@ -24,8 +28,13 @@ export default function NegocioPage() {
   const papel = useAuthStore((s) => s.user?.role) ?? '';
   const podeVerCusto = VE_CUSTO.includes(papel);
 
+  const usuarioId = useAuthStore((s) => s.user?.id) ?? '';
   const { data: negocio, isLoading, error, refetch, isFetching } = useNegocio(id);
   const { data: margem } = useMargem(id, podeVerCusto);
+  // Os contratos já são buscados pelo cartão de contrato; a mesma chave de
+  // cache responde aqui sem uma segunda ida à rede. É ela que diz se o preço
+  // está congelado por um documento emitido.
+  const { data: contratos } = useContratos(id);
   const transicionar = useTransicionar(id);
   const adicionar = useAdicionarPagamento(id);
 
@@ -65,6 +74,12 @@ export default function NegocioPage() {
   const falta = subtrair(negocio.saleValue, somaPagamentos);
   const fechado = Number(falta) === 0;
   const editavel = isDealEditable(negocio.status);
+  const temContratoVivo = (contratos ?? []).some(
+    (c) => c.status === 'issued' || c.status === 'signed',
+  );
+  // Negociar desconto é trabalho do vendedor do negócio; a gerência edita
+  // qualquer um. Cliente não chega a esta tela.
+  const podeEditarPreco = podeVerCusto || negocio.salesperson?.id === usuarioId;
 
   /**
    * Os botões vêm da mesma tabela de transições que o backend usa. É por isso
@@ -101,6 +116,18 @@ export default function NegocioPage() {
           {Number(negocio.discount) > 0 && (
             <p className="text-xs text-slate-400">
               {formatarBRL(negocio.listPrice)} − {formatarBRL(negocio.discount)}
+            </p>
+          )}
+          {/* Por que o dinheiro não entrou. O código era gravado e não
+              aparecia em tela nenhuma: quem abrisse o negócio no dia seguinte
+              via "Cancelado" e mais nada — que é justamente o que o motivo
+              estruturado existe para responder. */}
+          {negocio.cancelReasonCode && (
+            <p className="text-xs font-semibold text-rose-600 dark:text-rose-400 mt-1">
+              {rotuloDoMotivo(negocio.cancelReasonCode)}
+              {negocio.cancelReason && (
+                <span className="font-normal text-slate-400"> · {negocio.cancelReason}</span>
+              )}
             </p>
           )}
         </div>
@@ -180,7 +207,20 @@ export default function NegocioPage() {
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* `grid-cols-1` explícito, e não só `grid`: sem ele a coluna implícita
+          é `auto` e cresce até o max-content do cartão mais largo — a página
+          passava de 367 para 477px em 375px de tela e rolava de lado. Com
+          `minmax(0, 1fr)` os cartões respeitam a largura disponível. */}
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+        <Preco
+          negocio={negocio}
+          editavel={editavel}
+          temContratoVivo={temContratoVivo}
+          podeEditar={podeEditarPreco}
+        />
+
+        <Comissao negocio={negocio} />
+
         {/* Pagamento */}
         <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
@@ -296,7 +336,7 @@ export default function NegocioPage() {
 
         <Comprador negocio={negocio} editavel={editavel} />
 
-        <Contrato dealId={id} />
+        <Contrato dealId={id} statusDoNegocio={negocio.status} />
 
         {/* Timeline */}
         <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4">

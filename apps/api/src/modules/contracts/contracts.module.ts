@@ -9,11 +9,14 @@ import {
   AssinaturaExternaController, WebhookAssinaturaController,
 } from './assinatura/assinatura-externa.controller';
 import { PROVEDOR_DE_ASSINATURA, provedorConfigurado } from './assinatura/provedor';
+import { DealEstadoModule } from '../deals/deal-estado.module';
 
 @Module({
   // Privilegiado: super admin lê contratos de qualquer loja, e o webhook de
   // assinatura descobre de qual loja é o envelope antes de ter contexto.
-  imports: [PrivilegedPrismaModule],
+  // DealEstadoModule: emitir o contrato move o negócio para "contrato
+  // emitido", pela mesma máquina de estados que o resto do sistema usa.
+  imports: [PrivilegedPrismaModule, DealEstadoModule],
   controllers: [ContractsController, AssinaturaExternaController, WebhookAssinaturaController],
   providers: [
     ContractsService,

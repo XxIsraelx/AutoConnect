@@ -45,7 +45,7 @@ Telas exercitadas em **820 px** (layout de desktop, a partir de `md`) e em
 | 9 | Registrar que compareceu | ✅ | Botão "Concluir" no drawer. O rótulo não é "compareceu", mas o indicador de comparecimento sobe. |
 | 10 | Registrar que não compareceu | ✅ | Um clique. Aceita marcar falta em agendamento **de amanhã** sem aviso (B14). |
 | 11 | Transformar lead em negócio e montar a proposta | 🟡 | Funciona onde o veículo está livre; nos 4 leads ativos da Ana a demo já tinha negócio aberto e a tela só diz "Este veículo já tem um negócio em andamento" sem link para ele. "Proposta" é só um nome de etapa — não existe proposta para enviar ao cliente. |
-| 12 | Aplicar desconto | ❌ | Não existe campo. O valor de venda só pode ser digitado no instante de abrir o negócio, e só pelo caminho `/veiculos/[id]`. Aberto pelo card do lead, o negócio nasce no preço de tabela e nunca mais muda. |
+| 12 | Aplicar desconto | ❌ → ✅ 25/09 | Não existe campo. O valor de venda só pode ser digitado no instante de abrir o negócio, e só pelo caminho `/veiculos/[id]`. Aberto pelo card do lead, o negócio nasce no preço de tabela e nunca mais muda. |
 | 13 | Registrar pagamento composto (entrada + financiamento) | 🟡 | Funciona e fecha certinho ("Fecha com a venda R$ 84.900,00"), depois de descobrir que o campo recusa "20.000,00" com um "Validation failed" solto (B8). |
 | 14 | Perder um lead com motivo | 🟡 | Fluxo bom: Mover → Perdido → "POR QUE FOI PERDIDO?" com 8 motivos. Mas o card mostra "SEM MOTIVO INFORMADO" logo depois (B7). |
 | 15 | Perder/cancelar um negócio com motivo | 🟡 | Salva o código no banco, e **nenhuma tela mostra o motivo depois** (B12). |
@@ -83,6 +83,8 @@ linha seguinte, derruba o boot.
    failed to start`.
 
 ### B2 — O lead de balcão e o de telefone nascem sem veículo e morrem ali
+
+> ✅ **Corrigido em 25/09/2026.** O modal carrega equipe e estoque em chamadas separadas e não pede `/users` para quem não pode vê-la; `PATCH /leads/:id` aceita `vehicleId` (e `null`), com carteira e loja respeitadas. Onda 2, item 12a.
 **Gravidade: a mais alta do relatório. Quebra a Onda 0, item 2.**
 
 1. Entrar como `demo.ana` (papel `salesperson`) → `/leads` → "Novo lead".
@@ -103,6 +105,8 @@ que o produto não cumpre. O cliente que entrou na loja perguntando pelo Corolla
 fica num card solto para sempre.
 
 ### B3 — A comissão tem dois valores diferentes em duas telas
+
+> ✅ **Corrigido em 25/09/2026.** Uma definição só, no shared: percentual × **valor de venda** dos negócios faturados. As duas telas e o negócio consomem `calcularComissao`, e cada uma cita a base. Decisão em [base da comissão e preço negociável](../decisoes/2026-09-25%20base%20da%20comissao%20e%20preco%20negociavel.md).
 **Gravidade: alta (é o número que vira pagamento).**
 
 | Vendedor | `/equipe` (drawer) | `/relatorios` e `salespeople.csv` |
@@ -140,6 +144,8 @@ mesmo lugar, mostra o vazio certo ("Nenhum lead encontrado. Tente mudar os
 filtros.") — então é inconsistência interna.
 
 ### B7 — O motivo da perda vira "SEM MOTIVO INFORMADO" na hora
+
+> ✅ **Corrigido em 25/09/2026.** A lista passou a substituir o lead pelo que o PATCH devolveu, em vez de copiar só o status.
 1. Mover → Perdido → escolher "Não respondeu".
 2. A faixa "PERDAS POR MOTIVO" já soma "Não respondeu 1" (certo).
 3. O chip do card mostra **"SEM MOTIVO INFORMADO"**.
@@ -155,23 +161,31 @@ campo apontado e sem dizer o formato. `20000.00` funciona. O placeholder é
 `0.00`. É exatamente o caso que o CLAUDE.md manda tratar com `fieldErrors`.
 
 ### B9 — `/negocios/[id]` estoura a largura em 375 px
+
+> ✅ **Corrigido em 25/09/2026.** A grade estava com `grid` sem `grid-cols-1`: a coluna implícita crescia até o max-content do cartão mais largo. Com `minmax(0, 1fr)`, 367/367.
 `main.scrollWidth = 397` num `clientWidth = 367`. O e-mail do comprador e os
 valores da composição do pagamento ficam cortados e a página rola de lado.
 Medi também `/leads`, `/agendamentos`, `/negocios` e `/veiculos` a 375 px:
 367/367, sem overflow. É só o detalhe do negócio.
 
 ### B10 — Contrato emitido sem mover o negócio de etapa
+
+> ✅ **Corrigido em 25/09/2026.** A emissão passa pela máquina de estados e move o negócio para "contrato emitido". Rascunho não emite — `draft` não alcança `contract_issued` —, e a reemissão depois de anular não mexe no status.
 Emiti o contrato do Fiat Argo com o negócio em **Proposta**. O contrato foi
 criado (`Compra e venda v1`, hash `6b43bddd3620…`) e o negócio **continuou em
 Proposta**. O funil por valor passa a colocar em "Proposta" dinheiro que já tem
 contrato emitido.
 
 ### B11 — "Emitir contrato" habilitado em negócio cancelado
+
+> ✅ **Corrigido em 25/09/2026.** O botão nasce desabilitado em negócio terminal e em rascunho, com o motivo na tela e no `title`.
 No Onix cancelado o botão aparece e está `disabled: false`. A API recusa
 corretamente (`409 — Negócio em "canceled" não emite contrato`), então não há
 dano; é um convite ao erro.
 
 ### B12 — O motivo do cancelamento do negócio some
+
+> ✅ **Corrigido em 25/09/2026.** Aparece na lista `/negocios`, no cabeçalho do detalhe e no histórico — o evento de status passou a gravar o rótulo do código, não só o texto livre.
 Cancelei com "Não fechou no preço". Banco: `cancel_reason_code = preco`. O
 histórico do negócio registra só "Proposta → Cancelado", sem motivo, e a lista
 `/negocios` também não mostra. Quem abre amanhã não sabe por que o dinheiro não
@@ -184,6 +198,8 @@ carteira fechada, a Ana via **"2 novos aguardando resposta"** no dashboard e
 persegue um número que não é dela e que nunca zera.
 
 ### B14 — Agendamento futuro aceita "Não compareceu"
+
+> ✅ **Corrigido em 25/09/2026.** "Concluir" e "Não compareceu" só a partir do horário marcado. A API recusa com 409 e a tela já desabilita os dois botões.
 Marquei falta num test drive de **amanhã**, sem aviso. O indicador de
 comparecimento — que o roteiro de demonstração vende como "o número que ninguém
 tem na planilha" — aceita ser contaminado.
@@ -257,11 +273,11 @@ de `/users` do B2: ela não consegue se atribuir a um agendamento.
 ## 4. O que faltou
 
 ### Impede o uso
-- **Vincular veículo a lead manual** (e corrigir o veículo de qualquer lead).
-  Sem isso, todo lead de balcão e telefone é um beco sem saída.
-- **Editar preço/desconto de um negócio aberto.**
+- ✅ **Vincular veículo a lead manual** (e corrigir o veículo de qualquer lead).
+  Sem isso, todo lead de balcão e telefone é um beco sem saída. *(25/09/2026)*
+- ✅ **Editar preço/desconto de um negócio aberto.** *(25/09/2026)*
 - **Ver o estoque reservado, vendido e arquivado** na tela de estoque.
-- **Um número de comissão que não tenha duas versões.**
+- ✅ **Um número de comissão que não tenha duas versões.** *(25/09/2026)*
 
 ### Incomoda
 - Proposta imprimível/enviável ao cliente.
@@ -276,6 +292,11 @@ de `/users` do B2: ela não consegue se atribuir a um agendamento.
 ---
 
 ## 5. Veredito para a Onda 2
+
+> **Os três primeiros foram feitos em 25/09/2026**, junto de B7, B9, B10, B11,
+> B12 e B14. O relatório fica como está — é o registro do que foi encontrado —,
+> com as marcas de correção em cada bug. O que mudou está no
+> [plano de paridade](../planos/plano-paridade-crm.md), itens 12a a 12c.
 
 **Não é WhatsApp oficial, e não é ingestão de leads dos portais. É fechar o
 funil manual e o dinheiro do negócio.** Nesta ordem:

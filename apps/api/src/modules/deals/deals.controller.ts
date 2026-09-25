@@ -56,7 +56,11 @@ export class DealsController {
 
   @Get(':id')
   findOne(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string): Promise<unknown> {
-    return this.deals.findOne(escopoDa(req.user), id);
+    // Quem pede decide se a comissão vem junto: a própria sempre, a do colega
+    // só para a gerência.
+    return this.deals.findOne(escopoDa(req.user), id, {
+      id: req.user.id, role: req.user.role,
+    });
   }
 
   @Patch(':id')

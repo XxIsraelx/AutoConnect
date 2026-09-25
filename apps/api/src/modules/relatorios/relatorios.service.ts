@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@autoconnect/db';
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { ehGlobal, type Escopo } from '../../common/escopo';
-import { DEAL_FATURADO_STATUSES } from '@autoconnect/shared';
+import { calcularComissao, DEAL_FATURADO_STATUSES } from '@autoconnect/shared';
 import { montarCsv } from './csv';
 
 /** Quem enxerga custo, margem e comissão. Mesma lista do `deals.controller`. */
@@ -184,10 +184,11 @@ export class RelatoriosService {
         const margem = negocio?._sum.grossMargin ?? new Prisma.Decimal(0);
 
         const pct = u.salespersonProfile?.commissionPct ?? null;
-        // Sem percentual configurado a comissão é `null`, e não zero: zero
-        // diria "não ganhou nada", quando o que houve foi "ninguém informou
-        // quanto ela ganha".
-        const comissao = pct ? margem.times(pct).dividedBy(100).toDecimalPlaces(2) : null;
+        // A base é o **valor de venda**, e a conta mora no shared: esta tela
+        // aplicava o percentual sobre a margem bruta e `/equipe` sobre o
+        // faturamento, e a mesma pessoa tinha dois valores de comissão no
+        // mesmo mês. O porquê da base escolhida está em `domain/comissao.ts`.
+        const comissao = calcularComissao(faturamento.toFixed(2), pct?.toFixed(2) ?? null);
 
         return {
           userId: u.id,
@@ -206,7 +207,7 @@ export class RelatoriosService {
           faturamento: dinheiro ? faturamento.toFixed(2) : null,
           margem: dinheiro ? margem.toFixed(2) : null,
           comissaoPct: dinheiro && pct ? pct.toFixed(2) : null,
-          comissaoEstimada: dinheiro ? (comissao?.toFixed(2) ?? null) : null,
+          comissaoEstimada: dinheiro ? comissao : null,
         } satisfies LinhaDeDesempenho;
       }),
     };

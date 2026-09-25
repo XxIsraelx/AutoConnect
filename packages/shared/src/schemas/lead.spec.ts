@@ -1,4 +1,4 @@
-import { createLeadSchema, updateLeadStatusSchema } from './lead';
+import { createLeadSchema, updateLeadSchema } from './lead';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 
@@ -60,23 +60,23 @@ describe('createLeadSchema', () => {
   });
 });
 
-describe('updateLeadStatusSchema', () => {
+describe('updateLeadSchema', () => {
   it('aceita as transições que a tela oferece', () => {
     // `lost` ficou de fora: passou a exigir motivo, e a regra inteira está em
     // `domain/motivo-perda.spec.ts`.
     for (const status of ['new', 'contacted', 'qualified', 'negotiating', 'won', 'archived']) {
-      expect(updateLeadStatusSchema.safeParse({ status }).success).toBe(true);
+      expect(updateLeadSchema.safeParse({ status }).success).toBe(true);
     }
   });
 
   it('perder exige motivo — é a única fonte que diz por que a loja não vende', () => {
-    expect(updateLeadStatusSchema.safeParse({ status: 'lost' }).success).toBe(false);
+    expect(updateLeadSchema.safeParse({ status: 'lost' }).success).toBe(false);
     expect(
-      updateLeadStatusSchema.safeParse({ status: 'lost', lostReasonCode: 'preco' }).success,
+      updateLeadSchema.safeParse({ status: 'lost', lostReasonCode: 'preco' }).success,
     ).toBe(true);
   });
 
   it('recusa status inventado', () => {
-    expect(updateLeadStatusSchema.safeParse({ status: 'fechado' }).success).toBe(false);
+    expect(updateLeadSchema.safeParse({ status: 'fechado' }).success).toBe(false);
   });
 });

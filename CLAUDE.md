@@ -439,6 +439,16 @@ O porquê de cada regra: `docs/decisoes/vendas-e-contrato.md`.
   contrato; interna e externa não se misturam (409). Único lookup privilegiado:
   tenant do envelope no webhook. Falta o adaptador Clicksign —
   `docs/decisoes/2026-09-22 assinatura externa.md`.
+- **Comissão tem uma definição só:** percentual do perfil × **valor de venda**
+  dos negócios faturados, pela data de fechamento. A conta é `calcularComissao`
+  (shared) e `/equipe`, `/relatorios` e o negócio a consomem — duas cópias já
+  deram R$ 1.950,00 numa tela e R$ 147,50 na outra para a mesma pessoa.
+  Não é sobre a margem de propósito (`docs/decisoes/2026-09-25 base da
+  comissao e preco negociavel.md`).
+- **Preço do negócio muda enquanto não há contrato emitido.** Com contrato
+  `issued` ou `signed`, `PATCH /deals/:id` recusa alteração de valor: o PDF
+  arquivado tem os valores impressos e o hash conferido no download. Anular e
+  reemitir é o caminho.
 - **Consulta veicular:** cobrada por chamada — cache antes de idempotência,
   idempotência antes da chamada; cache por concessionária; chamada ao
   fornecedor **fora** do `withTenant`. Sem `CONSULTA_FORNECEDOR`, recusa alto.
