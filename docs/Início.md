@@ -30,6 +30,7 @@ com o código e lido pelo Claude quando o assunto aparece.
   · [levantamento dos CRMs do mercado](planos/levantamento-crms-e-paridade.md)
 - [Levantamento — vendas e contratos](planos/levantamento-vendas-e-contratos.md)
 - [Piloto simulado — uma semana na operação](produto/piloto-simulado-operacao.md)
+  · [o primeiro dia, do zero](produto/piloto-simulado-primeiro-dia.md)
 - [Funcionalidades do produto](produto/features.md)
 - [MVP e arquitetura](produto/mvp-and-architecture.md)
 - [Design do banco](arquitetura/database-design.md) · [diagrama ER](arquitetura/erd.mermaid)
@@ -37,6 +38,7 @@ com o código e lido pelo Claude quando o assunto aparece.
 - [Testes e CI — detalhes](arquitetura/testes-e-ci.md)
 - [Vendas e contrato — decisões](decisoes/vendas-e-contrato.md)
   · [assinatura externa](decisoes/2026-09-22%20assinatura%20externa.md)
+  · [cadastro em autosserviço](decisoes/2026-09-25%20cadastro%20em%20autosservico.md)
 - [Estado, pendências e próximos passos](planos/estado-e-pendencias.md)
 
 ## Como pedir algo ao Claude usando o cofre
