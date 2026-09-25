@@ -49,6 +49,10 @@ export class UsersService {
         avatarUrl: true,
         phone: true,
         createdAt: true,
+        // A faixa "confirme seu e-mail" do painel sai daqui: o JWT não carrega
+        // o estado de propósito, senão o dono clicaria no link e continuaria
+        // vendo o aviso até o token de 15 minutos expirar.
+        emailVerifiedAt: true,
         customerProfile: {
           select: {
             documentNumber: true,

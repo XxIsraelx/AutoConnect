@@ -15,6 +15,10 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, TenantId } from '../../common/decorators/current-user.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Public } from '../../common/decorators/public.decorator';
+import {
+  EmailVerificadoGuard,
+  ExigeEmailVerificado,
+} from '../../common/guards/email-verificado.guard';
 
 export const acceptInviteSchema = z.object({
   token: z.string().min(10),
@@ -27,9 +31,16 @@ export const acceptInviteSchema = z.object({
 export class InvitationsController {
   constructor(private readonly svc: InvitationsService) {}
 
+  /**
+   * Convidar equipe manda e-mail a terceiros com a nossa marca — por isso é uma
+   * das duas ações que exigem e-mail confirmado desde que o cadastro passou a
+   * ser em autosserviço. Reenviar e revogar não exigem: quem já convidou
+   * precisa poder corrigir.
+   */
   @Post()
-  @UseGuards(RolesGuard)
+  @UseGuards(RolesGuard, EmailVerificadoGuard)
   @Roles('tenant_admin', 'manager')
+  @ExigeEmailVerificado()
   async create(
     @Body() body: unknown,
     @TenantId() tenantId: string,

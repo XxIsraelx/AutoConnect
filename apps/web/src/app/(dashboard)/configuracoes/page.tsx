@@ -209,7 +209,7 @@ export default function ConfiguracoesPage() {
 
   /* Forms separados para cada seção */
   const [tenantForm, setTenantForm] = useState({
-    tradeName: '', primaryPhone: '', brandColor: '', websiteUrl: '', logoUrl: '',
+    tradeName: '', legalName: '', primaryPhone: '', brandColor: '', websiteUrl: '', logoUrl: '',
     legalRepName: '', legalRepCpf: '', legalRepRole: '', legalRepEmail: '',
     acceptsTradeIn: false,
   });
@@ -239,6 +239,7 @@ export default function ConfiguracoesPage() {
         setTenant(t);
         setTenantForm({
           tradeName:    t.tradeName    ?? '',
+          legalName:    t.legalName    ?? '',
           primaryPhone: t.primaryPhone ?? '',
           brandColor:   t.brandColor   ?? '#3b82f6',
           websiteUrl:   t.websiteUrl   ?? '',
@@ -286,6 +287,7 @@ export default function ConfiguracoesPage() {
         token,
         body: JSON.stringify({
           tradeName:    tenantForm.tradeName    || undefined,
+          legalName:    tenantForm.legalName    || undefined,
           primaryPhone: tenantForm.primaryPhone || undefined,
           brandColor:   tenantForm.brandColor   || undefined,
           websiteUrl:   tenantForm.websiteUrl   || undefined,
@@ -488,14 +490,20 @@ export default function ConfiguracoesPage() {
               </button>
             </div>
 
-            {/* Info somente leitura */}
-            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+            {/* Razão social: editável desde que o cadastro deixou de pedi-la.
+                Ela vem da Receita pelo CNPJ; quando a Receita não responde,
+                nasce igual ao nome fantasia — e é ESTA que sai no contrato. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
               <Field label="Razão social">
-                <div className="flex items-center gap-2 rounded-xl border border-slate-100
-                                dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 px-3 py-2.5">
-                  <Building2 size={13} className="text-slate-400 shrink-0" />
-                  <span className="text-sm text-slate-500 truncate">{tenant?.legalName}</span>
+                <div className="relative">
+                  <Building2 size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input className={`${input} pl-9`} value={tenantForm.legalName}
+                         onChange={e => setT('legalName', e.target.value)}
+                         placeholder="Minha Auto Comércio de Veículos Ltda" />
                 </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  É o nome que aparece no contrato de venda.
+                </p>
               </Field>
               <Field label="Slug (URL)">
                 <div className="flex items-center gap-2 rounded-xl border border-slate-100

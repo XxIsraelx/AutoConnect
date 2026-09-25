@@ -131,7 +131,9 @@ export default function CustomerSignupPage() {
           state: form.state || undefined,
         }),
       });
-      router.replace('/verifique-seu-email');
+      // Leva o e-mail: a tela de destino tem "reenviar", e sem isso a pessoa
+      // teria que digitá-lo de novo justamente quando o link não chegou.
+      router.replace(`/verifique-seu-email?email=${encodeURIComponent(form.email.trim())}`);
     } catch (err) {
       if (err instanceof ApiError && err.message.includes('já cadastrado')) {
         setEmailTaken(true);

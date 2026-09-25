@@ -4,12 +4,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import {
-  ChevronLeft, ChevronRight, Check, Building2,
-  User, MapPin, Lock, Ticket, AlertCircle, Loader2,
-} from 'lucide-react';
+import { Check, AlertCircle, Loader2, Info } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
-import { mascararTelefoneBr } from '@autoconnect/shared';
+import { mascararTelefoneBr, cnpjValido, DURACAO_DO_TRIAL_DIAS } from '@autoconnect/shared';
 import { useAuthStore, type AuthUser } from '@/store/auth';
 
 // ─── Utilitários ──────────────────────────────────────────────────────────────
@@ -21,12 +18,6 @@ function fmtCNPJ(v: string) {
     .replace(/(\d{3})(\d)/, '$1/$2')
     .replace(/(\d{4})(\d{1,2})$/, '$1-$2');
 }
-function fmtCPF(v: string) {
-  return v.replace(/\D/g, '').slice(0, 11)
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
-}
 /**
  * Máscara de telefone — do `@autoconnect/shared`.
  *
@@ -35,78 +26,42 @@ function fmtCPF(v: string) {
  * próprio telefone errado na página pública no primeiro dia.
  */
 const fmtPhone = mascararTelefoneBr;
-function fmtCEP(v: string) {
-  return v.replace(/\D/g, '').slice(0, 8)
-    .replace(/(\d{5})(\d{1,3})$/, '$1-$2');
-}
 /**
  * Usa o valor vindo de API externa só se ele tiver conteúdo real.
- * BrasilAPI e ViaCEP devolvem STRING VAZIA (não null) para campos que não têm,
- * e `??` só cai no fallback em null/undefined — então o vazio passava adiante e
- * apagava o que o usuário já havia digitado.
+ * BrasilAPI devolve STRING VAZIA (não null) para campos que não têm, e `??` só
+ * cai no fallback em null/undefined — então o vazio passava adiante e apagava o
+ * que o usuário já havia digitado.
  */
 function ou(valor: string | null | undefined, atual: string) {
   return valor && valor.trim() ? valor.trim() : atual;
 }
-function toSlug(v: string) {
-  return v.toLowerCase().normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-}
-
-const BR_STATES = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT',
-  'PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
 
 // ─── Tipos ─────────────────────────────────────────────────────────────────────
 
-type CnpjStatus = 'idle' | 'loading' | 'valid' | 'inactive' | 'invalid';
+/**
+ * Situação da consulta à Receita (BrasilAPI).
+ *
+ * `indisponivel` é o estado que faltava e que fechava a porta de entrada: antes
+ * qualquer resposta não-2xx — 404 de empresa nova, 429 do limite de uso do
+ * serviço gratuito, 500, manutenção — virava "CNPJ não encontrado" e **travava
+ * o cadastro**. Agora a regra dura é o dígito verificador (`cnpjValido`, a
+ * mesma conta que a API faz) e a consulta é enriquecimento: indisponível
+ * significa "digite os dados à mão", nunca "você não pode entrar".
+ */
+type CnpjStatus = 'idle' | 'loading' | 'valid' | 'inactive' | 'indisponivel';
 
 type Form = {
   inviteToken: string;
   cnpj: string;
-  stateRegistration: string;
-  legalName: string;
   tradeName: string;
-  slug: string;
-  primaryEmail: string;
   adminFullName: string;
   adminEmail: string;
   adminPassword: string;
-  adminCpf: string;
-  adminJobTitle: string;
-  adminPhone: string;
-  postalCode: string;
-  addressLine: string;
-  addressNumber: string;
-  complement: string;
-  neighborhood: string;
-  city: string;
-  state: string;
   branchPhone: string;
 };
 
-/** Erros por campo do formulário: { tradeName: 'Informe o nome fantasia' } */
+/** Erros por campo do formulário: { tradeName: 'Informe o nome da loja' } */
 type Errors = Partial<Record<keyof Form, string>>;
-
-// ─── Steps config ──────────────────────────────────────────────────────────────
-
-const STEPS = [
-  { id: 'invite',   label: 'Convite',     icon: Ticket    },
-  { id: 'company',  label: 'Empresa',     icon: Building2 },
-  { id: 'admin',    label: 'Responsável', icon: User      },
-  { id: 'address',  label: 'Endereço',    icon: MapPin    },
-  { id: 'access',   label: 'Acesso',      icon: Lock      },
-];
-
-/** Em que etapa cada campo aparece — usado para levar o usuário até o erro. */
-const STEP_DO_CAMPO: Record<string, number> = {
-  inviteToken: 0,
-  cnpj: 1, stateRegistration: 1, legalName: 1, tradeName: 1, slug: 1, primaryEmail: 1,
-  adminFullName: 2, adminCpf: 2, adminJobTitle: 2, adminPhone: 2,
-  postalCode: 3, addressLine: 3, addressNumber: 3, complement: 3,
-  neighborhood: 3, city: 3, state: 3, branchPhone: 3,
-  adminEmail: 4, adminPassword: 4,
-};
 
 /**
  * A API responde com caminhos aninhados (`tenant.tradeName`, `branch.phone`);
@@ -116,25 +71,11 @@ const STEP_DO_CAMPO: Record<string, number> = {
 const CAMPO_DA_API: Record<string, keyof Form> = {
   'inviteToken': 'inviteToken',
   'tenant.cnpj': 'cnpj',
-  'tenant.stateRegistration': 'stateRegistration',
-  'tenant.legalName': 'legalName',
   'tenant.tradeName': 'tradeName',
-  'tenant.slug': 'slug',
-  'tenant.primaryEmail': 'primaryEmail',
   'admin.fullName': 'adminFullName',
   'admin.email': 'adminEmail',
   'admin.password': 'adminPassword',
-  'admin.cpf': 'adminCpf',
-  'admin.jobTitle': 'adminJobTitle',
-  'admin.phone': 'adminPhone',
   'branch.phone': 'branchPhone',
-  'branch.postalCode': 'postalCode',
-  'branch.addressLine': 'addressLine',
-  'branch.addressNumber': 'addressNumber',
-  'branch.complement': 'complement',
-  'branch.neighborhood': 'neighborhood',
-  'branch.city': 'city',
-  'branch.state': 'state',
 };
 
 /**
@@ -192,28 +133,43 @@ function Field({
 
 // ─── Página principal ──────────────────────────────────────────────────────────
 
+/**
+ * # Cadastro de concessionária, em autosserviço
+ *
+ * Eram **22 campos em 5 etapas** — e a primeira etapa pedia um token de convite
+ * que só a equipe do AutoConnect emitia, enquanto a home anunciava "Criar conta
+ * grátis" em cinco botões. O piloto do primeiro dia parou exatamente aqui.
+ *
+ * Agora são **cinco campos obrigatórios numa tela só**: CNPJ, nome da loja, seu
+ * nome, e-mail e senha (mais o telefone da loja, opcional). O critério do corte
+ * foi "o que a loja precisa para existir e funcionar"; o resto é pedido dentro
+ * do produto, no momento em que importa — razão social e endereço em
+ * `/configuracoes` (com item no checklist de primeiros passos), CPF do
+ * responsável só na emissão do contrato, onde já existe "Representante legal".
+ *
+ * O convite continua aceito: `?invite=` na URL o traz, e a conta nasce com o
+ * e-mail já verificado. Ele deixou de ser exigido, não de existir.
+ */
 export default function SignupPage() {
   const router      = useRouter();
   const params      = useSearchParams();
   const setSession  = useAuthStore((s) => s.setSession);
 
-  const [step, setStep]       = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
   const [fieldErrors, setFieldErrors] = useState<Errors>({});
 
   const [cnpjStatus, setCnpjStatus] = useState<CnpjStatus>('idle');
-  const [cnpjData,   setCnpjData]   = useState<{ razao_social?: string; nome_fantasia?: string; municipio?: string; uf?: string; logradouro?: string; numero?: string; bairro?: string; cep?: string } | null>(null);
-  const [loadingCep, setLoadingCep] = useState(false);
+  /** Razão social e endereço vindos da Receita: não são pedidos, mas são usados. */
+  const [dadosDaReceita, setDadosDaReceita] = useState<{
+    legalName?: string; postalCode?: string; addressLine?: string;
+    addressNumber?: string; neighborhood?: string; city?: string; state?: string;
+  }>({});
 
   const [form, setForm] = useState<Form>({
     inviteToken: params.get('invite') ?? '',
-    cnpj: '', stateRegistration: '',
-    legalName: '', tradeName: '', slug: '', primaryEmail: '',
+    cnpj: '', tradeName: '',
     adminFullName: '', adminEmail: '', adminPassword: '',
-    adminCpf: '', adminJobTitle: '', adminPhone: '',
-    postalCode: '', addressLine: '', addressNumber: '',
-    complement: '', neighborhood: '', city: '', state: '',
     branchPhone: '',
   });
 
@@ -230,18 +186,23 @@ export default function SignupPage() {
     });
   }
 
-  // ── CNPJ lookup via BrasilAPI ────────────────────────────────────────────────
+  // ── CNPJ: dígito verificador manda, a Receita enriquece ──────────────────────
   const lookupCNPJ = useCallback(async (raw: string) => {
     const digits = raw.replace(/\D/g, '');
     if (digits.length !== 14) { setCnpjStatus('idle'); return; }
     setCnpjStatus('loading');
     try {
       const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`);
-      if (!res.ok) { setCnpjStatus('invalid'); return; }
+      // Qualquer resposta não-2xx é **indisponibilidade**, não reprovação:
+      // empresa recém-aberta dá 404 e o limite de uso do serviço gratuito dá
+      // 429. Nenhum dos dois diz nada sobre o CNPJ ser válido.
+      if (!res.ok) { setCnpjStatus('indisponivel'); return; }
       // A BrasilAPI devolve DOIS campos: `situacao_cadastral` é numérico
       // (2 = ativa) e `descricao_situacao_cadastral` é o texto ("ATIVA").
       // Comparar o numérico com a string reprovava todo CNPJ válido.
-      const data = await res.json() as typeof cnpjData & {
+      const data = await res.json() as {
+        razao_social?: string; nome_fantasia?: string; municipio?: string; uf?: string;
+        logradouro?: string; numero?: string; bairro?: string; cep?: string;
         situacao_cadastral?: number | string;
         descricao_situacao_cadastral?: string;
       };
@@ -253,152 +214,96 @@ export default function SignupPage() {
 
       if (conclusivo && !ativa) {
         setCnpjStatus('inactive');
-        setCnpjData(null);
+        setDadosDaReceita({});
         return;
       }
-      setCnpjData(data);
       setCnpjStatus('valid');
-      // Auto-preenche campos com dados da Receita Federal.
-      // `nome_fantasia`, `logradouro` e `numero` costumam vir "" da BrasilAPI —
-      // ver o helper `ou` no topo do arquivo.
+
+      const razao = data.razao_social?.trim();
+      const cidade = data.municipio?.trim();
+      // Guardado, não exibido: a razão social e o endereço da Receita vão junto
+      // do cadastro para a loja não nascer sem eles — mas nenhum dos dois é um
+      // campo que a pessoa precise preencher para entrar.
+      setDadosDaReceita({
+        legalName:     razao || undefined,
+        postalCode:    data.cep?.replace(/\D/g, '') || undefined,
+        addressLine:   data.logradouro?.trim() || undefined,
+        addressNumber: data.numero?.trim() || undefined,
+        neighborhood:  data.bairro?.trim() || undefined,
+        city:          cidade ? cidade.charAt(0).toUpperCase() + cidade.slice(1).toLowerCase() : undefined,
+        state:         data.uf?.trim() || undefined,
+      });
+
+      // Preenche o nome da loja só se estiver vazio — o que a pessoa digitou
+      // vale mais que o que a Receita tem registrado.
       setForm((f) => {
-        const legalName = ou(data.razao_social, f.legalName);
-        const tradeName = ou(data.nome_fantasia, ou(data.razao_social, f.tradeName));
-        return {
-          ...f,
-          legalName,
-          tradeName,
-          slug:          f.slug || toSlug(tradeName),
-          city:          data.municipio?.trim()
-            ? data.municipio.trim().charAt(0).toUpperCase() + data.municipio.trim().slice(1).toLowerCase()
-            : f.city,
-          state:         ou(data.uf, f.state),
-          addressLine:   ou(data.logradouro, f.addressLine),
-          addressNumber: ou(data.numero, f.addressNumber),
-          neighborhood:  ou(data.bairro, f.neighborhood),
-          postalCode:    data.cep?.trim() ? fmtCEP(data.cep.replace(/\D/g, '')) : f.postalCode,
-        };
+        const sugerido = ou(data.nome_fantasia, ou(razao, ''));
+        if (!sugerido || f.tradeName.trim()) return f;
+        return { ...f, tradeName: sugerido };
+      });
+      // O nome preenchido sozinho não pode deixar aceso um "Informe o nome da
+      // loja" ao lado de um campo que agora está preenchido.
+      setFieldErrors((e) => {
+        if (!e.tradeName) return e;
+        const { tradeName: _, ...resto } = e;
+        return resto;
       });
     } catch {
-      // BrasilAPI fora do ar: só não autopreenche. O CNPJ não é recusado por
-      // isso, e a pessoa segue digitando os campos à mão.
-      setCnpjStatus('idle');
+      // BrasilAPI fora do ar: mesmo tratamento do 4xx/5xx. Só não autopreenche.
+      setCnpjStatus('indisponivel');
     }
   }, []);
 
   useEffect(() => {
     if (form.cnpj.replace(/\D/g, '').length === 14) lookupCNPJ(form.cnpj);
+    else setCnpjStatus('idle');
   }, [form.cnpj, lookupCNPJ]);
 
-  // ── CEP lookup ───────────────────────────────────────────────────────────────
-  async function lookupCEP(cep: string) {
-    const digits = cep.replace(/\D/g, '');
-    if (digits.length !== 8) return;
-    setLoadingCep(true);
-    try {
-      const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
-      const data = await res.json() as { erro?: boolean; logradouro?: string; bairro?: string; localidade?: string; uf?: string };
-      if (!data.erro) {
-        setForm((f) => ({
-          ...f,
-          addressLine:  ou(data.logradouro, f.addressLine),
-          neighborhood: ou(data.bairro,     f.neighborhood),
-          city:         ou(data.localidade, f.city),
-          state:        ou(data.uf,         f.state),
-        }));
-      }
-    } catch {
-      // ViaCEP é só autopreenchimento: se falhar, o endereço é digitado à mão.
-    }
-    finally { setLoadingCep(false); }
-  }
-
-  // ── Validação por etapa ───────────────────────────────────────────────────────
+  // ── Validação ────────────────────────────────────────────────────────────────
   /**
-   * Valida TODOS os campos da etapa e devolve um erro por campo, em vez de
-   * parar no primeiro. Assim o usuário corrige tudo de uma vez e vê a mensagem
-   * ao lado do campo, não como um aviso solto no topo.
+   * Valida TODOS os campos e devolve um erro por campo, em vez de parar no
+   * primeiro. Assim o usuário corrige tudo de uma vez e vê a mensagem ao lado
+   * do campo, não como um aviso solto no topo.
    */
-  function validateFields(s: number): Errors {
+  function validateFields(): Errors {
     const e: Errors = {};
     const digits = (v: string) => v.replace(/\D/g, '');
 
-    switch (s) {
-      case 0:
-        if (!form.inviteToken.trim()) e.inviteToken = 'Cole o token de convite recebido';
-        break;
-      case 1:
-        if (digits(form.cnpj).length !== 14) e.cnpj = 'Informe os 14 dígitos do CNPJ';
-        else if (cnpjStatus === 'inactive') e.cnpj = 'CNPJ sem situação ativa na Receita Federal';
-        else if (cnpjStatus === 'invalid') e.cnpj = 'CNPJ não encontrado na Receita Federal';
-        if (form.legalName.trim().length < 2) e.legalName = 'Informe a razão social';
-        if (form.tradeName.trim().length < 2) e.tradeName = 'Informe o nome fantasia';
-        if (form.slug.trim().length < 3) e.slug = 'Mínimo de 3 caracteres';
-        else if (!/^[a-z0-9-]+$/.test(form.slug)) e.slug = 'Use apenas letras minúsculas, números e hífen';
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.primaryEmail)) e.primaryEmail = 'E-mail inválido';
-        break;
-      case 2:
-        if (form.adminFullName.trim().length < 2) e.adminFullName = 'Informe o nome completo';
-        // O dígito verificador é conferido pela API; aqui só o tamanho.
-        if (digits(form.adminCpf).length !== 11) e.adminCpf = 'Informe os 11 dígitos do CPF';
-        if (form.adminJobTitle.trim().length < 2) e.adminJobTitle = 'Informe o cargo';
-        if (digits(form.adminPhone).length < 10) e.adminPhone = 'Informe DDD + número';
-        break;
-      case 3:
-        if (digits(form.postalCode).length !== 8) e.postalCode = 'Informe os 8 dígitos do CEP';
-        if (form.addressLine.trim().length < 3) e.addressLine = 'Informe o logradouro';
-        if (!form.addressNumber.trim()) e.addressNumber = 'Informe o número (ou "S/N")';
-        if (form.neighborhood.trim().length < 2) e.neighborhood = 'Informe o bairro';
-        if (form.city.trim().length < 2) e.city = 'Informe a cidade';
-        if (!form.state) e.state = 'Selecione o estado';
-        if (digits(form.branchPhone).length < 10) e.branchPhone = 'Informe DDD + número';
-        break;
-      case 4:
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.adminEmail)) e.adminEmail = 'E-mail inválido';
-        if (form.adminPassword.length < 8) e.adminPassword = 'Mínimo de 8 caracteres';
-        break;
+    // O dígito verificador é a regra dura, e é a MESMA conta que a API faz.
+    // `cnpjStatus` não entra aqui de propósito: a Receita não decide se o
+    // cadastro segue.
+    if (digits(form.cnpj).length !== 14) e.cnpj = 'Informe os 14 dígitos do CNPJ';
+    else if (!cnpjValido(form.cnpj)) e.cnpj = 'CNPJ inválido — confira os dígitos';
+    else if (cnpjStatus === 'inactive') e.cnpj = 'CNPJ sem situação ativa na Receita Federal';
+
+    if (form.tradeName.trim().length < 2) e.tradeName = 'Informe o nome da loja';
+    if (form.adminFullName.trim().length < 2) e.adminFullName = 'Informe seu nome';
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.adminEmail)) e.adminEmail = 'E-mail inválido';
+    if (form.adminPassword.length < 8) e.adminPassword = 'Mínimo de 8 caracteres';
+    if (form.branchPhone.trim() && digits(form.branchPhone).length < 10) {
+      e.branchPhone = 'Informe DDD + número, ou deixe em branco';
     }
     return e;
   }
 
-  /** Marca os erros e leva o usuário até a etapa e o campo do primeiro problema. */
-  function aplicarErros(errs: Errors, etapa?: number) {
+  /** Marca os erros e rola até o primeiro problema. */
+  function aplicarErros(errs: Errors) {
     setFieldErrors(errs);
     const primeiro = Object.keys(errs)[0];
     if (!primeiro) return;
-
-    const destino = etapa ?? STEP_DO_CAMPO[primeiro] ?? step;
-    if (destino !== step) setStep(destino);
-
-    // rola até o campo depois que a etapa renderizar
     setTimeout(() => {
       document.querySelector(`[data-field="${primeiro}"]`)
         ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 60);
   }
 
-  function handleNext() {
-    const errs = validateFields(step);
-    if (Object.keys(errs).length) {
-      setError('Revise os campos destacados abaixo.');
-      aplicarErros(errs, step);
-      return;
-    }
-    setError('');
-    setFieldErrors({});
-    setStep((s) => s + 1);
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    // Revalida TODAS as etapas antes de enviar — um campo inválido lá atrás
-    // não pode mais explodir só no final como "Validation failed".
-    const todos: Errors = {};
-    for (let s = 0; s < STEPS.length; s++) Object.assign(todos, validateFields(s));
-    if (Object.keys(todos).length) {
-      setError('Revise os campos destacados antes de concluir.');
-      aplicarErros(todos);
+    const errs = validateFields();
+    if (Object.keys(errs).length) {
+      setError('Revise os campos destacados abaixo.');
+      aplicarErros(errs);
       return;
     }
 
@@ -406,37 +311,40 @@ export default function SignupPage() {
     setFieldErrors({});
     setLoading(true);
 
+    const telefone = form.branchPhone.trim();
+    // O endereço vem da Receita quando ela responde, e fica vazio quando não —
+    // em nenhum dos dois casos ele é pedido. O checklist de primeiros passos
+    // cobra o endereço quando ele passa a importar (vitrine, mapa, agenda).
+    const branch = telefone || dadosDaReceita.addressLine
+      ? {
+          ...(telefone ? { phone: telefone } : {}),
+          ...(dadosDaReceita.postalCode?.length === 8 ? { postalCode: dadosDaReceita.postalCode } : {}),
+          ...(dadosDaReceita.addressLine && dadosDaReceita.addressLine.length >= 3
+            ? { addressLine: dadosDaReceita.addressLine } : {}),
+          ...(dadosDaReceita.addressNumber ? { addressNumber: dadosDaReceita.addressNumber } : {}),
+          ...(dadosDaReceita.neighborhood && dadosDaReceita.neighborhood.length >= 2
+            ? { neighborhood: dadosDaReceita.neighborhood } : {}),
+          ...(dadosDaReceita.city && dadosDaReceita.city.length >= 2 ? { city: dadosDaReceita.city } : {}),
+          ...(dadosDaReceita.state?.length === 2 ? { state: dadosDaReceita.state } : {}),
+        }
+      : undefined;
+
     try {
       const data = await api<{ accessToken: string; user: AuthUser }>('/auth/signup-tenant', {
         method: 'POST',
         body: JSON.stringify({
-          inviteToken: form.inviteToken.trim(),
+          ...(form.inviteToken.trim() ? { inviteToken: form.inviteToken.trim() } : {}),
           tenant: {
-            cnpj:              form.cnpj,
-            stateRegistration: form.stateRegistration || undefined,
-            legalName:         form.legalName,
-            tradeName:         form.tradeName,
-            slug:              form.slug,
-            primaryEmail:      form.primaryEmail,
+            cnpj:      form.cnpj,
+            tradeName: form.tradeName.trim(),
+            ...(dadosDaReceita.legalName ? { legalName: dadosDaReceita.legalName } : {}),
           },
           admin: {
-            fullName: form.adminFullName,
-            email:    form.adminEmail,
+            fullName: form.adminFullName.trim(),
+            email:    form.adminEmail.trim(),
             password: form.adminPassword,
-            cpf:      form.adminCpf,
-            jobTitle: form.adminJobTitle,
-            phone:    form.adminPhone,
           },
-          branch: {
-            phone:         form.branchPhone,
-            postalCode:    form.postalCode,
-            addressLine:   form.addressLine,
-            addressNumber: form.addressNumber,
-            complement:    form.complement || undefined,
-            neighborhood:  form.neighborhood,
-            city:          form.city,
-            state:         form.state,
-          },
+          ...(branch ? { branch } : {}),
         }),
       });
       setSession(data.accessToken, data.user);
@@ -467,345 +375,122 @@ export default function SignupPage() {
     }
   }
 
-  const CurrentIcon = STEPS[step].icon;
-
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 shadow-sm w-full max-w-lg">
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 shadow-sm w-full max-w-lg">
 
       {/* Cabeçalho */}
       <div className="mb-6">
         <h2 className="text-lg font-semibold">Cadastrar concessionária</h2>
-        <p className="text-sm text-slate-500 mt-0.5">14 dias grátis, sem cartão de crédito.</p>
+        <p className="text-sm text-slate-500 mt-0.5">
+          {DURACAO_DO_TRIAL_DIAS} dias grátis, sem cartão de crédito. Leva um minuto.
+        </p>
       </div>
 
-      {/* Barra de progresso */}
-      <div className="flex items-center gap-1.5 mb-8">
-        {STEPS.map((s, i) => {
-          const done    = i < step;
-          const current = i === step;
-          return (
-            <div key={s.id} className="flex items-center gap-1.5 flex-1 min-w-0">
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-all ${
-                done    ? 'bg-emerald-500 text-white' :
-                current ? 'bg-blue-600 text-white ring-4 ring-blue-100 dark:ring-blue-900' :
-                          'bg-slate-100 dark:bg-slate-800 text-slate-400'
-              }`}>
-                {done ? <Check size={12} /> : <s.icon size={12} />}
-              </div>
-              {i < STEPS.length - 1 && (
-                <div className={`flex-1 h-0.5 rounded-full ${done ? 'bg-emerald-400' : 'bg-slate-100 dark:bg-slate-800'}`} />
-              )}
-            </div>
-          );
-        })}
-      </div>
+      <form onSubmit={handleSubmit} className="space-y-4">
 
-      <form onSubmit={handleSubmit}>
-        <div className="flex items-center gap-2 mb-5">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
-            <CurrentIcon size={16} className="text-blue-600 dark:text-blue-400" />
+        {/* O convite deixou de ser exigido, mas quem chega com um continua
+            entrando por ele — e a conta nasce com o e-mail já verificado. */}
+        {form.inviteToken && (
+          <div className="rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 p-3 text-xs text-emerald-700 dark:text-emerald-300 flex items-start gap-2">
+            <Check size={13} className="shrink-0 mt-0.5" />
+            <span>Convite reconhecido — seu e-mail já entra confirmado.</span>
           </div>
-          <h3 className="font-semibold text-slate-900 dark:text-white">{STEPS[step].label}</h3>
+        )}
+
+        {/* CNPJ com feedback em tempo real */}
+        <div>
+          <label className="block text-sm font-medium mb-1.5">
+            CNPJ <span className="text-red-500">*</span>
+          </label>
+          <div className="relative" data-field="cnpj">
+            <input
+              value={form.cnpj}
+              onChange={(e) => set('cnpj', fmtCNPJ(e.target.value))}
+              placeholder="00.000.000/0000-00"
+              inputMode="numeric"
+              className={fieldErrors.cnpj ? inputErrCls : inputCls}
+            />
+            <div className="absolute right-3 top-[19px] -translate-y-1/2">
+              {cnpjStatus === 'loading' && <Loader2 size={14} className="animate-spin text-slate-400" />}
+              {cnpjStatus === 'valid'   && <Check size={14} className="text-emerald-500" />}
+              {cnpjStatus === 'inactive' && <AlertCircle size={14} className="text-red-500" />}
+            </div>
+          </div>
+          {fieldErrors.cnpj && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.cnpj}</p>}
+          {!fieldErrors.cnpj && cnpjStatus === 'valid' && (
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1">
+              <Check size={11} /> CNPJ ativo na Receita Federal
+            </p>
+          )}
+          {!fieldErrors.cnpj && cnpjStatus === 'inactive' && (
+            <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+              <AlertCircle size={11} /> CNPJ com situação inativa ou suspensa na Receita Federal
+            </p>
+          )}
+          {/* Indisponível NÃO é reprovação: a mensagem diz isso em voz alta,
+              porque antes este caso fechava a porta sem explicação. */}
+          {!fieldErrors.cnpj && cnpjStatus === 'indisponivel' && (
+            <p className="text-xs text-slate-500 mt-1 flex items-start gap-1">
+              <Info size={11} className="shrink-0 mt-0.5" />
+              Não conseguimos consultar a Receita agora — pode seguir normalmente.
+            </p>
+          )}
         </div>
 
-        {/* ── Step 0: Convite ───────────────────────────────────────────── */}
-        {step === 0 && (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4 text-sm text-blue-700 dark:text-blue-300">
-              <p className="font-medium mb-1">Acesso por convite</p>
-              <p className="text-blue-600 dark:text-blue-400 text-xs">
-                O cadastro de concessionárias é restrito. Você precisar de um link de convite enviado pela equipe AutoConnect.
-              </p>
-            </div>
-            <div data-field="inviteToken">
-              <label className="block text-sm font-medium mb-1.5">
-                Token de convite <span className="text-red-500">*</span>
-              </label>
-              <input
-                value={form.inviteToken}
-                onChange={(e) => set('inviteToken', e.target.value.trim())}
-                placeholder="Cole o token recebido por e-mail"
-                className={fieldErrors.inviteToken ? inputErrCls : inputCls}
-                autoComplete="off"
-                spellCheck={false}
-              />
-              {fieldErrors.inviteToken && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.inviteToken}</p>}
-              <p className="text-xs text-slate-400 mt-1.5">
-                Não tem um convite?{' '}
-                <a href="mailto:contato@autoconnect.app" className="text-blue-500 hover:underline">
-                  Entre em contato
-                </a>
-              </p>
-            </div>
-          </div>
-        )}
+        <Field label="Nome da loja" value={form.tradeName} name="tradeName" error={fieldErrors.tradeName} required
+          onChange={(v) => set('tradeName', v)} placeholder="Garagem Central"
+          hint="É como sua loja aparece para os clientes. Dá para mudar depois." />
 
-        {/* ── Step 1: Empresa ───────────────────────────────────────────── */}
-        {step === 1 && (
-          <div className="space-y-4">
-            {/* CNPJ com feedback em tempo real */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5">
-                CNPJ <span className="text-red-500">*</span>
-              </label>
-              <div className="relative" data-field="cnpj">
-                <input
-                  value={form.cnpj}
-                  onChange={(e) => set('cnpj', fmtCNPJ(e.target.value))}
-                  placeholder="00.000.000/0000-00"
-                  className={fieldErrors.cnpj ? inputErrCls : inputCls}
-                />
-                  {fieldErrors.cnpj && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.cnpj}</p>}
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  {cnpjStatus === 'loading' && <Loader2 size={14} className="animate-spin text-slate-400" />}
-                  {cnpjStatus === 'valid'   && <Check size={14} className="text-emerald-500" />}
-                  {cnpjStatus === 'invalid' && <AlertCircle size={14} className="text-red-500" />}
-                </div>
-              </div>
-              {cnpjStatus === 'valid' && (
-                <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1">
-                  <Check size={11} /> CNPJ ativo — dados preenchidos automaticamente
-                </p>
-              )}
-              {cnpjStatus === 'inactive' && (
-                <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                  <AlertCircle size={11} /> CNPJ com situação inativa ou suspensa na Receita Federal
-                </p>
-              )}
-              {cnpjStatus === 'invalid' && (
-                <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                  <AlertCircle size={11} /> CNPJ não encontrado
-                </p>
-              )}
-            </div>
+        <div className="pt-1 border-t border-slate-100 dark:border-slate-800" />
 
-            <Field label="Inscrição Estadual (IE)" value={form.stateRegistration} name="stateRegistration" error={fieldErrors.stateRegistration}
-              onChange={(v) => set('stateRegistration', v)}
-              placeholder="000.000.000.000 ou ISENTO" hint="Deixe em branco se isento" />
+        <Field label="Seu nome" value={form.adminFullName} name="adminFullName" error={fieldErrors.adminFullName} required
+          onChange={(v) => set('adminFullName', v)} placeholder="João Silva" autoComplete="name" />
 
-            <Field label="Razão social" value={form.legalName} name="legalName" error={fieldErrors.legalName} required
-              onChange={(v) => set('legalName', v)} placeholder="Minha Auto Ltda" />
+        <Field label="E-mail" value={form.adminEmail} name="adminEmail" error={fieldErrors.adminEmail} required
+          onChange={(v) => set('adminEmail', v)} type="email"
+          placeholder="voce@suaempresa.com.br" autoComplete="email"
+          hint="Será seu login no painel." />
 
-            <Field label="Nome fantasia" value={form.tradeName} name="tradeName" error={fieldErrors.tradeName} required
-              onChange={(v) => { set('tradeName', v); if (!form.slug) set('slug', toSlug(v)); }}
-              placeholder="Minha Auto" />
+        <Field label="Senha" value={form.adminPassword} name="adminPassword" error={fieldErrors.adminPassword} required
+          onChange={(v) => set('adminPassword', v)} type="password"
+          placeholder="Mínimo de 8 caracteres" autoComplete="new-password" />
 
-            <div data-field="slug">
-              <label className="block text-sm font-medium mb-1.5">
-                Slug (URL pública) <span className="text-red-500">*</span>
-              </label>
-              <div className={`flex items-center rounded-lg border bg-white dark:bg-slate-800 overflow-hidden focus-within:ring-2 ${
-                fieldErrors.slug
-                  ? 'border-red-500 focus-within:ring-red-500'
-                  : 'border-slate-200 dark:border-slate-700 focus-within:ring-blue-500'
-              }`}>
-                <span className="px-3 py-2 text-xs text-slate-400 border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 select-none whitespace-nowrap">
-                  autoconnect.app/c/
-                </span>
-                <input
-                  value={form.slug}
-                  onChange={(e) => set('slug', e.target.value.replace(/[^a-z0-9-]/g, ''))}
-                  className="flex-1 px-3 py-2 text-sm outline-none bg-transparent"
-                  placeholder="minha-auto"
-                />
-              </div>
-              {fieldErrors.slug && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.slug}</p>}
-            </div>
-
-            <Field label="E-mail da concessionária" value={form.primaryEmail} name="primaryEmail" error={fieldErrors.primaryEmail} required
-              onChange={(v) => set('primaryEmail', v)} type="email"
-              placeholder="contato@minhauto.com.br" />
-          </div>
-        )}
-
-        {/* ── Step 2: Responsável ───────────────────────────────────────── */}
-        {step === 2 && (
-          <div className="space-y-4">
-            <Field label="Nome completo do responsável" value={form.adminFullName} name="adminFullName" error={fieldErrors.adminFullName} required
-              onChange={(v) => set('adminFullName', v)} placeholder="João Silva" autoComplete="name" />
-
-            <div>
-              <label className="block text-sm font-medium mb-1.5">
-                CPF do responsável <span className="text-red-500">*</span>
-              </label>
-              <input
-                value={form.adminCpf}
-                onChange={(e) => set('adminCpf', fmtCPF(e.target.value))}
-                placeholder="000.000.000-00"
-                className={fieldErrors.adminCpf ? inputErrCls : inputCls}
-              />
-                {fieldErrors.adminCpf && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.adminCpf}</p>}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1.5">
-                Cargo / função <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={form.adminJobTitle}
-                onChange={(e) => set('adminJobTitle', e.target.value)}
-                className={inputCls}
-              >
-                <option value="">Selecione…</option>
-                <option>Proprietário</option>
-                <option>Sócio</option>
-                <option>Diretor</option>
-                <option>Gerente Geral</option>
-                <option>Gerente Comercial</option>
-                <option>Outro</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1.5">
-                Celular pessoal <span className="text-red-500">*</span>
-              </label>
-              <input
-                value={form.adminPhone}
-                onChange={(e) => set('adminPhone', fmtPhone(e.target.value))}
-                placeholder="(11) 99999-9999"
-                className={fieldErrors.adminPhone ? inputErrCls : inputCls}
-                type="tel"
-              />
-              {fieldErrors.adminPhone && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.adminPhone}</p>}
-              <p className="text-xs text-slate-400 mt-1">Usado apenas para contato interno</p>
-            </div>
-          </div>
-        )}
-
-        {/* ── Step 3: Endereço ──────────────────────────────────────────── */}
-        {step === 3 && (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1.5">
-                CEP <span className="text-red-500">*</span>
-              </label>
-              <div className="relative" data-field="postalCode">
-                <input
-                  value={form.postalCode}
-                  onChange={(e) => { const v = fmtCEP(e.target.value); set('postalCode', v); lookupCEP(v); }}
-                  placeholder="00000-000"
-                  className={fieldErrors.postalCode ? inputErrCls : inputCls}
-                />
-                  {fieldErrors.postalCode && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.postalCode}</p>}
-                {loadingCep && (
-                  <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-slate-400" />
-                )}
-              </div>
-              {loadingCep && <p className="text-xs text-slate-400 mt-1">Buscando endereço…</p>}
-            </div>
-
-            <Field label="Logradouro" value={form.addressLine} name="addressLine" error={fieldErrors.addressLine} required
-              onChange={(v) => set('addressLine', v)} placeholder="Rua, Av., etc." />
-
-            <div className="grid grid-cols-5 gap-3" data-field="addressNumber">
-              <div className="col-span-2" data-field="addressNumber">
-                <label className="block text-sm font-medium mb-1.5">Número <span className="text-red-500">*</span></label>
-                <input value={form.addressNumber} onChange={(e) => set('addressNumber', e.target.value)}
-                  className={fieldErrors.addressNumber ? inputErrCls : inputCls} placeholder="123" />
-                {fieldErrors.addressNumber && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.addressNumber}</p>}
-              </div>
-              <div className="col-span-3">
-                <label className="block text-sm font-medium mb-1.5">Complemento</label>
-                <input value={form.complement} onChange={(e) => set('complement', e.target.value)}
-                  className={inputCls} placeholder="Sala, Galpão…" />
-              </div>
-            </div>
-
-            <Field label="Bairro" value={form.neighborhood} name="neighborhood" error={fieldErrors.neighborhood} required
-              onChange={(v) => set('neighborhood', v)} placeholder="Centro" />
-
-            <div className="grid grid-cols-3 gap-3" data-field="city">
-              <div className="col-span-2" data-field="city">
-                <label className="block text-sm font-medium mb-1.5">Cidade <span className="text-red-500">*</span></label>
-                <input value={form.city} onChange={(e) => set('city', e.target.value)}
-                  className={fieldErrors.city ? inputErrCls : inputCls} placeholder="São Paulo" />
-                {fieldErrors.city && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.city}</p>}
-              </div>
-              <div data-field="state">
-                <label className="block text-sm font-medium mb-1.5">UF <span className="text-red-500">*</span></label>
-                <select value={form.state} onChange={(e) => set('state', e.target.value)} className={fieldErrors.state ? inputErrCls : inputCls}>
-                  <option value="">UF</option>
-                  {BR_STATES.map((uf) => <option key={uf}>{uf}</option>)}
-                </select>
-                {fieldErrors.state && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.state}</p>}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1.5">
-                Telefone comercial <span className="text-red-500">*</span>
-              </label>
-              <input
-                value={form.branchPhone}
-                onChange={(e) => set('branchPhone', fmtPhone(e.target.value))}
-                placeholder="(11) 3000-0000"
-                className={fieldErrors.branchPhone ? inputErrCls : inputCls}
-                type="tel"
-              />
-              {fieldErrors.branchPhone && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.branchPhone}</p>}
-              <p className="text-xs text-slate-400 mt-1">Número exibido para clientes no catálogo</p>
-            </div>
-          </div>
-        )}
-
-        {/* ── Step 4: Acesso ────────────────────────────────────────────── */}
-        {step === 4 && (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-4 text-sm text-slate-600 dark:text-slate-400 space-y-1">
-              <p className="font-medium text-slate-700 dark:text-slate-300">Resumo do cadastro</p>
-              <p><span className="text-slate-400">CNPJ:</span> {form.cnpj}</p>
-              <p><span className="text-slate-400">Empresa:</span> {form.tradeName}</p>
-              <p><span className="text-slate-400">Responsável:</span> {form.adminFullName} · {form.adminJobTitle}</p>
-              <p><span className="text-slate-400">Endereço:</span> {form.city}/{form.state}</p>
-            </div>
-
-            <Field label="E-mail de acesso" value={form.adminEmail} name="adminEmail" error={fieldErrors.adminEmail} required
-              onChange={(v) => set('adminEmail', v)} type="email"
-              placeholder="voce@minhauto.com.br" autoComplete="email"
-              hint="Será seu login no painel" />
-
-            <Field label="Senha (mín. 8 caracteres)" value={form.adminPassword} name="adminPassword" error={fieldErrors.adminPassword} required
-              onChange={(v) => set('adminPassword', v)} type="password"
-              placeholder="••••••••" autoComplete="new-password" />
-          </div>
-        )}
+        <div data-field="branchPhone">
+          <label className="block text-sm font-medium mb-1.5">Telefone da loja</label>
+          <input
+            value={form.branchPhone}
+            onChange={(e) => set('branchPhone', fmtPhone(e.target.value))}
+            placeholder="(11) 3000-0000"
+            className={fieldErrors.branchPhone ? inputErrCls : inputCls}
+            type="tel"
+            autoComplete="tel"
+          />
+          {fieldErrors.branchPhone
+            ? <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.branchPhone}</p>
+            : <p className="text-xs text-slate-400 mt-1">Opcional. Aparece no catálogo quando você publicar um carro.</p>}
+        </div>
 
         {/* Erro */}
         {error && (
-          <div className="mt-4 flex items-start gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg px-3 py-2.5">
+          <div className="flex items-start gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg px-3 py-2.5">
             <AlertCircle size={14} className="shrink-0 mt-0.5" />
             {error}
           </div>
         )}
 
-        {/* Navegação */}
-        <div className={`flex mt-6 ${step > 0 ? 'justify-between' : 'justify-end'}`}>
-          {step > 0 && (
-            <button type="button"
-              onClick={() => { setError(''); setStep((s) => s - 1); }}
-              className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition">
-              <ChevronLeft size={15} /> Voltar
-            </button>
-          )}
-
-          {step < STEPS.length - 1 ? (
-            <button type="button" onClick={handleNext}
-              className="flex items-center gap-1.5 bg-blue-600 text-white text-sm font-medium px-5 py-2 rounded-lg hover:bg-blue-700 transition">
-              Próximo <ChevronRight size={15} />
-            </button>
-          ) : (
-            <button type="submit" disabled={loading}
-              className="flex items-center gap-1.5 bg-blue-600 text-white text-sm font-medium px-5 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
-              {loading ? <><Loader2 size={14} className="animate-spin" /> Criando conta…</> : <><Check size={14} /> Criar conta</>}
-            </button>
-          )}
-        </div>
+        <button type="submit" disabled={loading}
+          className="w-full flex items-center justify-center gap-1.5 bg-blue-600 text-white text-sm font-medium px-5 py-2.5 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+          {loading ? <><Loader2 size={14} className="animate-spin" /> Criando conta…</> : <><Check size={14} /> Criar conta grátis</>}
+        </button>
       </form>
 
       <p className="mt-4 text-center text-xs text-slate-400">
-        Ao criar a conta, você concorda com os 
-        <Link href="/termos" className="text-blue-600 hover:underline">Termos de Uso</Link> e a 
+        O resto — endereço, horário e logo — você preenche dentro do painel, quando quiser.
+      </p>
+
+      <p className="mt-3 text-center text-xs text-slate-400">
+        Ao criar a conta, você concorda com os{' '}
+        <Link href="/termos" className="text-blue-600 hover:underline">Termos de Uso</Link> e a{' '}
         <Link href="/privacidade" className="text-blue-600 hover:underline">Política de Privacidade</Link>.
       </p>
 

@@ -56,6 +56,19 @@ export type ExpedienteInput = z.infer<typeof expedienteSchema>;
 export const updateTenantSchema = z.object({
   tradeName: z.string().min(2).max(200).optional(),
   /**
+   * Razão social — editável desde que o cadastro deixou de pedi-la.
+   *
+   * O formulário público só pede CNPJ e nome da loja; a razão social vem da
+   * Receita pelo CNPJ e, quando a Receita não responde (empresa nova, 429 de
+   * limite, manutenção), nasce igual ao nome fantasia. É o **contrato** que
+   * precisa dela de verdade, e o contrato já manda o lojista para esta mesma
+   * tela por causa do representante legal. Sem este campo aqui, a loja não
+   * teria como corrigir e o PDF sairia com o nome fantasia no lugar da razão
+   * social. `slug` continua fora de propósito: trocá-lo quebra a URL pública
+   * que a loja já divulgou (`mass-assignment.e2e-spec.ts` fixa isso).
+   */
+  legalName: z.string().min(2).max(200).optional(),
+  /**
    * Telefone da loja — o que aparece na vitrine e no catálogo público.
    *
    * Faltava aqui: a tela mandava, o Zod descartava, e o dono via o campo voltar

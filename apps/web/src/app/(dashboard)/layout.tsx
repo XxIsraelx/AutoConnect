@@ -15,6 +15,7 @@ import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import ThemeToggle from '@/components/ThemeToggle';
+import AvisoDeEmailNaoVerificado from '@/components/AvisoDeEmailNaoVerificado';
 
 /* ── Badge de leads novos ─────────────────────────────────── */
 
@@ -351,6 +352,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         {ann && <AnnouncementBanner ann={ann} onDismiss={dismiss} />}
+        <AvisoDeEmailNaoVerificado />
         <div className="flex-1">{children}</div>
       </main>
     </div>

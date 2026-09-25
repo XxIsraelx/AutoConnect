@@ -22,9 +22,13 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       );
     }
 
+    // `||`, não `??`: a variável ausente e a variável **vazia** são o mesmo caso
+    // aqui, e `.env.example` entrega `GOOGLE_CLIENT_ID=""`. Com `??` a string
+    // vazia passava direto para o passport, que derruba a API no boot — logo
+    // depois de o aviso acima dizer que o Google estava desativado.
     super({
-      clientID: clientID ?? 'not-configured',
-      clientSecret: clientSecret ?? 'not-configured',
+      clientID: clientID || 'not-configured',
+      clientSecret: clientSecret || 'not-configured',
       callbackURL:
         config.get<string>('GOOGLE_CALLBACK_URL') ??
         'http://localhost:4000/api/v1/auth/google/callback',

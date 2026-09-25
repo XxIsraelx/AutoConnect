@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { Response } from 'express';
 import { AuthController } from './auth.controller';
 import type { AuthService } from './auth.service';
+import { LimiteDeCadastro, LimiteDeReenvio } from './limite-de-cadastro';
 
 /**
  * O callback do Google redireciona para uma página do `apps/web`. Durante meses
@@ -27,7 +28,9 @@ describe('AuthController.googleCallback', () => {
       buildSession: (u: { role: string }) => ({ accessToken: 'tok', user: { role: u.role } }),
     } as unknown as AuthService;
     const redirect = jest.fn();
-    new AuthController(auth).googleCallback(
+    // Os tetos por IP não participam do callback do Google; entram só para o
+    // construtor ficar satisfeito.
+    new AuthController(auth, new LimiteDeCadastro(), new LimiteDeReenvio()).googleCallback(
       { user: { id: 'u', role, tenantId: null, email: 'a@b.c', fullName: 'A' } },
       { redirect } as unknown as Response,
     );

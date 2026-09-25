@@ -9,11 +9,16 @@ import {
   Post,
   Query,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import { VehiclesService } from './vehicles.service';
 import { escopoDa } from '../../common/escopo';
 import { createVehicleSchema, updateVehicleSchema, vehicleQuerySchema } from '@autoconnect/shared';
 import { importVehiclesSchema } from './import.schema';
+import {
+  EmailVerificadoGuard,
+  ExigeEmailVerificado,
+} from '../../common/guards/email-verificado.guard';
 
 interface AuthRequest {
   user: { id: string; role: string; tenantId: string | null };
@@ -60,8 +65,13 @@ export class VehiclesController {
    * Rota própria, e não um campo no PATCH, porque publicar tem regra: sem foto
    * e sem preço a API recusa com 422 dizendo o que falta. Um `listingStatus`
    * aceito no corpo de atualização seria um jeito de pular essa conferência.
+   *
+   * Exige e-mail confirmado: publicar põe a loja na vitrine pública, no mapa e
+   * no catálogo. Despublicar não exige — tirar do ar nunca pode ficar travado.
    */
   @Post(':id/publish')
+  @UseGuards(EmailVerificadoGuard)
+  @ExigeEmailVerificado()
   publish(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string): Promise<unknown> {
     return this.vehicles.publicar(req.user.tenantId!, id, req.user.id);
   }

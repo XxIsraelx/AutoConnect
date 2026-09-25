@@ -20,6 +20,7 @@ import {
   leadPublicoSchema,
   loginSchema,
   plantaoSchema,
+  reenviarVerificacaoSchema,
   signupCustomerSchema,
   signupTenantSchema,
   transitionDealSchema,
@@ -92,7 +93,7 @@ const ROTAS: Record<string, Declaracao> = {
   'POST /auth/signup-customer': { schema: signupCustomerSchema },
   'POST /auth/reset-password': { semSchema: 'corpo `{ token, password }` só anotado' },
   'POST /auth/forgot-password': { semSchema: 'corpo `{ email: string }` só anotado' },
-  'POST /auth/resend-verification': { semSchema: 'corpo `{ email: string }` só anotado' },
+  'POST /auth/resend-verification': { schema: reenviarVerificacaoSchema },
 
   /* Agendamentos */
   'POST /appointments': { schema: agendamentoDoClienteSchema },

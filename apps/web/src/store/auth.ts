@@ -10,6 +10,12 @@ export interface AuthUser {
   role: string;
   tenantId: string | null;
   avatarUrl?: string | null;
+  /**
+   * E-mail confirmado. Vem do login e do cadastro; `GET /users/me` o atualiza a
+   * cada carga do painel, porque o valor guardado aqui envelhece assim que a
+   * pessoa clica no link do e-mail em outra aba.
+   */
+  emailVerified?: boolean;
 }
 
 interface AuthState {

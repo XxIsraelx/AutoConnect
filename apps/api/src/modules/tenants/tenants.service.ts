@@ -234,7 +234,7 @@ export class TenantsService {
         }),
         tx.dealershipBranch.findFirst({
           where: { ...filtro },
-          select: { businessHours: true },
+          select: { businessHours: true, addressLine: true, city: true, state: true },
           orderBy: { isHeadquarters: 'desc' },
         }),
         // O checklist de onboarding é por loja; no consolidado não se aplica.
@@ -249,6 +249,11 @@ export class TenantsService {
       const bh = firstBranch?.businessHours;
       const hasHours = !!bh && typeof bh === 'object' && Object.keys(bh as object).length > 0;
 
+      // O cadastro parou de pedir endereço (eram sete campos antes de a pessoa
+      // ver qualquer tela). Quem cobra agora é o checklist, e no momento em que
+      // o endereço passa a importar: vitrine, pino no mapa e agenda pública.
+      const hasAddress = Boolean(firstBranch?.addressLine && firstBranch.city && firstBranch.state);
+
       return {
         vehiclesCount, leadsToday, leadsNew,
         appointmentsToday, appointmentsWeek, appointmentsPending,
@@ -256,6 +261,7 @@ export class TenantsService {
         onboarding: {
           hasVehicle: vehiclesCount > 0,
           hasTeam:    teamCount > 1,
+          hasAddress,
           hasHours,
           hasLogo:    !!tenant?.logoUrl,
           slug:       tenant?.slug ?? null,

@@ -15,6 +15,16 @@ export default function VerificarEmailPage() {
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [errorMsg, setErrorMsg] = useState('');
+  /**
+   * Para onde a pessoa vai depois de confirmar.
+   *
+   * Era sempre `/buscar`: a tela nasceu quando só o consumidor final
+   * confirmava e-mail. Desde que o cadastro da loja virou autosserviço, quem
+   * clica neste link costuma ser o **dono** — e mandá-lo para a busca de
+   * veículos, que o painel nem deixa ele acessar, é despejá-lo fora do produto
+   * no momento em que ele acabou de destravar o que faltava.
+   */
+  const [destino, setDestino] = useState('/buscar');
 
   useEffect(() => {
     const token = params.get('token');
@@ -27,8 +37,10 @@ export default function VerificarEmailPage() {
     api<{ accessToken: string; user: AuthUser }>(`/auth/verify-email?token=${encodeURIComponent(token)}`)
       .then((data) => {
         setSession(data.accessToken, data.user);
+        const paraOPainel = data.user.role !== 'customer';
+        setDestino(paraOPainel ? '/dashboard' : '/buscar');
         setStatus('success');
-        setTimeout(() => router.replace('/buscar'), 2500);
+        setTimeout(() => router.replace(paraOPainel ? '/dashboard' : '/buscar'), 2500);
       })
       .catch((err) => {
         setStatus('error');
@@ -54,8 +66,8 @@ export default function VerificarEmailPage() {
             <p className="text-sm text-slate-500 mb-4">
               Sua conta está ativa. Redirecionando…
             </p>
-            <Link href="/buscar" className="text-sm text-brand-accent hover:underline font-medium">
-              Ir agora para a busca →
+            <Link href={destino} className="text-sm text-brand-accent hover:underline font-medium">
+              {destino === '/dashboard' ? 'Ir agora para o painel →' : 'Ir agora para a busca →'}
             </Link>
           </>
         )}

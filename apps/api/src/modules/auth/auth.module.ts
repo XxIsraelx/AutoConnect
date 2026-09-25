@@ -9,6 +9,7 @@ import { JwtStrategy } from '../../common/strategies/jwt.strategy';
 import { GoogleStrategy } from '../../common/strategies/google.strategy';
 import { EmailModule } from '../../common/email/email.module';
 import { AdminModule } from '../admin/admin.module';
+import { LimiteDeCadastro, LimiteDeReenvio } from './limite-de-cadastro';
 
 @Module({
   imports: [
@@ -26,7 +27,7 @@ import { AdminModule } from '../admin/admin.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, GoogleStrategy],
+  providers: [AuthService, JwtStrategy, GoogleStrategy, LimiteDeCadastro, LimiteDeReenvio],
   exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

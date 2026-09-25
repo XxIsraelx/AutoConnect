@@ -53,9 +53,9 @@ de layout).
 
 | # | Passo | | Uma frase |
 |---|---|---|---|
-| **A1** | Chega no site e acha onde se cadastrar | ❌ | Acha cinco botões "Criar conta grátis" — e todos levam a uma tela que diz que **o cadastro é restrito a convite da equipe AutoConnect**. Sozinho, ele para aqui. |
-| **A2** | Cria a conta da loja | 🟡 | Com o convite na mão: 5 etapas, 22 campos, CNPJ **obrigatório e bloqueante** (B3), CPF e celular pessoal do dono antes de ele ver qualquer tela. Erros por campo são bons. |
-| **A3** | Confirma e-mail / primeiro login | ✅ | Não há confirmação: o convite já provou o e-mail, a conta nasce verificada e cai logada no painel. Decisão certa. |
+| **A1** | Chega no site e acha onde se cadastrar | ✅ *(25/09)* | ~~Acha cinco botões "Criar conta grátis" — e todos levam a uma tela que diz que **o cadastro é restrito a convite da equipe AutoConnect**. Sozinho, ele para aqui.~~ **O cadastro é em autosserviço:** o botão leva ao formulário e o convite virou opcional. |
+| **A2** | Cria a conta da loja | ✅ *(25/09)* | ~~Com o convite na mão: 5 etapas, 22 campos, CNPJ **obrigatório e bloqueante** (B3), CPF e celular pessoal do dono antes de ele ver qualquer tela.~~ **Cinco campos numa tela só** — CNPJ, nome da loja, seu nome, e-mail e senha — e a Receita deixou de ser porteiro (B3). Erros por campo continuam bons. |
+| **A3** | Confirma e-mail / primeiro login | ✅ | Cai logada no painel na hora. Sem convite, o e-mail nasce por confirmar e há uma faixa com "Reenviar" — publicar anúncio e convidar equipe é que exigem a confirmação. |
 | **A4** | Primeira tela: sabe o que fazer? | ✅ | Existe onboarding — "Primeiros passos, 0 de 4". Melhor momento do dia zero. (Dois dos quatro itens são inalcançáveis — ver A5 e A7.) |
 | **A5** | Cadastra o primeiro veículo, com foto | ❌ | O catálogo de marcas de um banco novo está **vazio**: ele digita "Chevrolet" e "Onix" à mão, num catálogo global. E a foto falha com **"Falha ao enviar uma das imagens"**, sem dizer por quê (B1). |
 | **A6** | Publica e confere a vitrine | ❌ | **Sem foto o botão "Publicar" nasce desabilitado** — correto, e fatal: com a Cloudinary ausente nenhum carro chega à vitrine. Com uma foto inserida à mão, a vitrine sai bonita — com o telefone da loja errado (B6). |
@@ -78,6 +78,15 @@ de layout).
 ## 2. Onde ele desiste
 
 Há três paredes, e todas caem no mesmo dia.
+
+> ✅ **A primeira parede caiu em 25/09/2026** (a decisão está em
+> [cadastro em autosserviço](../decisoes/2026-09-25%20cadastro%20em%20autosservico.md)):
+> `/signup` aceita quem chega, sem convite, com trial de 14 dias e `trial_ends_at`
+> gravado; o formulário caiu de 22 campos em 5 etapas para **5 campos numa tela**;
+> e existe um comando documentado para o **primeiro super admin** de um banco
+> novo (`pnpm --filter @autoconnect/api run super-admin`, com
+> `PROMOVER_SUPER_ADMIN_EMAIL`, que recusa rodar se já houver algum). O texto
+> abaixo fica como o registro do que foi encontrado.
 
 **A primeira, e a que decide: o site vende autoatendimento e o produto é por
 convite.** A home tem "Criar conta grátis" no topo, "Criar conta grátis" no
@@ -178,6 +187,16 @@ crítica, não diz nada.
 serviço existe, o teste bate no serviço, e o fio entre eles está solto.
 
 ### B3 — CNPJ que a BrasilAPI não conhece bloqueia o cadastro, sem saída
+
+> ✅ **Corrigido em 25/09/2026.** A regra dura passou a ser o **dígito
+> verificador** (`cnpjValido`, no shared — a mesma conta na tela e na API) e a
+> consulta à Receita virou enriquecimento: ela preenche razão social e endereço,
+> e só recusa quando responde algo conclusivo e negativo (BAIXADA, SUSPENSA).
+> Fora do ar, 404 de empresa nova, 429 do limite de uso ou 5xx **não impedem** o
+> cadastro — a tela diz "Não conseguimos consultar a Receita agora — pode seguir
+> normalmente". O efeito colateral dos erros que não sumiam no autopreenchimento
+> caiu junto. Quatro casos de `cadastro-autosservico.e2e-spec.ts` fixam isso, um
+> por modo de falha.
 **Gravidade: alta. Fecha a porta de entrada de forma intermitente.**
 
 1. `/signup` → etapa Empresa → digitar um CNPJ qualquer que a BrasilAPI não
@@ -439,16 +458,22 @@ primeira da lista: **"ONIX Lollapalooza 1.0 F.Power 5p Mec."**, cujo único ano 
 cadastro que está certo. (Fiat Argo 2019 funcionou: `fipeReference: 49864`.)
 
 ### B17 — Pequenos, todos visíveis no primeiro dia
-- A home exibe uma barra de navegador falsa com **`localhost:3000/dashboard`**
-  escrito (`app/page.tsx:74`). É a primeira dobra do site.
-- A home traz **três depoimentos inventados** com nome e empresa ("Carlos
+- ~~A home exibe uma barra de navegador falsa com **`localhost:3000/dashboard`**
+  escrito (`app/page.tsx:74`). É a primeira dobra do site.~~ ✅ 25/09/2026.
+- ~~A home traz **três depoimentos inventados** com nome e empresa ("Carlos
   Mendes, Auto Mendes") e *"Junte-se a centenas de concessionárias"*, com zero
   clientes. Também promete **"Confirmações automáticas por e-mail e WhatsApp"**
-  e **"Chat + WhatsApp"** no plano Pro — o WhatsApp é a Onda 2, item 12.
-- **"Falar com vendas"** (Enterprise) e **"Assinar Pro"** vão os dois para
+  e **"Chat + WhatsApp"** no plano Pro — o WhatsApp é a Onda 2, item 12.~~
+  ✅ 25/09/2026 — a seção de depoimentos saiu inteira, "centenas de
+  concessionárias" virou o convite ao teste, e as três promessas de WhatsApp
+  saíram do texto até a Onda 2 entregá-lo.
+- ~~**"Falar com vendas"** (Enterprise) e **"Assinar Pro"** vão os dois para
   `/signup`. Não existe cobrança (Onda 3): quem clicar em "Assinar Pro" entra num
   trial sem forma de pagar. `trial_ends_at` nasce **nulo** — o trial de 14 dias
-  anunciado não tem data de fim gravada.
+  anunciado não tem data de fim gravada.~~ ✅ 25/09/2026 — "Falar com a gente"
+  (Enterprise) virou `mailto:`, o Pro passou a dizer "Testar 14 dias grátis"
+  enquanto não há cobrança, e `trial_ends_at` nasce com a data
+  (`DURACAO_DO_TRIAL_DIAS`, uma constante só).
 - `/configuracoes` → Plano exibe **"Status: Active"**, em inglês.
 - `/equipe` mostra **"0 / 6vendas"** (sem espaço) e "Comissão estimada —" em vez
   de R$ 0,00.
@@ -469,6 +494,16 @@ cadastro que está certo. (Fiat Argo 2019 funcionou: `fipeReference: 49864`.)
 ---
 
 ## 4. Atrito de cadastro
+
+> ✅ **Resolvido em 25/09/2026.** O formulário caiu para **cinco campos numa
+> tela só** (CNPJ, nome da loja, seu nome, e-mail e senha) mais o telefone da
+> loja, opcional. Cada campo abaixo tem hoje um lugar onde é pedido — a tabela
+> completa do corte está na
+> [decisão](../decisoes/2026-09-25%20cadastro%20em%20autosservico.md). O
+> endereço virou item do checklist de primeiros passos; a razão social virou
+> campo editável em `/configuracoes`, porque é ela que sai no contrato. **Segue
+> aberto:** coordenada da loja (B8), WhatsApp separado do telefone, comissão
+> padrão e importação de estoque.
 
 ### O que é pedido e não precisava ser (loja)
 
@@ -499,6 +534,10 @@ e-mail, senha e nome da loja ganha esse dono antes da etapa 2.
   cadastrar um por um, em quatro etapas cada.
 
 ### Atrito do consumidor (Parte B)
+
+> 🟡 **Metade resolvida em 25/09/2026:** a tela de "verifique seu e-mail" ganhou
+> o botão **Reenviar**, que era o beco sem saída. As três etapas e os campos
+> opcionais sem rótulo de opcional continuam como estão.
 
 O cadastro do cliente final tem **3 etapas** e pede **CPF, data de nascimento e
 endereço completo** — tudo opcional, mas sem nada dizendo que é opcional (o
@@ -548,7 +587,7 @@ em uso.
 
 ## 6. Veredito — as 5 mudanças que mais aumentam a chance de sobreviver à primeira semana
 
-**1ª — Fazer o site e o produto contarem a mesma história sobre o cadastro.**
+**1ª — Fazer o site e o produto contarem a mesma história sobre o cadastro.** ✅ *(25/09/2026)*
 É a primeira parede e a mais barata de derrubar. Ou o autoatendimento existe (e
 então `/signup` aceita quem chega, com o super admin semeado por um comando
 documentado, e o convite vira opcional), ou ele não existe — e aí a home para de

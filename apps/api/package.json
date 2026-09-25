@@ -6,6 +6,8 @@
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
+    "//super-admin": "Promove um usuário existente a super_admin — só o PRIMEIRO de um banco novo. Exige PROMOVER_SUPER_ADMIN_EMAIL e um build feito.",
+    "super-admin": "node dist/scripts/promover-super-admin.js",
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.spec.json",
     "test": "jest --config jest.config.js",

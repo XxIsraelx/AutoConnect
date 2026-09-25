@@ -46,8 +46,8 @@ describe('Onda 1 — rascunho de anúncio e desempenho (e2e)', () => {
       .toString(36)
       .slice(2, 8)}@exemplo.test`;
     const [{ id }] = await dono.$queryRaw<{ id: string }[]>`
-      INSERT INTO users (tenant_id, email, full_name, role, updated_at)
-      VALUES (${tenantId}::uuid, ${email}, ${nome}, 'salesperson', now())
+      INSERT INTO users (tenant_id, email, full_name, role, email_verified_at, updated_at)
+      VALUES (${tenantId}::uuid, ${email}, ${nome}, 'salesperson', now(), now())
       RETURNING id`;
     await dono.$executeRaw`
       INSERT INTO salesperson_profiles (user_id, tenant_id, commission_pct, updated_at)

@@ -58,6 +58,7 @@ autoconnect/
 │   │       │   └── strategies/ # jwt.strategy, google.strategy
 │   │       ├── gateway/
 │   │       │   └── chat.gateway.ts   # WebSocket Socket.IO
+│   │       ├── scripts/        # comandos de linha (primeiro super admin)
 │   │       └── modules/
 │   │           ├── admin/       # superadmin + impersonation + announcements
 │   │           ├── appointments/# agendamentos (CRUD completo)
@@ -245,6 +246,12 @@ pnpm dev
 # → Web em http://localhost:3000
 ```
 
+**Banco novo, do zero:** não rode o seed. Crie a primeira loja pela própria
+tela — `/signup` aceita cadastro sem convite. Para ter acesso ao painel da
+plataforma (`/admin`), promova essa conta (ou outra dedicada) com o comando de
+*Cadastro de loja e primeiro acesso*, abaixo. Não existe outro caminho, e é de
+propósito.
+
 Para buildar como em produção — **use o turbo**, senão o `@autoconnect/shared`
 não é compilado antes e a API falha com `TS2307: Cannot find module`:
 
@@ -298,7 +305,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 697 testes (492 na API, 205 no `shared`):
+são 733 testes (516 na API, 217 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -373,6 +380,54 @@ desligue** para "resolver" um aviso.
 desativava a própria loja; `slug` trocava a URL pública. **Todo corpo passa
 por Zod**, que descarta o que não está no schema — `mass-assignment.e2e-spec.ts`
 fixa isso.
+
+---
+
+## Cadastro de loja e primeiro acesso
+
+O porquê de cada regra: `docs/decisoes/2026-09-25 cadastro em autosservico.md`.
+
+- **O cadastro é em autosserviço.** `POST /auth/signup-tenant` é `@Public()` e
+  aceita corpo **sem** `inviteToken`. Cria tenant + primeiro `tenant_admin` +
+  filial matriz + assinatura `trial`. O convite de super admin continua aceito e
+  **consumido** quando vem — deixou de ser exigido, não de existir.
+- **Cinco campos obrigatórios:** CNPJ, nome da loja, nome do responsável, e-mail
+  e senha (telefone da loja é opcional). Eram 22 em 5 etapas. Campo novo no
+  formulário público precisa de decisão, não de espaço: o resto é pedido dentro
+  do produto — endereço no checklist de primeiros passos, razão social e
+  representante legal em `/configuracoes` (é lá que o contrato manda, e sem
+  representante ele não é emitido).
+- **Trial de 14 dias, numa constante só** (`DURACAO_DO_TRIAL_DIAS`, no shared),
+  gravado em `trialEndsAt`. A home, o `/comecar` e o `/signup` citam essa
+  constante. ⚠ **Nada acontece quando o trial vence** — bloqueio é a Onda 3.
+- **O dígito verificador do CNPJ é a regra dura**, conferido pelo Zod e pela
+  tela com a mesma função (`cnpjValido`, no shared). A BrasilAPI é
+  **enriquecimento**: preenche razão social e endereço e só recusa situação
+  conclusivamente negativa. Indisponível, 404, 429 ou 5xx **não podem impedir o
+  cadastro** — serviço externo gratuito não é porteiro da porta de entrada.
+- **Teto por IP sem CAPTCHA e sem Redis:** 3 cadastros e 10 reenvios de
+  verificação por IP/hora (`modules/auth/limite-de-cadastro.ts`), sobre a janela
+  de `common/limite-por-ip.ts` que os leads também usam.
+  ⚠ Memória de processo: duas réplicas = `teto × réplicas`.
+- **O que exige e-mail verificado:** convidar equipe (`POST /invitations`) e
+  publicar anúncio (`POST /vehicles/:id/publish`) — as duas ações que falam com
+  terceiros em nome da loja. Marcadas com `@ExigeEmailVerificado()` +
+  `EmailVerificadoGuard`, que **lê o banco, não o JWT**. Explorar o painel,
+  cadastrar veículo em rascunho, atender lead e o **primeiro login** não exigem:
+  um ambiente sem provedor de e-mail não pode trancar o dono fora do que ele
+  acabou de criar. O consumidor final (`customer`) continua bloqueado no login
+  até confirmar.
+- **Primeiro super admin de um banco novo:** comando, nunca rota.
+  ```bash
+  pnpm exec turbo run build --filter=@autoconnect/api
+  DIRECT_URL="postgresql://..." PROMOVER_SUPER_ADMIN_EMAIL="voce@exemplo.com" \
+    node apps/api/dist/scripts/promover-super-admin.js
+  ```
+  Promove um usuário **que já existe** (nenhuma senha passa por variável de
+  ambiente), exige a variável explícita e **recusa se já houver qualquer super
+  admin** — o segundo se promove pelo painel, que registra quem promoveu quem.
+  Promova uma conta dedicada: o único `tenant_admin` de uma loja, promovido,
+  deixa a loja sem administrador.
 
 ---
 

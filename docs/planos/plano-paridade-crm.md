@@ -252,8 +252,27 @@ existe. Foram feitas **antes** da Onda 2 porque cada uma impede o uso.
   máscara parou de estragar telefone fixo e o WhatsApp só aparece para celular
   (B6), e o expediente ficou editável a 375 px (B12).
 
-**Continuam abertos, por serem decisão de produto:** o desalinhamento entre a
-home e o cadastro por convite (veredito 1º do piloto), o catálogo global de
+- **O cadastro virou autosserviço** (veredito 1º do piloto, a parede que decide):
+  a home prometia "Criar conta grátis" em cinco botões e todos caíam numa tela
+  que exigia convite — e num banco recém-migrado não havia caminho para criar o
+  **primeiro super admin**, então ninguém emitia convite e ninguém criava a
+  primeira loja. Agora `POST /auth/signup-tenant` aceita cadastro sem token, com
+  assinatura em `trial` e `trialEndsAt` gravado (14 dias, `DURACAO_DO_TRIAL_DIAS`
+  — antes a data nascia nula). O convite continua existindo e sendo consumido,
+  para trazer equipe e para o caminho comercial.
+
+  O formulário caiu de **22 campos em 5 etapas para 5 campos numa tela**; o que
+  saiu é pedido onde importa (endereço no checklist de primeiros passos, razão
+  social e representante legal em `/configuracoes`, antes do contrato). A porta
+  pública ganhou teto por IP em memória de processo (3 por hora, sem Redis e sem
+  CAPTCHA), o **dígito verificador do CNPJ virou a regra dura** e a BrasilAPI
+  virou enriquecimento — fora do ar, 429 ou 404 não impedem mais o cadastro
+  (B3). Convidar equipe e publicar anúncio exigem e-mail confirmado; explorar o
+  painel e o primeiro login, não. E existe um comando documentado para o
+  primeiro super admin, que recusa rodar se já houver algum. Tudo em
+  [cadastro em autosserviço](../decisoes/2026-09-25%20cadastro%20em%20autosservico.md).
+
+**Continuam abertos, por serem decisão de produto:** o catálogo global de
 marcas nascer vazio e sem `@Roles`/Zod na escrita (B15), o `branch_id` que o
 assistente não atribui e zera a contagem do mapa (B7), a coordenada da filial
 (B8), a FIPE escolhendo a variante errada (B16) e **o chat do lead anônimo**
@@ -349,6 +368,11 @@ coluna implícita crescia até o max-content do cartão mais largo (B9).
     não existe cobrança nenhuma.
 16. **Limite e bloqueio:** aplicar `seatsLimit`, avisar vencimento, bloquear por
     inadimplência com carência.
+
+    Ficou mais urgente desde 25/09/2026: com o cadastro em autosserviço, o
+    trial agora **tem data de fim gravada** (`trialEndsAt`, 14 dias) e **nada
+    acontece quando ela passa**. A loja segue usando o produto de graça, sem
+    aviso e sem caminho para pagar.
 
 **Pronto quando:** um cliente assina e paga sozinho, sem você emitir nada à mão.
 

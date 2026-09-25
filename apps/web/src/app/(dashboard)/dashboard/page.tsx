@@ -34,6 +34,7 @@ interface DashStats {
   onboarding?: {
     hasVehicle: boolean;
     hasTeam: boolean;
+    hasAddress: boolean;
     hasHours: boolean;
     hasLogo: boolean;
     slug: string | null;
@@ -110,10 +111,14 @@ function OnboardingChecklist({ ob }: { ob: NonNullable<DashStats['onboarding']> 
   );
   const [copied, setCopied] = useState(false);
 
+  // O endereço entrou aqui quando saiu do cadastro: eram sete campos antes de a
+  // pessoa ver qualquer tela, e ele só passa a importar na vitrine, no pino do
+  // mapa e na agenda pública. Vem antes do horário porque é o que o cliente vê.
   const steps = [
     { done: ob.hasVehicle, label: 'Cadastre seu primeiro veículo', href: '/veiculos/novo' },
-    { done: ob.hasTeam,    label: 'Convide um vendedor para a equipe', href: '/equipe' },
+    { done: ob.hasAddress, label: 'Informe o endereço da loja', href: '/configuracoes' },
     { done: ob.hasHours,   label: 'Configure o horário de funcionamento', href: '/configuracoes' },
+    { done: ob.hasTeam,    label: 'Convide um vendedor para a equipe', href: '/equipe' },
     { done: ob.hasLogo,    label: 'Adicione o logo da concessionária', href: '/configuracoes' },
   ];
   const doneCount = steps.filter((s) => s.done).length;

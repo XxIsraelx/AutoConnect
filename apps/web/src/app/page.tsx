@@ -10,8 +10,8 @@ import {
   Zap,
   CheckCircle2,
   ArrowRight,
-  Star,
 } from 'lucide-react';
+import { DURACAO_DO_TRIAL_DIAS } from '@autoconnect/shared';
 
 /** Barras do gráfico de exemplo na maquete do painel (valores relativos). */
 const BARRAS = [4, 7, 5, 9, 6, 11, 8, 13, 10, 15, 12, 14];
@@ -58,7 +58,7 @@ export default function HomePage() {
 
         {/* Social proof */}
         <p className="mt-8 text-xs text-slate-400">
-          Sem cartão de crédito · 14 dias grátis · Cancele quando quiser
+          Sem cartão de crédito · {DURACAO_DO_TRIAL_DIAS} dias grátis · Cancele quando quiser
         </p>
       </section>
 
@@ -71,7 +71,7 @@ export default function HomePage() {
             <div className="w-3 h-3 rounded-full bg-yellow-400 shrink-0" />
             <div className="w-3 h-3 rounded-full bg-green-400 shrink-0" />
             <div className="ml-2 sm:ml-3 flex-1 min-w-0 bg-slate-100 dark:bg-slate-700 rounded-md h-6 max-w-xs text-xs text-slate-400 flex items-center px-3 truncate">
-              localhost:3000/dashboard
+              autoconnect.app/dashboard
             </div>
           </div>
           {/* Fake dashboard */}
@@ -143,12 +143,12 @@ export default function HomePage() {
             {
               icon: MessageSquare,
               title: 'Chat em tempo real',
-              desc: 'Converse com clientes diretamente pela plataforma, via WhatsApp ou chat no site da concessionária.',
+              desc: 'Converse com clientes direto pelo painel, sem trocar de aba e com o histórico preso ao lead.',
             },
             {
               icon: CalendarDays,
               title: 'Agendamentos',
-              desc: 'Gerencie test-drives e visitas com calendário integrado. Confirmações automáticas por e-mail e WhatsApp.',
+              desc: 'Gerencie test-drives e visitas com calendário integrado, dentro do horário real da loja. Confirmações por e-mail.',
             },
             {
               icon: BarChart3,
@@ -213,10 +213,10 @@ export default function HomePage() {
             {
               name: 'Trial',
               price: 'Grátis',
-              period: '14 dias',
+              period: `${DURACAO_DO_TRIAL_DIAS} dias`,
               desc: 'Ideal para conhecer a plataforma',
               features: ['Até 10 veículos', '1 usuário', 'Chat básico', 'Suporte por e-mail'],
-              cta: 'Começar trial',
+              cta: 'Criar conta grátis',
               href: '/signup',
               highlight: false,
             },
@@ -225,8 +225,11 @@ export default function HomePage() {
               price: 'R$ 297',
               period: '/mês',
               desc: 'Para concessionárias em crescimento',
-              features: ['Veículos ilimitados', 'Até 5 usuários', 'Chat + WhatsApp', 'Relatórios avançados', 'Suporte prioritário'],
-              cta: 'Assinar Pro',
+              features: ['Veículos ilimitados', 'Até 5 usuários', 'Chat no painel', 'Relatórios avançados', 'Suporte prioritário'],
+              // Não existe cobrança ainda (Onda 3): "Assinar Pro" levava a
+              // pessoa para um trial sem forma nenhuma de pagar. O caminho
+              // honesto é o mesmo teste, com o plano trocado depois.
+              cta: `Testar ${DURACAO_DO_TRIAL_DIAS} dias grátis`,
               href: '/signup',
               highlight: true,
             },
@@ -236,8 +239,10 @@ export default function HomePage() {
               period: '',
               desc: 'Para redes e grupos automotivos',
               features: ['Multi-filiais', 'Usuários ilimitados', 'API dedicada', 'Onboarding guiado', 'SLA garantido'],
-              cta: 'Falar com vendas',
-              href: '/signup',
+              // Enterprise é conversa, não autosserviço — mandar para /signup
+              // era prometer uma coisa e entregar outra.
+              cta: 'Falar com a gente',
+              href: 'mailto:contato@autoconnect.app?subject=AutoConnect%20Enterprise',
               highlight: false,
             },
           ].map(({ name, price, period, desc, features, cta, href, highlight }) => (
@@ -280,47 +285,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Depoimentos */}
-      <section className="bg-slate-50 dark:bg-slate-900 py-20 mb-24">
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold tracking-tight mb-3">O que dizem os clientes</h2>
-          </div>
-          <div className="grid sm:grid-cols-3 gap-5">
-            {[
-              {
-                name: 'Carlos Mendes',
-                role: 'Dono, Auto Mendes',
-                text: 'Reduzi o tempo de resposta para clientes em 70%. O chat integrado fez toda a diferença nas vendas.',
-              },
-              {
-                name: 'Fernanda Lima',
-                role: 'Gerente, Lima Motors',
-                text: 'A gestão de estoque é intuitiva demais. Minha equipe aprendeu a usar em menos de uma hora.',
-              },
-              {
-                name: 'Ricardo Souza',
-                role: 'Diretor, Grupo RS Auto',
-                text: 'Gerenciar 3 filiais ficou muito mais simples. Os relatórios me deram visibilidade que eu não tinha antes.',
-              },
-            ].map(({ name, role, text }) => (
-              <div key={name} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
-                <div className="flex gap-0.5 mb-4">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <Star key={i} size={14} className="fill-yellow-400 text-yellow-400" />
-                  ))}
-                </div>
-                <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mb-4">&ldquo;{text}&rdquo;</p>
-                <div>
-                  <p className="text-sm font-semibold">{name}</p>
-                  <p className="text-xs text-slate-400">{role}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* CTA final */}
       <section className="mx-auto max-w-4xl px-6 mb-24 text-center">
         <div className="bg-brand-accent rounded-3xl px-8 py-14">
@@ -328,7 +292,8 @@ export default function HomePage() {
             Pronto para transformar sua concessionária?
           </h2>
           <p className="text-blue-100 mb-8 max-w-lg mx-auto">
-            Junte-se a centenas de concessionárias que já usam o AutoConnect para vender mais e atender melhor.
+            Crie a conta da sua loja agora e teste {DURACAO_DO_TRIAL_DIAS} dias sem cartão de crédito.
+            Em menos de um minuto você está no painel.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link

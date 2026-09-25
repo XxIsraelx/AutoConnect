@@ -1,4 +1,5 @@
-import { LimitePorIp, chaveDoEnvio, LIMITE_POR_JANELA, JANELA_MS } from './limite-por-ip';
+import { LimitePorIp, LIMITE_POR_JANELA, JANELA_MS } from './limite-por-ip';
+import { chaveDoEnvio } from '../modules/leads/limite-por-ip';
 
 describe('LimitePorIp', () => {
   const t0 = 1_700_000_000_000;

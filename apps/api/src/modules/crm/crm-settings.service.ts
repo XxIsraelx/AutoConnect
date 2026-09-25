@@ -27,7 +27,10 @@ export const AJUSTES_PADRAO: AjustesDeCrm = {
   // **Ligado** de propósito: é o comportamento que a loja já tem hoje, e uma
   // atualização que esconde metade dos leads de quem está atendendo seria um
   // chamado de suporte na primeira segunda-feira.
-  vendedorVeTodosOsLeads: true,
+  // Carteira fechada, como a coluna (migration `carteira_fechada_por_padrao`,
+  // 24/09/2026). Divergir daqui faria a loja sem linha em `tenant_crm_settings`
+  // rodar com carteira aberta — o contrário do que a tela e o doc prometem.
+  vendedorVeTodosOsLeads: false,
   rodizioUltimoUsuarioId: null,
 };
 

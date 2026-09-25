@@ -57,9 +57,14 @@ async function criarTenant(
     VALUES (${slug}, ${`${nome} LTDA`}, ${nome}, ${`${slug}@exemplo.test`}, true, now())
     RETURNING id`;
 
+  // `email_verified_at` preenchido: a fixture representa uma loja que já está
+  // de pé, e desde que o cadastro passou a ser em autosserviço duas rotas
+  // exigem e-mail confirmado (`EmailVerificadoGuard`) — convidar equipe e
+  // publicar anúncio. Sem isto, todo teste dessas rotas responderia 403 por um
+  // motivo que não é o que ele está medindo.
   const [{ id: usuarioId }] = await prisma.$queryRaw<{ id: string }[]>`
-    INSERT INTO users (tenant_id, email, full_name, role, updated_at)
-    VALUES (${tenantId}::uuid, ${`cliente-${s}@exemplo.test`}, 'Cliente Teste', 'customer', now())
+    INSERT INTO users (tenant_id, email, full_name, role, email_verified_at, updated_at)
+    VALUES (${tenantId}::uuid, ${`cliente-${s}@exemplo.test`}, 'Cliente Teste', 'customer', now(), now())
     RETURNING id`;
 
   const [{ id: filialId }] = await prisma.$queryRaw<{ id: string }[]>`

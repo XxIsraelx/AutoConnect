@@ -2,6 +2,7 @@ import Logo from '@/components/Logo';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { Building2, Car, ArrowRight, ArrowLeft, Check } from 'lucide-react';
+import { DURACAO_DO_TRIAL_DIAS } from '@autoconnect/shared';
 
 export const metadata: Metadata = {
   title: 'Começar — AutoConnect',
@@ -15,7 +16,7 @@ const options = [
     badge: 'Para lojistas',
     title: 'Tenho uma concessionária',
     desc: 'Gerencie estoque, leads, chat e agendamentos em um só lugar.',
-    bullets: ['Estoque ilimitado de veículos', 'Leads e chat em tempo real', '14 dias grátis, sem cartão'],
+    bullets: ['Estoque ilimitado de veículos', 'Leads e chat em tempo real', `${DURACAO_DO_TRIAL_DIAS} dias grátis, sem cartão`],
     cta: 'Cadastrar concessionária',
     accent: 'blue',
   },
