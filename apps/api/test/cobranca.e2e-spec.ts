@@ -244,6 +244,23 @@ describe('Cobrança e bloqueio por vencimento (e2e)', () => {
       expect(sub!.externalCustomerId).toMatch(/^cus_sim_/);
     });
 
+    it('a carência da contratação é o PRIMEIRO vencimento + 7, não o ciclo seguinte', async () => {
+      // O gateway devolve, em `proximoVencimento`, o vencimento do **ciclo
+      // seguinte** — a Asaas de verdade responde 28/10 para uma assinatura
+      // cuja primeira cobrança vence em 28/09 (validado no sandbox em
+      // 25/09/2026, e o simulado passou a imitar isso). Calcular a carência
+      // com aquele campo daria ~37 dias de produto liberado a quem contratou
+      // e nunca pagou.
+      await contratar();
+
+      const sub = await assinaturaDe(f.a.id);
+      // Primeiro vencimento = hoje + 3 (regra do `cobranca.service`).
+      const esperado = somarDias(new Date(), 3 + DIAS_DE_CARENCIA);
+      const diferencaEmDias =
+        Math.abs(sub!.graceUntil!.getTime() - esperado.getTime()) / 86_400_000;
+      expect(diferencaEmDias).toBeLessThan(1);
+    });
+
     it('contratar no último dia do trial não bloqueia antes de a fatura vencer', async () => {
       await ajustarAssinatura(f.a.id, { trialEndsAt: somarDias(new Date(), -1) });
       expect((await escreverAlgo(comoAdmin)).status).toBe(402);

@@ -261,7 +261,14 @@ export class CobrancaService {
           // Carência até o primeiro vencimento + a carência normal: a loja que
           // contratou no último dia do trial não pode virar somente leitura
           // enquanto o boleto dela nem venceu.
-          graceUntil: somarDias(assinatura.proximoVencimento ?? primeiroVencimento, DIAS_DE_CARENCIA),
+          //
+          // ⚠ É o `primeiroVencimento` que pedimos, **não** o
+          // `assinatura.proximoVencimento`: validado no sandbox da Asaas em
+          // 25/09/2026, o `nextDueDate` da resposta já é o ciclo seguinte
+          // (pedimos 28/09, a cobrança nasceu para 28/09 e a resposta veio
+          // 28/10). Usá-lo daria 37 dias de carência em vez de 10 — um mês
+          // de produto de graça para quem contratou e nunca pagou.
+          graceUntil: somarDias(primeiroVencimento, DIAS_DE_CARENCIA),
           status: atual.assinatura.status === 'canceled' ? 'past_due' : atual.assinatura.status,
         },
       }),

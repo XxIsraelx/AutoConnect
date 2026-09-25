@@ -17,10 +17,13 @@ import { CABECALHO_TOKEN_ASAAS, tokenConfere } from './token-webhook';
  * Tudo o que é formato da Asaas mora aqui. O resto do sistema vê só o
  * vocabulário de `ProvedorDeCobranca`.
  *
- * ⚠ **Escrito sem conta e sem sandbox** (25/09/2026): nenhuma chamada deste
- * arquivo jamais saiu para a Asaas. O que está aqui veio da documentação
- * pública, e a lista do que precisa ser conferido com uma conta em mãos está
- * em `docs/decisoes/2026-09-25 cobranca e bloqueio por vencimento.md`.
+ * ✅ **Validado contra o sandbox real em 25/09/2026** — ciclo inteiro (salvar
+ * cliente, atualizar, criar assinatura, ler fatura, confirmar o pagamento pelo
+ * recurso de sandbox, cancelar duas vezes e limpar). O que divergiu da
+ * documentação está anotado abaixo, campo a campo. O que **não** deu para
+ * validar: a entrega real do webhook, porque a URL cadastrada na conta aponta
+ * para produção. Ver `docs/decisoes/2026-09-25 cobranca e bloqueio por
+ * vencimento.md`.
  *
  * ── Autenticação ────────────────────────────────────────────────────
  * Chamada: chave crua no cabeçalho `access_token` (não é `Bearer`).
@@ -127,6 +130,41 @@ export function dataAsaas(d: Date): string {
 function deDataAsaas(s: string | undefined): Date | null {
   if (!s) return null;
   const d = new Date(`${s.slice(0, 10)}T12:00:00.000Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Fuso das datas da Asaas: a conta é brasileira e ela não manda offset. */
+const OFFSET_ASAAS = '-03:00';
+
+/**
+ * `dateCreated` do **evento** do webhook: `"2026-10-05 14:30:00"`.
+ *
+ * Note o espaço e a **ausência de fuso** — a Asaas renderiza no horário da
+ * conta (Brasília) e omite o offset. Jogar isso em `new Date()` faz o V8
+ * interpretar como horário **local do servidor**: o mesmo evento viraria um
+ * instante em São Paulo (dev) e outro em UTC (Railway), com 3 horas de
+ * diferença. Como `ocorridoEm` é o que abre a carência quando o evento chega
+ * sem fatura, o instante tem de ser o mesmo nos dois lugares.
+ *
+ * Por isso o offset entra explícito. Data pura (`"2026-10-05"`) cai no
+ * meio-dia UTC, como no resto do adaptador.
+ */
+export function deDataHoraAsaas(s: string | undefined): Date | null {
+  if (!s) return null;
+  const texto = s.trim();
+
+  // Já veio com fuso (Z ou ±HH:MM)? Respeita o que veio.
+  if (/(?:Z|[+-]\d{2}:?\d{2})$/i.test(texto)) {
+    const comFuso = new Date(texto);
+    return Number.isNaN(comFuso.getTime()) ? null : comFuso;
+  }
+
+  const m = /^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}(?::\d{2})?))?/.exec(texto);
+  if (!m) return null;
+
+  const d = m[2]
+    ? new Date(`${m[1]}T${m[2].length === 5 ? `${m[2]}:00` : m[2]}${OFFSET_ASAAS}`)
+    : new Date(`${m[1]}T12:00:00.000Z`);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
@@ -252,6 +290,9 @@ export class ProvedorAsaas implements ProvedorDeCobranca {
     };
 
     // A Asaas atualiza com POST no cliente existente; sem id, cria.
+    // Confirmado no sandbox (25/09/2026): o segundo POST em
+    // `/customers/cus_...` devolveu **o mesmo id** com os campos novos, e a
+    // busca por `externalReference` continuou trazendo um cliente só.
     const r = await this.chamar('POST', idExterno ? `/customers/${idExterno}` : '/customers', corpo);
     if (!r.id) throw new ErroAsaas('A Asaas criou o cliente sem devolver o id.', 502);
     return { idExterno: r.id };
@@ -271,6 +312,12 @@ export class ProvedorAsaas implements ProvedorDeCobranca {
     });
 
     if (!r.id) throw new ErroAsaas('A Asaas criou a assinatura sem devolver o id.', 502);
+    // ⚠ O `nextDueDate` da resposta **não** é o vencimento da cobrança que
+    // acabou de nascer: a Asaas já gera a primeira e avança o ciclo. Sandbox,
+    // 25/09/2026 — enviamos `2026-09-28`, a cobrança saiu com
+    // `dueDate: 2026-09-28` e a assinatura respondeu `nextDueDate: 2026-10-28`.
+    // Quem precisa do primeiro vencimento usa o que pediu (ver
+    // `AssinaturaNoGateway.proximoVencimento`).
     return { idExterno: r.id, proximoVencimento: deDataAsaas(r.nextDueDate) };
   }
 
@@ -281,6 +328,12 @@ export class ProvedorAsaas implements ProvedorDeCobranca {
    * `invoiceUrl` é a página onde o cliente escolhe Pix, boleto ou cartão — é
    * ela que a tela mostra, e não um código Pix copiado por nós: renderizar
    * meio de pagamento é trabalho de quem tem certificação PCI.
+   *
+   * Envelope confirmado no sandbox (25/09/2026):
+   * `{ object: 'list', hasMore, totalCount, limit, offset, data: [...] }`. A
+   * `invoiceUrl` veio preenchida inclusive com `billingType: UNDEFINED`, que é
+   * o nosso padrão. Assinatura inexistente devolve **200 com `data: []`** (não
+   * 404), e aí a resposta é `null`.
    */
   async faturaAtual(idAssinaturaExterna: string): Promise<FaturaDoGateway | null> {
     const r = await this.chamar('GET', `/subscriptions/${idAssinaturaExterna}/payments?limit=10`);
@@ -288,7 +341,12 @@ export class ProvedorAsaas implements ProvedorDeCobranca {
     if (lista.length === 0) return null;
 
     const emAberto = lista.find((p) => statusDaFatura(p.status) === 'pendente' || statusDaFatura(p.status) === 'vencida');
-    return this.paraFatura(emAberto ?? lista[0]!);
+    if (emAberto) return this.paraFatura(emAberto);
+
+    // Nenhuma em aberto: a mais recente. A ordem da lista não é contrato da
+    // Asaas, então ordenar aqui é o que torna a escolha a mesma sempre.
+    const maisRecente = [...lista].sort((a, b) => (b.dueDate ?? '').localeCompare(a.dueDate ?? ''))[0]!;
+    return this.paraFatura(maisRecente);
   }
 
   private paraFatura(p: RespostaAsaas): FaturaDoGateway | null {
@@ -308,7 +366,13 @@ export class ProvedorAsaas implements ProvedorDeCobranca {
   /**
    * Cancelar remove a assinatura na Asaas — as cobranças futuras deixam de ser
    * geradas. As faturas já pagas continuam no histórico dela e no nosso.
-   * Assinatura que já não existe (404) é no-op: cancelar duas vezes não é erro.
+   *
+   * Validado no sandbox (25/09/2026): `DELETE` responde **200
+   * `{ deleted: true, id }`**, e repetir o `DELETE` na mesma assinatura responde
+   * **200 de novo** — a Asaas já é idempotente aqui, o duplo clique não
+   * incomoda ninguém. O 404 acontece com id que nunca existiu, e vem com
+   * **corpo vazio**; segue tratado como no-op, que é o certo para
+   * "cancele isto" sobre algo que não está mais lá.
    */
   async cancelarAssinatura(idAssinaturaExterna: string): Promise<void> {
     try {
@@ -344,17 +408,17 @@ export class ProvedorAsaas implements ProvedorDeCobranca {
       : 'ignorado';
 
     const p = payload.payment;
-    const ocorrido = payload.dateCreated ? new Date(payload.dateCreated) : new Date();
 
     return {
       tipo,
-      // A Asaas manda `id` do evento nas entregas com fila ativada. Sem ele,
-      // quem chama cai no SHA-256 do corpo cru.
+      // A Asaas manda `id` do evento em toda entrega (`evt_<hash>&<n>`) e a
+      // própria doc manda usá-lo contra processamento duplicado. Sem ele, quem
+      // chama cai no SHA-256 do corpo cru.
       idEvento: payload.id,
       idAssinaturaExterna: p?.subscription ?? payload.subscription?.id,
       referencia: p?.externalReference ?? payload.subscription?.externalReference,
       fatura: p ? (this.paraFatura(p) ?? undefined) : undefined,
-      ocorridoEm: Number.isNaN(ocorrido.getTime()) ? new Date() : ocorrido,
+      ocorridoEm: deDataHoraAsaas(payload.dateCreated) ?? new Date(),
     };
   }
 }

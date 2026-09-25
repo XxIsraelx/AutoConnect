@@ -227,35 +227,96 @@ cai em `trial`, que é o estado que não cobra ninguém por engano.
   `external_customer_id`, `payment_method`, `grace_until`, `canceled_at`,
   `last_notice_at` em `tenant_subscriptions`, cria `tenant_invoices` e
   `billing_webhook_events` com RLS
-- `apps/api/test/cobranca.e2e-spec.ts` — 36 casos
+- `apps/api/test/cobranca.e2e-spec.ts` — 37 casos
 - Web: `(dashboard)/configuracoes/plano/page.tsx`,
   `components/AvisoDeCobranca.tsx`, `admin/AbaConcessionarias.tsx`
 
+## Validação contra o sandbox real — 25/09/2026
+
+O adaptador rodou o ciclo inteiro contra `api-sandbox.asaas.com` pelo próprio
+`ProvedorAsaas` (não por `fetch` solto): criar cliente, atualizar o mesmo
+cliente, criar assinatura mensal do Essencial, ler a fatura, confirmar o
+pagamento pelo recurso de sandbox, cancelar, cancelar de novo, e apagar o que
+foi criado. Os testes dublados passaram a usar **as respostas reais copiadas
+dessa rodada**, campo a campo.
+
+### Confirmado como estava escrito
+
+- **Autenticação da chamada:** chave crua no cabeçalho `access_token`, sem
+  `Bearer`. Base `…/v3`.
+- **`POST /customers/:id` atualiza.** O segundo POST devolveu **o mesmo id**
+  com os campos novos, e a busca por `externalReference` seguiu com **um**
+  cliente. Não cria um segundo.
+- **Envelope da lista:** `{ object: 'list', hasMore, totalCount, limit, offset,
+  data: [...] }`, como o adaptador lê.
+- **`invoiceUrl` vem preenchida** já na cobrança recém-criada, inclusive com
+  `billingType: UNDEFINED` — que é o nosso padrão. É o link que a tela mostra.
+- **Valor em reais com duas casas** (`value: 279`) e **`nextDueDate` em
+  `AAAA-MM-DD`**: aceitos sem reclamação, no formato UTC que o adaptador gera.
+- **Pagamento confirmado** por `POST /v3/sandbox/payment/:id/confirm`: a
+  cobrança foi de `PENDING` a `RECEIVED`, com `paymentDate`, `clientPaymentDate`
+  e `billingType` fechado no meio escolhido (`UNDEFINED` virou `BOLETO`) — tudo
+  que o adaptador já normalizava.
+- **`DELETE /subscriptions/:id`** responde **200 `{ deleted: true, id }`**.
+- **Cabeçalho do token do webhook:** `asaas-access-token`, como
+  `token-webhook.ts` espera.
+- **O webhook traz `id` do evento** (`evt_<hash>&<n>`), e a própria doc manda
+  usá-lo contra processamento duplicado. A idempotência não depende do SHA-256
+  do corpo; ele fica como plano B.
+
+### Divergiu, e foi corrigido
+
+1. **`nextDueDate` da resposta da assinatura é o CICLO SEGUINTE, não a fatura
+   que acabou de nascer.** Pedimos `2026-09-28`; a Asaas gerou a cobrança com
+   `dueDate: 2026-09-28` **e respondeu `nextDueDate: 2026-10-28`**. O
+   `cobranca.service` calculava a carência da contratação com esse campo — a
+   loja que contratasse e nunca pagasse ficaria ~**37 dias** liberada em vez de
+   10. Agora a carência sai do vencimento que **pedimos**. O `ProvedorSimulado`
+   passou a devolver o ciclo seguinte também (era ele que escondia o erro do
+   e2e), e há um caso novo em `cobranca.e2e-spec.ts` que trava o número.
+2. **`dateCreated` do evento não tem fuso** (`"2026-10-05 14:30:00"`): a Asaas
+   renderiza no horário da conta e omite o offset. Em `new Date()` cru isso
+   vira horário **local do servidor** — o mesmo evento seria um instante em São
+   Paulo e outro no Railway, com 3 horas de diferença, e `ocorridoEm` é o que
+   abre a carência quando o evento chega sem fatura. Agora existe
+   `deDataHoraAsaas`, que aplica `-03:00` explicitamente (e respeita o offset
+   se um dia ela passar a mandar um).
+3. **Cancelar duas vezes não dá 404** — a Asaas já é idempotente e responde 200
+   nas duas. O 404 é de id que nunca existiu, e vem com **corpo vazio**: o
+   tratamento de no-op continua certo, mas não pode depender de `errors` no
+   corpo. Os dois casos estão no teste.
+4. **Assinatura inexistente em `GET /subscriptions/:id/payments` é 200 com
+   `data: []`**, não 404 — `faturaAtual` devolve `null` e a tela não quebra.
+5. **Escolha da fatura quando nenhuma está em aberto:** a ordem da lista não é
+   contrato da Asaas, e o adaptador pegava `lista[0]`. Passou a ordenar por
+   vencimento e pegar a mais recente.
+
+### Não deu para validar
+
+- **A entrega real do webhook.** O webhook cadastrado na conta aponta para
+  `https://autoconnectapi-production.up.railway.app/api/v1/webhooks/cobranca`,
+  e em produção a cobrança está desligada (`penalizedRequestsCount: 1` —
+  entrega já recusada). Sem URL pública para esta máquina, nada chega aqui. O
+  cabeçalho, o `id` do evento e o formato de `dateCreated` foram conferidos
+  contra a documentação e os payloads de exemplo dela, não contra uma entrega.
+- **Se o `COBRANCA_WEBHOOK_TOKEN` do `.env` é o token cadastrado no webhook.**
+  A API responde `hasAuthToken: true` mas não devolve o token. Só a primeira
+  entrega real prova — e um token errado aparece como 401 em todas.
+
 ## O que falta para ligar de verdade
 
-⚠ **O adaptador da Asaas nunca falou com a Asaas** — não há conta, nem sandbox.
-O que está escrito veio da documentação pública, e os testes usam `fetch`
-dublado. Com uma conta em mãos, precisa ser conferido:
-
-1. **O cabeçalho do token no webhook.** A doc diz `asaas-access-token`; a
-   primeira entrega real confirma (ou não) a grafia exata.
-2. **Se o webhook traz `id` do evento.** Sem ele a chave de idempotência cai no
-   SHA-256 do corpo — que funciona, mas é mais frágil se a Asaas variar bytes
-   entre reentregas.
-3. **`POST /customers/:id` como atualização.** É o que a doc indica; confirmar
-   que não cria um segundo cliente.
-4. **`GET /subscriptions/:id/payments`** — o formato do envelope (`data`) e se a
-   `invoiceUrl` vem em toda cobrança, inclusive a de cartão.
-5. **`DELETE /subscriptions/:id`** — confirmar que é 200/204 e que 404 em
-   assinatura já removida é o que o adaptador assume (no-op).
-6. **Valor e data**: `value` em reais com duas casas e `nextDueDate` em
-   `AAAA-MM-DD` — conferir que a Asaas não recusa o formato UTC.
-7. **Cadastrar o webhook** apontando para `<API>/api/v1/webhooks/cobranca`, com
-   os eventos `PAYMENT_CONFIRMED`, `PAYMENT_RECEIVED`, `PAYMENT_OVERDUE`,
-   `PAYMENT_REFUNDED` e `SUBSCRIPTION_DELETED`, e pôr o token gerado em
-   `COBRANCA_WEBHOOK_TOKEN`.
-8. **No Railway**: `COBRANCA_FORNECEDOR=asaas`, `ASAAS_API_KEY`, `ASAAS_API_URL`,
-   `COBRANCA_WEBHOOK_TOKEN`.
+1. **Estreitar os eventos do webhook.** Ele está inscrito em **todos** os
+   eventos da conta (`PAYMENT_CREATED`, `SUBSCRIPTION_CREATED`, `TRANSFER_*`,
+   `INVOICE_*`…). O adaptador trata o que não conhece como `ignorado`, então
+   nada quebra, mas cada entrega vira uma linha em `billing_webhook_events`.
+   Deixar só `PAYMENT_CONFIRMED`, `PAYMENT_RECEIVED`, `PAYMENT_OVERDUE`,
+   `PAYMENT_REFUNDED` e `SUBSCRIPTION_DELETED`.
+2. **Primeira entrega de verdade**, para confirmar o cabeçalho e o token na
+   prática. Enquanto o webhook apontar para produção com a cobrança desligada,
+   a Asaas continua penalizando a fila.
+3. **No Railway**: `COBRANCA_FORNECEDOR=asaas`, `ASAAS_API_KEY`, `ASAAS_API_URL`,
+   `COBRANCA_WEBHOOK_TOKEN` — e a chave de **produção**, não a de sandbox, com
+   um webhook próprio por ambiente.
 
 Até lá, `COBRANCA_FORNECEDOR` vazio deixa a contratação escondida e o bloqueio
 valendo — quem desbloqueia é o super admin, à mão, como sempre foi.

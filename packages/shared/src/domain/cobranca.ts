@@ -349,7 +349,18 @@ export interface NovaAssinatura {
 
 export interface AssinaturaNoGateway {
   idExterno: string;
-  /** Próximo vencimento, como o gateway o entende. */
+  /**
+   * O vencimento do **próximo ciclo**, e não o da fatura que acabou de nascer.
+   *
+   * ⚠ Validado contra o sandbox da Asaas em 25/09/2026: pedimos
+   * `nextDueDate: 2026-09-28`, a Asaas gerou a primeira cobrança para
+   * 2026-09-28 **e respondeu `nextDueDate: 2026-10-28`** — ela já avançou o
+   * ciclo. Quem quiser o vencimento da primeira fatura tem de usar o que
+   * *pediu* (`NovaAssinatura.primeiroVencimento`) ou ler a fatura; usar este
+   * campo dá um mês a mais de graça a quem contratou e não pagou.
+   *
+   * Serve para exibir "próxima cobrança em", nunca para calcular carência.
+   */
   proximoVencimento: Date | null;
 }
 

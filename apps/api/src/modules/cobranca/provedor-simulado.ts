@@ -128,7 +128,14 @@ export class ProvedorSimuladoDeCobranca implements ProvedorDeCobranca {
       faturas: [fatura],
     });
 
-    return Promise.resolve({ idExterno: id, proximoVencimento: nova.primeiroVencimento });
+    // Como a Asaas de verdade: a primeira cobrança nasce no vencimento pedido
+    // e o `proximoVencimento` devolvido já é o **ciclo seguinte**. O simulado
+    // devolvia o primeiro vencimento, e era por isso que o e2e não pegava o
+    // cálculo errado de carência (validado no sandbox em 25/09/2026).
+    const proximoCiclo = new Date(nova.primeiroVencimento);
+    proximoCiclo.setUTCMonth(proximoCiclo.getUTCMonth() + 1);
+
+    return Promise.resolve({ idExterno: id, proximoVencimento: proximoCiclo });
   }
 
   faturaAtual(idAssinaturaExterna: string): Promise<FaturaDoGateway | null> {
