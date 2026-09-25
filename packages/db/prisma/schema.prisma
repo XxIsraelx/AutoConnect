@@ -338,6 +338,79 @@ model BillingWebhookEvent {
   @@map("billing_webhook_events")
 }
 
+/// Autorização prévia para um saque na conta da **plataforma** no gateway.
+///
+/// Sem `tenant_id` de propósito: isto não é dado de concessionária nenhuma. É
+/// o dinheiro do dono da plataforma saindo da conta da Asaas, e quem cria a
+/// autorização é o super admin. Por isso a policy de RLS nega tudo ao papel da
+/// aplicação — só a conexão privilegiada (dona das tabelas) alcança estas duas.
+///
+/// A Asaas exige, para liberar a chave de produção, que toda operação de saque
+/// passe por um webhook nosso. A regra é recusa por padrão: o que não casar
+/// com uma linha **válida, não usada e não expirada** daqui é `REFUSED`.
+///
+/// Uso único: `used_at` é gravado na mesma transação que registra a decisão.
+model WithdrawalAuthorization {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  provider      String    @default("asaas")
+  /// `TRANSFER | BILL | PIX_QR_CODE | MOBILE_PHONE_RECHARGE | PIX_REFUND`.
+  operationType String    @map("operation_type")
+  /// `exato` (valor idêntico) ou `teto` (até o valor) — `MODOS_DE_VALOR`.
+  amountMode    String    @map("amount_mode")
+  amount        Decimal   @db.Decimal(14, 2)
+  /// Para que serve este saque, escrito por quem autorizou. Vira trilha.
+  note          String?
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz()
+  usedAt        DateTime? @map("used_at") @db.Timestamptz()
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz()
+  /// Quem autorizou. Sem FK e com o e-mail copiado: a trilha de auditoria de
+  /// dinheiro tem de sobreviver à remoção da conta que a criou.
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdByEmail String?  @map("created_by_email")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  decisions WithdrawalDecision[]
+
+  @@index([provider, operationType, expiresAt])
+  @@map("withdrawal_authorizations")
+}
+
+/// Toda decisão de validação de saque, aprovada ou recusada, com o pedido cru.
+///
+/// É trilha de auditoria de dinheiro: guarda o corpo que chegou, a decisão, o
+/// motivo, o instante e qual autorização foi consumida. Nada é apagado.
+///
+/// `(provider, operation_type, operation_key)` é único e serve de idempotência:
+/// a Asaas reentrega quando a nossa resposta não chega, e a segunda entrega
+/// **repete a decisão** em vez de recusar por falta de autorização (que já
+/// teria sido consumida pela primeira). Pedido sem token válido nunca entra
+/// com o id da operação — entra com `operation_type = 'NAO_AUTENTICADO'` e a
+/// chave sendo o SHA-256 do corpo, senão qualquer um poderia envenenar a
+/// decisão de uma operação futura só por adivinhar o id dela.
+model WithdrawalDecision {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  provider        String   @default("asaas")
+  operationType   String   @map("operation_type")
+  /// Id da operação no gateway — ou `sha256:<hash>` quando não há id confiável.
+  operationKey    String   @map("operation_key")
+  amount          Decimal? @db.Decimal(14, 2)
+  /// `APPROVED` ou `REFUSED` — o que foi respondido, literalmente.
+  decision        String
+  /// `refuseReason` enviado à Asaas. Nulo quando aprovado.
+  reason          String?
+  authorizationId String?  @map("authorization_id") @db.Uuid
+  /// O token do cabeçalho conferiu? Falso marca tentativa não autenticada.
+  tokenOk         Boolean  @default(false) @map("token_ok")
+  rawBody         String   @map("raw_body")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  authorization WithdrawalAuthorization? @relation(fields: [authorizationId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, operationType, operationKey])
+  @@index([createdAt])
+  @@map("withdrawal_decisions")
+}
+
 /// Ajustes de CRM da concessionária **e** o estado do rodízio de leads.
 ///
 /// Tabela própria, e não `Tenant.settings`, porque a linha é travada com

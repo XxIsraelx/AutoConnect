@@ -101,5 +101,11 @@ process.env.COBRANCA_WEBHOOK_TOKEN = 'token-de-cobranca-de-teste';
 process.env.ASAAS_API_KEY = '';
 process.env.ASAAS_API_URL = '';
 
+// Validação de saque: token fixo, sobrescrevendo o `.env`. Aqui não sai
+// requisição nenhuma (quem chama é a Asaas), mas o token é o que separa
+// "recusa tudo" de "decide de verdade" — e os dois caminhos precisam ser
+// exercitados a partir de um valor conhecido.
+process.env.ASAAS_SAQUE_TOKEN = 'token-de-saque-de-teste';
+
 /** Nome do banco de teste, para os testes afirmarem onde estão conectados. */
 export const BANCO_DE_TESTE = verificada.pathname.replace(/^\//, '');

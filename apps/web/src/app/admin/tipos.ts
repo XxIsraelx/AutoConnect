@@ -101,3 +101,29 @@ export interface SystemHealth {
   services: ServicoVerificado[];
   cronJobs: { name: string; lastRun: string | null; nextRun: string | null }[];
 }
+
+/* ── Validação de saque (Asaas) ────────────────────────────── */
+
+export interface AutorizacaoDeSaqueRow {
+  id: string; tipo: string; modo: string; valor: string; observacao: string | null;
+  expiraEm: string; usadaEm: string | null; revogadaEm: string | null;
+  criadaPor: string | null; criadaEm: string;
+  /** `valida | usada | revogada | expirada`, derivado na API. */
+  situacao: string;
+}
+
+export interface DecisaoDeSaqueRow {
+  id: string; tipo: string; operacao: string; valor: string | null;
+  /** `APPROVED` ou `REFUSED` — o que foi respondido à Asaas, literalmente. */
+  decisao: string;
+  motivo: string | null; autorizacaoId: string | null; tokenOk: boolean; quando: string;
+}
+
+export interface PainelDeSaques {
+  /** Falso quando `ASAAS_SAQUE_TOKEN` não está configurado: recusa tudo. */
+  configurado: boolean;
+  provedor: string;
+  validadePadraoMinutos: number;
+  autorizacoes: AutorizacaoDeSaqueRow[];
+  decisoes: DecisaoDeSaqueRow[];
+}

@@ -1,6 +1,7 @@
 import { Injectable, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@autoconnect/db';
-import { PrismaService } from '../../common/prisma/prisma.service';
+import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
+import type { Escopo } from '../../common/escopo';
 import { EmailService } from '../../common/email/email.service';
 import { FipeService } from '../fipe/fipe.service';
 import { normalizarTelefoneBr } from '@autoconnect/shared';
@@ -54,41 +55,69 @@ export class CatalogService {
     });
   }
 
-  /** Cria (ou reaproveita) uma marca pelo nome */
-  async createBrand(name: string) {
+  /**
+   * Cria (ou reaproveita) uma marca pelo nome.
+   *
+   * Roda em `withTenant` porque a policy `catalogo_insercao` exige
+   * `app.tenant_id`: o catálogo é compartilhado, e a inserção só é permitida a
+   * concessionária autenticada. Sem contexto, o INSERT era recusado sob
+   * `autoconnect_app` — ou seja, em produção — e a loja nova não conseguia
+   * cadastrar o primeiro veículo de uma marca que ainda não existisse. Como
+   * dono do banco, em desenvolvimento, passava.
+   */
+  async createBrand(escopo: Escopo, name: string) {
     const clean = name.trim();
     if (clean.length < 1) throw new NotFoundException('Nome da marca inválido');
 
-    const existing = await this.prisma.vehicleBrand.findFirst({
-      where: { name: { equals: clean, mode: 'insensitive' } },
-      select: { id: true, name: true, logoUrl: true },
-    });
-    if (existing) return existing;
+    return this.comCatalogo(escopo, async (tx) => {
+      const existing = await tx.vehicleBrand.findFirst({
+        where: { name: { equals: clean, mode: 'insensitive' } },
+        select: { id: true, name: true, logoUrl: true },
+      });
+      if (existing) return existing;
 
-    return this.prisma.vehicleBrand.create({
-      data: { name: clean },
-      select: { id: true, name: true, logoUrl: true },
+      return tx.vehicleBrand.create({
+        data: { name: clean },
+        select: { id: true, name: true, logoUrl: true },
+      });
     });
   }
 
-  /** Cria (ou reaproveita) um modelo dentro de uma marca */
-  async createModel(brandId: string, name: string, category?: string) {
+  /** Cria (ou reaproveita) um modelo dentro de uma marca. Mesma regra da marca. */
+  async createModel(escopo: Escopo, brandId: string, name: string, category?: string) {
     const clean = name.trim();
     if (clean.length < 1) throw new NotFoundException('Nome do modelo inválido');
 
-    const brand = await this.prisma.vehicleBrand.findUnique({ where: { id: brandId } });
-    if (!brand) throw new NotFoundException('Marca não encontrada');
+    return this.comCatalogo(escopo, async (tx) => {
+      const brand = await tx.vehicleBrand.findUnique({ where: { id: brandId } });
+      if (!brand) throw new NotFoundException('Marca não encontrada');
 
-    const existing = await this.prisma.vehicleModel.findFirst({
-      where: { brandId, name: { equals: clean, mode: 'insensitive' } },
-      select: { id: true, name: true, category: true },
-    });
-    if (existing) return existing;
+      const existing = await tx.vehicleModel.findFirst({
+        where: { brandId, name: { equals: clean, mode: 'insensitive' } },
+        select: { id: true, name: true, category: true },
+      });
+      if (existing) return existing;
 
-    return this.prisma.vehicleModel.create({
-      data: { brandId, name: clean, category: category ?? null },
-      select: { id: true, name: true, category: true },
+      return tx.vehicleModel.create({
+        data: { brandId, name: clean, category: category ?? null },
+        select: { id: true, name: true, category: true },
+      });
     });
+  }
+
+  /**
+   * Contexto da escrita no catálogo compartilhado.
+   *
+   * Super admin não tem loja, e a policy pede uma: sem `tenant_id` não há o que
+   * inserir. Quem administra o catálogo global tem o painel de admin para isso.
+   */
+  private comCatalogo<T>(escopo: Escopo, fn: (tx: ScopedClient) => Promise<T>): Promise<T> {
+    if (escopo.tipo !== 'tenant') {
+      throw new ForbiddenException(
+        'Cadastro de marca e modelo é feito por uma concessionária.',
+      );
+    }
+    return this.prisma.withTenant(escopo.tenantId, fn);
   }
 
   /** Perfil público de uma concessionária */

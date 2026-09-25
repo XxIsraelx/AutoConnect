@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  LayoutDashboard, Ticket, Building2, Users, Megaphone, ClipboardList, Activity, LogOut, RefreshCw,
+  LayoutDashboard, Ticket, Building2, Users, Megaphone, ClipboardList, Activity,
+  Banknote, LogOut, RefreshCw,
 } from 'lucide-react';
 import Logo from '@/components/Logo';
 import ThemeToggle from '@/components/ThemeToggle';
@@ -18,8 +19,9 @@ import { AbaUsuarios } from './AbaUsuarios';
 import { AbaAvisos } from './AbaAvisos';
 import { AbaAuditoria } from './AbaAuditoria';
 import { AbaSistema } from './AbaSistema';
+import { AbaSaques } from './AbaSaques';
 
-type Tab = 'overview' | 'invites' | 'tenants' | 'users' | 'announcements' | 'audit' | 'system';
+type Tab = 'overview' | 'invites' | 'tenants' | 'users' | 'announcements' | 'saques' | 'audit' | 'system';
 
 const NAV: { id: Tab; label: string; icon: React.ElementType; Aba: (p: PropsDaAba) => JSX.Element }[] = [
   { id: 'overview',      label: 'Visão geral',     icon: LayoutDashboard, Aba: AbaVisaoGeral },
@@ -27,6 +29,9 @@ const NAV: { id: Tab; label: string; icon: React.ElementType; Aba: (p: PropsDaAb
   { id: 'users',         label: 'Usuários',        icon: Users,           Aba: AbaUsuarios },
   { id: 'invites',       label: 'Convites',        icon: Ticket,          Aba: AbaConvites },
   { id: 'announcements', label: 'Avisos',          icon: Megaphone,       Aba: AbaAvisos },
+  // Saída de dinheiro da conta da plataforma. Aba própria, e não dentro de
+  // Concessionárias: ali é o que as lojas pagam; aqui é o que sai do caixa.
+  { id: 'saques',        label: 'Saques',          icon: Banknote,        Aba: AbaSaques },
   { id: 'audit',         label: 'Auditoria',       icon: ClipboardList,   Aba: AbaAuditoria },
   { id: 'system',        label: 'Sistema',         icon: Activity,        Aba: AbaSistema },
 ];

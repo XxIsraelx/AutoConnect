@@ -5,6 +5,7 @@ import {
 import { CatalogService } from './catalog.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { escopoDa } from '../../common/escopo';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { criarMarcaSchema, criarModeloSchema } from '@autoconnect/shared';
 import { tradeInSchema } from './trade-in.schema';
@@ -39,18 +40,22 @@ export class CatalogController {
   @Post('brands')
   @UseGuards(RolesGuard)
   @Roles('super_admin', 'tenant_admin', 'manager', 'salesperson')
-  createBrand(@Body() body: unknown) {
+  createBrand(@Req() req: AuthRequest, @Body() body: unknown) {
     const { name } = criarMarcaSchema.parse(body);
-    return this.catalog.createBrand(name);
+    return this.catalog.createBrand(escopoDa(req.user), name);
   }
 
   /** POST /catalog/brands/:id/models — cria novo modelo. Mesma regra da marca. */
   @Post('brands/:id/models')
   @UseGuards(RolesGuard)
   @Roles('super_admin', 'tenant_admin', 'manager', 'salesperson')
-  createModel(@Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+  createModel(
+    @Req() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ) {
     const { name, category } = criarModeloSchema.parse(body);
-    return this.catalog.createModel(id, name, category);
+    return this.catalog.createModel(escopoDa(req.user), id, name, category);
   }
 
   /**

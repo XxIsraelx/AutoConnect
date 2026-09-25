@@ -28,6 +28,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
 import { RelatoriosModule } from './modules/relatorios/relatorios.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { CobrancaModule } from './modules/cobranca/cobranca.module';
+import { SaquesModule } from './modules/saques/saques.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { CobrancaModule } from './modules/cobranca/cobranca.module';
     RelatoriosModule,
     CrmModule,
     CobrancaModule,
+    SaquesModule,
   ],
   providers: [
     {

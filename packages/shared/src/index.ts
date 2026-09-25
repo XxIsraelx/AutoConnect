@@ -13,6 +13,7 @@ export * from './domain/garantia';
 export * from './domain/consulta-veicular';
 export * from './domain/assinatura-externa';
 export * from './domain/cobranca';
+export * from './domain/saque';
 export * from './domain/sla';
 export * from './domain/motivo-perda';
 export * from './domain/comissao';

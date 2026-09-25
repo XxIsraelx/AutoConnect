@@ -177,6 +177,10 @@ describe('isolamento por tenant — regra de arquitetura', () => {
     'modules/cobranca/estado-da-loja.service.ts',
     // Varredura diária: percorre todas as concessionárias, como os demais crons.
     'modules/cobranca/vencimentos.cron.ts',
+    // Validação de saque: `withdrawal_authorizations` e `withdrawal_decisions`
+    // são da plataforma, não de loja — não têm `tenant_id` e o RLS delas nega
+    // tudo ao papel da aplicação. Só a conexão dona alcança.
+    'modules/saques/saques.service.ts',
   ])('%s atravessa concessionárias pela conexão privilegiada, e isso é visível', (arquivo) => {
     const fonte = readFileSync(join(RAIZ, arquivo), 'utf8');
 

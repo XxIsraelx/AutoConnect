@@ -70,6 +70,7 @@ autoconnect/
 │   │           ├── invitations/ # convites por email com token
 │   │           ├── leads/       # captura, atribuição, timeline, stats
 │   │           ├── map/         # filiais + vendedores online
+│   │           ├── saques/      # validação de saque da Asaas (dinheiro saindo)
 │   │           ├── team/        # gestão da equipe da concessionária
 │   │           ├── tenants/     # CRUD tenant + filiais
 │   │           ├── users/       # perfis, roles, presença
@@ -234,6 +235,19 @@ a suíte nunca fala com a Asaas.
 e da carência, que são do banco; o que some é o caminho para pagar — quem
 desbloqueia é o super admin, à mão.
 
+### Validação de saque — exigida pela Asaas para a chave de produção
+
+```env
+ASAAS_SAQUE_TOKEN=""     # token PRÓPRIO, não o COBRANCA_WEBHOOK_TOKEN nem a API key
+```
+
+A Asaas só libera a chave de produção com a "validação de saque via webhook"
+ativa: a cada saque pedido na conta, ela chama
+`POST /api/v1/webhooks/asaas/saque` e **cancela a operação** se não ouvir
+`APPROVED`. **Sem a variável, tudo é recusado** (o padrão nunca é aprovar), com
+erro no boot e aviso em `/admin › Saques`. O `setup-e2e.ts` fixa um valor de
+teste.
+
 ### Órfãs — presentes no `.env` mas sem nenhum código que as leia
 
 `REDIS_URL`, `SUPABASE_STORAGE_BUCKET` (aponta para `vehicle-images`; as fotos
@@ -323,7 +337,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 831 testes (589 na API, 242 no `shared`):
+são 902 testes (646 na API, 256 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -563,6 +577,33 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 cobranca e bloqueio por venci
   `executarEmUmaReplica`), idempotente por `lastNoticeAt` comparado ao marco da
   situação — um e-mail por marco, não um por dia.
 
+## Validação de saque (dinheiro saindo da conta da plataforma)
+
+O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.md`.
+
+- **A Asaas pergunta antes de cada saque** e cancela a operação se a resposta
+  não contiver `APPROVED` nem `REFUSED`, ou se o webhook falhar 3 vezes.
+  `POST /api/v1/webhooks/asaas/saque`, `@Public()`, **sempre 200**.
+- **Recusa por padrão.** Só passa o que casar com uma **autorização prévia**
+  criada pelo super admin em `/admin › Saques`: tipo, valor (`exato` ou `teto`),
+  prazo curto (30 min) e **uso único**. A regra é `decidirSaque` (shared), pura.
+  Aprovar por payload válido anularia a trava — quem rouba a chave manda payload
+  válido por definição.
+- **Sem `ASAAS_SAQUE_TOKEN`, recusa tudo** e loga. Comparação em tempo
+  constante, como no webhook de cobrança.
+- **Nunca 500 e nada pesado no caminho da resposta.** Erro interno vira
+  `REFUSED` com motivo; uma exceção gastaria uma das três chances em silêncio.
+- **Toda decisão vira linha** em `withdrawal_decisions`, com o corpo cru.
+  `(provider, tipo, id da operação)` é único: a reentrega **repete** a decisão
+  (a Asaas reentrega quando a resposta se perde), mas operação nova encontra a
+  autorização gasta. Pedido sem token válido nunca entra com o id da operação.
+- **As duas tabelas não têm `tenant_id`** — são da plataforma. RLS ligado com
+  policy `apenas_a_plataforma` (`USING (false)`): só a conexão privilegiada
+  alcança.
+- ⚠ **API fora do ar = saque do dono cancelado.** É o preço da trava. Refazer o
+  pedido resolve o caso comum; desligar o recurso no painel da Asaas pode custar
+  a chave de produção. Ver a decisão.
+
 ## Padrões do projeto
 
 ### API
@@ -604,7 +645,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 cobranca e bloqueio por venci
   não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
   foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
   migrations (ver *Testes e CI*).
-- Migrations atuais (19): `init`, `trade_in_and_dealer_setting`,
+- Migrations atuais (20): `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
   `add_announcements_invites_alerts_searches_goals`,
   `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`,
@@ -613,7 +654,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 cobranca e bloqueio por venci
   `comprador_do_contrato`, `representante_legal`, `assinatura_externa`,
   `funil_lead_anonimo`, `rascunho_de_anuncio`,
   `rodizio_sla_carteira_motivo_perda`, `carteira_fechada_por_padrao`,
-  `cobranca_asaas`.
+  `cobranca_asaas`, `validacao_de_saque`.
 
 ---
 
@@ -677,8 +718,10 @@ faltam 2, 4 e 5).
 
 **Bloqueiam uso real:** template de contrato sem revisão jurídica, ausência de
 fornecedor de consulta veicular e **ausência de conta na Asaas** — a camada de
-cobrança está pronta e exercitada com o provedor simulado, mas o adaptador real
-nunca falou com a Asaas.
+cobrança está pronta e o adaptador foi validado contra o sandbox, mas a chave de
+produção depende de uma conta aprovada e da **validação de saque ativa no painel
+da Asaas**, com `ASAAS_SAQUE_TOKEN` configurado no Railway (ver
+`docs/decisoes/2026-09-25 validacao de saque na asaas.md`).
 
 **Dívidas que afetam código novo:** API e banco em regiões diferentes (~0,6s por
 consulta); nenhuma infraestrutura de feature flag; o teto por IP do formulário
