@@ -29,7 +29,12 @@
 
 ## Pendências conhecidas
 
-Auditadas em 04/09/2026, contra o repositório.
+Auditadas em 04/09/2026, contra o repositório. Revistas item por item em
+27/09/2026, contra o código e a produção.
+
+> **A ordem de resolução mora em [plano de resolução das pendências](plano-resolucao-de-pendencias.md)**
+> — aqui fica o registro de cada achado; lá, em que onda ele entra, o custo e de
+> quem depende. Item resolvido é riscado aqui e marcado lá.
 
 **Como registrar** (regra em [CLAUDE.md](../../CLAUDE.md), seção "Estado do projeto"):
 achou e não resolveu na mesma tarefa, registra aqui antes de encerrar. Cada item diz
@@ -327,7 +332,7 @@ existe por causa delas, e a tabela só sobe quando as duas primeiras existirem.
   - Como testar: carro publicado no AutoConnect aparece no portal em até N minutos e some ao
     ser vendido; lead de teste enviado pelo portal cai no funil com a fonte certa e no vendedor
     de plantão.
-- **Emissão de nota fiscal (NF-e) — e os dois planos se contradizem.**
+- ◐ **Emissão de nota fiscal (NF-e) — adiada por decisão em 27/09/2026** ([plano de resolução](plano-resolucao-de-pendencias.md#adiado-por-decisão)). A contradição entre os dois planos deixou de existir: os dois apontam para o adiamento.
   - Onde: não existe módulo. O [plano de vendas](plano-implementacao-vendas.md), Fase 5,
     prevê NF-e via emissor terceiro (Focus NFe, NFe.io, Tecnospeed); o
     [plano de paridade](plano-paridade-crm.md), em "O que este plano deliberadamente não faz",

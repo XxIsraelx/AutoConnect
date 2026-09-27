@@ -43,6 +43,7 @@ com o código e lido pelo Claude quando o assunto aparece.
   · [loja de demonstração](decisoes/2026-09-27%20loja%20de%20demonstracao.md)
   · [plano de preços](decisoes/2026-09-27%20plano%20de%20precos.md)
 - [Estado, pendências e próximos passos](planos/estado-e-pendencias.md)
+  · [plano de resolução das pendências](planos/plano-resolucao-de-pendencias.md)
 
 ## Como pedir algo ao Claude usando o cofre
 

@@ -272,11 +272,14 @@ existe. Foram feitas **antes** da Onda 2 porque cada uma impede o uso.
   primeiro super admin, que recusa rodar se já houver algum. Tudo em
   [cadastro em autosserviço](../decisoes/2026-09-25%20cadastro%20em%20autosservico.md).
 
-**Continuam abertos, por serem decisão de produto:** o catálogo global de
-marcas nascer vazio e sem `@Roles`/Zod na escrita (B15), o `branch_id` que o
-assistente não atribui e zera a contagem do mapa (B7), a coordenada da filial
-(B8), a FIPE escolhendo a variante errada (B16) e **o chat do lead anônimo**
-(B11) — este último é o que falta do 5º item do veredito e pertence à Onda 2.
+**Fechados depois, e conferidos na auditoria de 27/09/2026:** a escrita do
+catálogo global ganhou `@Roles` e Zod (B15 — o catálogo continua nascendo vazio
+de propósito: o lojista cria marca e modelo conforme cadastra); o `branch_id` do
+veículo, a coordenada da filial e o chat do lead sem conta entraram na migration
+`filial_do_veiculo_geocodificacao_e_chat_sem_conta` (B7, B8, B11 — o 5º item do
+veredito); e a FIPE passou a devolver as outras variantes, com `select` na tela
+de cadastro (B16). O que sobrou de cada um está em
+[plano de resolução das pendências](plano-resolucao-de-pendencias.md).
 
 ## Onda 2 — reordenada pelo piloto simulado (25/09/2026)
 
@@ -421,9 +424,12 @@ Aqui o produto deixa de ser "mais um CRM" e passa a ter argumento próprio.
 
 ## O que este plano deliberadamente não faz
 
-- **Não persegue paridade completa.** Oficina e pós-venda, NF-e, repasse entre
+- **Não persegue paridade completa.** Oficina e pós-venda, repasse entre
   lojas, fidelização por pontos e múltiplos funis ficam fora: revenda de
-  seminovos não compra por isso.
+  seminovos não compra por isso. **NF-e** também fica fora deste plano, e desde
+  27/09/2026 isso é uma decisão explícita, não uma contradição com a Fase 5 do
+  plano de vendas — ver
+  [plano de resolução das pendências](plano-resolucao-de-pendencias.md#adiado-por-decisão).
 - **Não entra em IA de conversa agora.** Quatro concorrentes já estão lá.
 - **Não vira DMS.** Contabilidade e folha são de ERP; o americano junta, o
   brasileiro pequeno não compra assim.
