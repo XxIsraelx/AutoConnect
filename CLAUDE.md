@@ -691,9 +691,15 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
 
 | | URL | Região |
 |---|---|---|
-| Web | https://autoconnectweb-production.up.railway.app | Railway `us-east4` |
-| API | https://autoconnectapi-production.up.railway.app/api/v1 | Railway `us-east4` |
+| Web | https://autoconnectapp.com.br (e `www`) | Railway `us-east4` |
+| API | https://api.autoconnectapp.com.br/api/v1 | Railway `us-east4` |
 | Banco | Supabase `aamsnqmuvlprkavzkwnr` | `sa-east-1` (São Paulo) |
+
+**Domínio próprio desde 27/09/2026.** Os endereços `*.up.railway.app` continuam
+respondendo e seguem liberados no CORS por `CORS_ORIGENS_EXTRAS` — a aba que um
+cliente deixou aberta no endereço antigo não pode quebrar. O que destravou a
+emissão do certificado foi o **TXT `_railway-verify`**, que o cadastro original
+do domínio não pedia: sem ele a validação fica presa para sempre, sem erro.
 
 Deploy automático a cada push na `main`. Build e start ficam na configuração do
 serviço no Railway (o `railway.json` foi descontinuado pela plataforma):

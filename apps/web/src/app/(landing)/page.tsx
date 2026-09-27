@@ -25,7 +25,7 @@ const DESCRICAO =
 export const metadata: Metadata = {
   // Sem isto a imagem sai como `http://localhost:3000/opengraph-image` em
   // produção. Como toda NEXT_PUBLIC_*, vale o valor do `next build`.
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://autoconnectweb-production.up.railway.app'),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://autoconnectapp.com.br'),
   title: 'AutoConnect — quanto tempo sua loja leva para responder?',
   description: DESCRICAO,
   openGraph: {
