@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -11,8 +12,10 @@ import { randomBytes } from 'crypto';
 import { Prisma } from '@autoconnect/db';
 import {
   avaliarCobranca,
+  CATALOGO_DE_PLANOS,
   DIAS_PARA_ESCOLHER_PLANO_APOS_CORTESIA,
   PLANO_DA_CORTESIA,
+  ROTULO_MOTIVO_DE_CORTESIA,
   type MotivoDeCortesia,
   DEAL_FATURADO_STATUSES,
   DEAL_TERMINAL_STATUSES,
@@ -81,6 +84,8 @@ function maisRecente(...datas: (Date | null | undefined)[]): Date | null {
 
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
+
   /**
    * Usa a conexão privilegiada de propósito: o painel do super admin consulta
    * todas as concessionárias por natureza, e `withTenant` não faria sentido
@@ -549,6 +554,16 @@ export class AdminService {
       diff: { motivo, plan: PLANO_DA_CORTESIA },
     });
     this.estadoDaLoja.invalidar(tenantId);
+
+    // Sem `await`: a cortesia já vale; o e-mail é aviso, e falhar não a desfaz.
+    if (tenant.primaryEmail) {
+      this.email.sendCortesiaConcedida({
+        to: tenant.primaryEmail,
+        dealerName: tenant.tradeName,
+        motivo: ROTULO_MOTIVO_DE_CORTESIA[motivo],
+        plano: CATALOGO_DE_PLANOS[PLANO_DA_CORTESIA].nome,
+      }).catch((err) => this.logger.warn(`E-mail de cortesia não saiu para ${tenantId}: ${err}`));
+    }
     return sub;
   }
 
@@ -579,6 +594,14 @@ export class AdminService {
       diff: { motivoAnterior: sub.courtesyReason, desde: sub.courtesySince, trialEndsAt: prazo },
     });
     this.estadoDaLoja.invalidar(tenantId);
+
+    const loja = await this.privilegiado.tenant.findUnique({
+      where: { id: tenantId }, select: { primaryEmail: true, tradeName: true },
+    });
+    if (loja?.primaryEmail) {
+      this.email.sendCortesiaRevogada({ to: loja.primaryEmail, dealerName: loja.tradeName, prazo })
+        .catch((err) => this.logger.warn(`E-mail de fim de cortesia não saiu para ${tenantId}: ${err}`));
+    }
     return atualizada;
   }
 
