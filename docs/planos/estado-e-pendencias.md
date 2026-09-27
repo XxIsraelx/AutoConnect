@@ -151,6 +151,8 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
     `avaliarCobranca` respeite), com teste. Depende do item de preço.
   - Como testar: loja fundadora com trial vencido continua escrevendo; loja comum no mesmo
     estado é bloqueada.
+  - Também afeta: a loja "AutoConnect" que recebe os pedidos de Raio-X no
+    [plano da nova landing](plano-nova-landing.md) precisa da mesma isenção.
 - **Loja fictícia em produção aparece para compradores reais.**
   - Onde: tabela `tenants`, slug `demo` ("Aurora Seminovos"); `/buscar`, o mapa e `/c/demo`.
   - O que é: 25 veículos, 22 publicados, `created_at` em 04/10/2024. Contradiz a nota acima de
@@ -276,3 +278,4 @@ Duas correções ao plano já registradas **dentro dele**:
    ligada em 22/09/2026) e contratar a conta de produção da Clicksign
 4. ~~**Revisar responsividade** de `/relatorios`, `/agendamentos` e `/equipe`~~ — feito em 22/09/2026
 5. ~~**Seed com negócio faturado**~~ — feito em 22/09/2026 (`SEED_DEMO_RESET=1` renova as datas)
+6. **Nova landing de captação** — [plano](plano-nova-landing.md) em 5 fases; a 1ª não depende de decisão nenhuma

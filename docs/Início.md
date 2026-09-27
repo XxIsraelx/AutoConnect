@@ -28,6 +28,7 @@ com o código e lido pelo Claude quando o assunto aparece.
 - [Plano de implementação — vendas e contrato](planos/plano-implementacao-vendas.md)
 - [Plano — paridade de CRM e diferenciação](planos/plano-paridade-crm.md)
   · [levantamento dos CRMs do mercado](planos/levantamento-crms-e-paridade.md)
+- [Plano — nova landing de captação](planos/plano-nova-landing.md)
 - [Levantamento — vendas e contratos](planos/levantamento-vendas-e-contratos.md)
 - [Piloto simulado — uma semana na operação](produto/piloto-simulado-operacao.md)
   · [o primeiro dia, do zero](produto/piloto-simulado-primeiro-dia.md)
