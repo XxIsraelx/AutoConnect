@@ -230,8 +230,11 @@ describe('Painel do super admin (e2e)', () => {
       // deliberada, e a tela não pode pintar isso de vermelho.
       expect(porChave.get('documents')?.status).toBe('off');
       expect(porChave.get('email')?.status).toBe('off');
-      // ... e liga a assinatura simulada.
+      // ... e liga a assinatura e a cobrança simuladas.
       expect(porChave.get('signature')).toMatchObject({ status: 'up', provider: 'simulado' });
+      // O gateway que tira dinheiro da conta é o serviço que mais precisa estar
+      // no painel, e era o único que não estava.
+      expect(porChave.get('billing')).toMatchObject({ status: 'up', provider: 'simulado' });
       expect(porChave.get('database')?.status).toBe('up');
       expect(Array.isArray(res.body.cronJobs)).toBe(true);
     }, 20_000);

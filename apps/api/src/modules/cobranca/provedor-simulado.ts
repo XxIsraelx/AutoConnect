@@ -90,11 +90,25 @@ export class ProvedorSimuladoDeCobranca implements ProvedorDeCobranca {
   private readonly assinaturas = new Map<string, AssinaturaEmMemoria>();
   private sequencia = 0;
 
+  /**
+   * Marca desta instância no id externo.
+   *
+   * A sequência zera a cada processo, e as faturas são espelhadas com
+   * `upsert` por `(provider, external_id)` — que é o que faz a reentrega da
+   * Asaas reencontrar a fatura em vez de duplicá-la. Num Postgres de teste que
+   * **não** morre com o processo (o Homebrew, em vez do contêiner em tmpfs), a
+   * segunda execução da suíte gerava `pay_sim_000065` de novo, caía na linha de
+   * uma execução anterior e atualizava a fatura **de outro tenant** — o teste
+   * do ciclo anual falhava com "No TenantInvoice found" apontando para o lugar
+   * errado. Encontrado em 27/09/2026.
+   */
+  private readonly instancia = Math.random().toString(36).slice(2, 8);
+
   constructor(private readonly token: string) {}
 
   private proximoId(prefixo: string): string {
     this.sequencia += 1;
-    return `${prefixo}_sim_${String(this.sequencia).padStart(6, '0')}`;
+    return `${prefixo}_sim_${this.instancia}_${String(this.sequencia).padStart(6, '0')}`;
   }
 
   salvarCliente(dados: ClienteDeCobranca, idExterno?: string | null): Promise<{ idExterno: string }> {

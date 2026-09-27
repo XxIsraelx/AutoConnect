@@ -208,11 +208,19 @@ function Combobox({
  * escolher. Afirmar um valor errado com segurança é pior que mostrar um valor
  * aproximado e dizer que é aproximado.
  */
-function FipeCard({ fipe, loading, enteredPrice, onEscolherVariante }: {
+function FipeCard({
+  fipe, loading, enteredPrice, onEscolherVariante,
+  outrasVariantes, carregandoVariantes, erroVariantes, onVerTodasAsVersoes,
+}: {
   fipe: FipeEstimate | null;
   loading: boolean;
   enteredPrice: number;
   onEscolherVariante: (modelCode: string) => void;
+  /** Lista pedida à mão; `null` = ninguém pediu ainda. */
+  outrasVariantes: VarianteFipe[] | null;
+  carregandoVariantes: boolean;
+  erroVariantes: string | null;
+  onVerTodasAsVersoes: () => void;
 }) {
   if (loading) {
     return (
@@ -288,23 +296,53 @@ function FipeCard({ fipe, loading, enteredPrice, onEscolherVariante }: {
           : ' Valor de referência nacional — o preço final depende do estado e da região.'}
       </p>
 
-      {alternativas.length > 0 && (
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
-            É outra versão? Escolha a do seu carro:
-          </label>
-          <select
-            className={`${inputCls} text-xs`}
-            value={fipe.modelCode ?? ''}
-            onChange={(e) => e.target.value && onEscolherVariante(e.target.value)}
-          >
-            <option value={fipe.modelCode ?? ''}>{fipe.vehicleName} (escolhida)</option>
-            {alternativas.map((a) => (
-              <option key={a.modelCode} value={a.modelCode}>{a.name}</option>
-            ))}
-          </select>
-        </div>
-      )}
+      {/* Duas fontes para o mesmo menu: as alternativas que a estimativa já
+          trouxe (confiança não alta) e a lista pedida à mão. Com confiança alta
+          a API manda `[]` de propósito — e é justamente aí que o lojista que
+          discorda precisava de um caminho. */}
+      {(() => {
+        const daLista = alternativas.length > 0 ? alternativas : (outrasVariantes ?? []);
+        const outras = daLista.filter((v) => v.modelCode !== fipe.modelCode);
+        return (
+          <div>
+            {outras.length > 0 && (
+              <>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                  É outra versão? Escolha a do seu carro:
+                </label>
+                <select
+                  className={`${inputCls} text-xs`}
+                  value={fipe.modelCode ?? ''}
+                  onChange={(e) => e.target.value && onEscolherVariante(e.target.value)}
+                >
+                  <option value={fipe.modelCode ?? ''}>{fipe.vehicleName} (escolhida)</option>
+                  {outras.map((a) => (
+                    <option key={a.modelCode} value={a.modelCode}>{a.name}</option>
+                  ))}
+                </select>
+              </>
+            )}
+
+            {alternativas.length === 0 && outrasVariantes === null && (
+              <button
+                type="button"
+                onClick={onVerTodasAsVersoes}
+                disabled={carregandoVariantes}
+                className="inline-flex items-center gap-1.5 text-[11px] font-semibold
+                           text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+              >
+                {carregandoVariantes
+                  ? <><Loader2 size={12} className="animate-spin" /> Buscando versões…</>
+                  : 'Não é este o seu carro? Ver todas as versões'}
+              </button>
+            )}
+
+            {erroVariantes && (
+              <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">{erroVariantes}</p>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -457,6 +495,15 @@ export default function NewVehiclePage() {
    * qualquer heurística na API.
    */
   const [fipeVariante, setFipeVariante] = useState('');
+  /**
+   * Lista pedida **à mão**, para o caso que a estimativa não cobria: quando a
+   * FIPE tem confiança alta ela devolve `alternativas: []`, e o lojista que
+   * discorda da escolha ficava sem menu nenhum. `GET /fipe/variantes` existia
+   * para isso desde o B16 e nenhuma tela chamava (auditoria de 27/09/2026).
+   */
+  const [outrasVariantes, setOutrasVariantes] = useState<VarianteFipe[] | null>(null);
+  const [carregandoVariantes, setCarregandoVariantes] = useState(false);
+  const [erroVariantes, setErroVariantes] = useState<string | null>(null);
   // Motor e câmbio entram na consulta: são o que separa "ONIX 1.0 Turbo Aut."
   // de "ONIX 1.0 Mec." quando o modelo tem 38 variantes.
   const fipeKey = [
@@ -473,6 +520,9 @@ export default function NewVehiclePage() {
 
     setFipeLoading(true);
     setErroFipe(false);
+    // Lista de outro carro na tela seria pior que lista nenhuma.
+    setOutrasVariantes(null);
+    setErroVariantes(null);
     const qs = new URLSearchParams({
       brandName: form.brandName,
       modelName: form.modelName,
@@ -490,6 +540,30 @@ export default function NewVehiclePage() {
       .finally(() => setFipeLoading(false));
   }, [step, token, fipeKey, fipeVariante, form.brandName, form.modelName, form.versionName,
       form.yearModel, form.fuel, form.engine, form.transmission]);
+
+  /** Erro aqui aparece no card, não no console: quem clicou está esperando. */
+  async function verTodasAsVersoes() {
+    if (!token) return;
+    setCarregandoVariantes(true);
+    setErroVariantes(null);
+    try {
+      const qs = new URLSearchParams({
+        brandName: form.brandName,
+        modelName: form.modelName,
+        yearModel: form.yearModel,
+        ...(form.fuel ? { fuel: form.fuel } : {}),
+      });
+      const { variantes } = await api<{ variantes: VarianteFipe[] }>(`/fipe/variantes?${qs}`, { token });
+      setOutrasVariantes(variantes);
+      if (variantes.length === 0) {
+        setErroVariantes('A FIPE não tem outra versão deste modelo com este ano.');
+      }
+    } catch (e) {
+      setErroVariantes(textoDoErro(e));
+    } finally {
+      setCarregandoVariantes(false);
+    }
+  }
 
   const isUsed = form.condition !== 'new';
   const usage  = form.firstRegistration ? usageLabel(form.firstRegistration) : null;
@@ -797,6 +871,10 @@ export default function NewVehiclePage() {
             loading={fipeLoading}
             enteredPrice={brlToNumber(form.price)}
             onEscolherVariante={setFipeVariante}
+            outrasVariantes={outrasVariantes}
+            carregandoVariantes={carregandoVariantes}
+            erroVariantes={erroVariantes}
+            onVerTodasAsVersoes={verTodasAsVersoes}
           />
           {erroFipe && !fipeLoading && (
             <p className="text-xs text-slate-500">

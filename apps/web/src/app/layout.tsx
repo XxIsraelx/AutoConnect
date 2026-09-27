@@ -37,7 +37,12 @@ const SCRIPT_TEMA = `
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR">
+    // `suppressHydrationWarning` vale só para os atributos do próprio `<html>`,
+    // e é o uso previsto para script de tema: o SCRIPT_TEMA acima roda antes do
+    // React e põe `class` e `style` aqui, que o HTML do servidor não tem. Sem
+    // isto, "Extra attributes from the server: class,style" aparecia em toda
+    // carga em dev e escondia aviso de hidratação de verdade.
+    <html lang="pt-BR" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: SCRIPT_TEMA }} />
       </head>
