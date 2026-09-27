@@ -185,6 +185,103 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
   - Como testar: e2e que baixa cada CSV com dois tenants e confirma que nenhum vaza dado do
     outro; abrir no Excel e conferir os acentos.
 
+- **E-mail de contato num domínio que talvez não exista: `contato@autoconnect.app`.**
+  - Onde: `apps/web/src/components/PaginaLegal.tsx:5` (`CONTATO_LEGAL`, usado em `/termos` e
+    `/privacidade`), `components/ErroAoCarregar.tsx:7` (`SUPORTE`),
+    `components/AvisoDeEnvioDeFotos.tsx:32` e o plano Enterprise da home (`page.tsx:245`). A
+    maquete da home também mostra `autoconnect.app/dashboard`.
+  - O que é: produção roda em `autoconnectweb-production.up.railway.app` (CLAUDE.md, "Deploy") e
+    o domínio próprio ainda não foi registrado segundo o plano growth; o e-mail do negócio em uso
+    é `suporte.autoconnect@gmail.com`.
+  - Evidência: `grep -rn "autoconnect\.app" apps/web/src` em 27/09/2026. Não deu para checar o
+    DNS daqui (sem rede no ambiente).
+  - Impacto: se o domínio não for seu, o canal do titular da LGPD em `/privacidade`, o contato
+    dos Termos e o "fale com o suporte" das telas de erro mandam e-mail para o vazio — e alguém
+    pode registrar o domínio e receber essas mensagens.
+  - Sugestão: confirmar se `autoconnect.app` é seu. Se não for, registrar o domínio escolhido
+    (`.app` ou `.com.br`) com e-mail funcionando, ou trocar as quatro ocorrências por
+    `suporte.autoconnect@gmail.com` numa constante só no shared.
+  - Como testar: mandar um e-mail para o endereço exibido em `/privacidade` e recebê-lo; `grep`
+    sem endereço fixo fora da constante.
+  - Encontrado em: 27/09/2026 · Claude Cowork · ao planejar o próximo passo do plano growth.
+
+**Lacunas frente ao mercado** — Claude Cowork, 27/09/2026, na pesquisa de preços
+([plano de preços](https://claude.ai/code/artifact/daf7ac7d-5114-4621-9028-3759dbb07be8)).
+O que os concorrentes com preço público entregam e o AutoConnect não. Várias já estão num
+plano; entram aqui porque **pesam no preço**: o desconto proposto sobre a média do mercado
+existe por causa delas, e a tabela só sobe quando as duas primeiras existirem.
+
+- **Integração com portais de anúncio — publicar o estoque e receber os leads.**
+  - Onde: não existe módulo. Publicação automática é o item 22 da Onda 5 (sem estimativa) e a
+    entrada de leads dos portais é o item 13 da Onda 2, ambos no
+    [plano de paridade](plano-paridade-crm.md).
+  - O que é: o lojista cadastra o carro uma vez e ele aparece em OLX, Webmotors, iCarros e
+    Mercado Livre; o lead que chega por lá entra no funil sozinho.
+  - Evidência: Auto Adm inclui "60+ portais" em todos os planos, a partir de R$ 249; o Basic
+    da Autoconf (R$ 299) já tem integrador; o Pro da ecosys AUTO publica em vários portais. No
+    [levantamento](levantamento-crms-e-paridade.md), 13 de 15 produtos captam lead de portal.
+  - Impacto: é o que o lojista mais paga num sistema de revenda e o primeiro item que ele
+    compara. Sem isso o AutoConnect precisa cobrar bem abaixo da média, e loja que já usa
+    integrador não troca.
+  - Sugestão: começar pela entrada de leads (item 13), que é ingestão; para publicar, avaliar
+    um integrador terceiro em vez de uma API por portal. A decisão 3 do plano de paridade
+    (quais portais primeiro) depende de onde as lojas fundadoras anunciam — perguntar na
+    implantação.
+  - Como testar: carro publicado no AutoConnect aparece no portal em até N minutos e some ao
+    ser vendido; lead de teste enviado pelo portal cai no funil com a fonte certa e no vendedor
+    de plantão.
+- **Emissão de nota fiscal (NF-e) — e os dois planos se contradizem.**
+  - Onde: não existe módulo. O [plano de vendas](plano-implementacao-vendas.md), Fase 5,
+    prevê NF-e via emissor terceiro (Focus NFe, NFe.io, Tecnospeed); o
+    [plano de paridade](plano-paridade-crm.md), em "O que este plano deliberadamente não faz",
+    diz que NF-e fica fora.
+  - O que é: emitir a nota de entrada e de saída do veículo a partir do negócio fechado.
+  - Evidência: Auto Adm inclui NF-e em todos os planos; na Autoconf entra no Pro (R$ 499); o
+    guia de preços da Autoconf põe NF-e já na faixa básica de mercado (R$ 199 a R$ 399).
+  - Impacto: loja que emite nota no sistema atual precisa de um segundo sistema para usar o
+    AutoConnect — é um motivo para não trocar. E hoje ninguém sabe qual dos dois planos vale.
+  - Sugestão: decidir e corrigir o plano que perder; se entrar, emissor terceiro como a Fase 5
+    já descreve, com o negócio (`Deal`) como origem dos dados da nota.
+  - Como testar: negócio faturado em homologação do emissor gera NF-e autorizada com os dados
+    do comprador e do veículo; cancelamento dentro do prazo legal funciona.
+- **WhatsApp oficial dentro do sistema.**
+  - Onde: item 12 da Onda 2 do plano de paridade; hoje só link `wa.me`, e o clique vira
+    interação no lead.
+  - Evidência: 11 de 15 produtos no levantamento; WhatsApp oficial no Pro da ecosys AUTO; a
+    Autoconf vende um plano de agente de IA no WhatsApp a R$ 1.199.
+  - Impacto: a conversa com o cliente fica fora do sistema, e com ela o histórico e a medição
+    do tempo de resposta — que é o argumento central do Raio-X.
+  - Sugestão: seguir o item 12; decidir antes a decisão 2 do plano de paridade (a API da Meta
+    cobra por conversa: embutido no preço ou adicional).
+  - Como testar: mensagem enviada ao número da loja aparece na caixa do vendedor de plantão, e
+    a resposta dele sai pelo WhatsApp e conta no prazo de primeiro contato.
+- **App do vendedor com notificação.**
+  - Onde: item 14 da Onda 2; hoje site responsivo e PWA, sem push de verdade.
+  - Evidência: 11 de 15 produtos no levantamento; MobiGestor e Autoconf têm app nas lojas.
+  - Impacto: vendedor fora do computador não vê o lead novo a tempo, e o rodízio perde a razão.
+  - Sugestão: seguir o item 14 (push pelo service worker antes de app nativo).
+  - Como testar: lead novo gera notificação no celular do vendedor de plantão com o navegador
+    fechado.
+- **Domínio próprio da loja (`www.sualoja.com.br`).**
+  - Onde: a vitrine existe em `/c/[slug]`; não há domínio personalizado nem plano para isso.
+  - Evidência: Auto Adm inclui "site profissional com SSL" em todos os planos; ecosys AUTO
+    vende "endereço exclusivo" no Pro.
+  - Impacto: loja que já tem site com domínio próprio perde o endereço ao migrar, e a vitrine
+    com endereço do AutoConnect parece menos dela.
+  - Sugestão: domínio personalizado apontando para a vitrine (CNAME + certificado automático no
+    Railway), como adicional ou a partir do Crescimento.
+  - Como testar: `www.lojateste.com.br` abre a vitrine da loja com HTTPS válido, e o link do
+    carro compartilhado usa esse domínio.
+- **Financeiro da loja (fluxo de caixa, contas a pagar e receber).**
+  - Onde: não existe; há margem por negócio e custo do veículo. O
+    [levantamento de vendas](levantamento-vendas-e-contratos.md), pergunta 2, recomenda parar no
+    DRE por veículo e comissão, sem registro de que o Israel decidiu.
+  - Evidência: financeiro no Pro da Autoconf (R$ 499), no Ultra da ecosys AUTO (R$ 1.497) e no
+    Altimus.
+  - Impacto: aparece nas faixas de cima do mercado; sem ele o Profissional compete só pelo CRM.
+  - Sugestão: registrar a decisão em `docs/decisoes/` (a recomendação é não virar ERP).
+  - Como testar: não se aplica até a decisão.
+
 ## Onde o plano de paridade de CRM está
 
 `docs/planos/plano-paridade-crm.md`. Estado em 25/09/2026:
