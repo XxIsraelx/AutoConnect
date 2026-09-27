@@ -78,6 +78,8 @@ export interface PublicDealer {
   websiteUrl: string | null;
   primaryPhone: string | null;
   acceptsTradeIn?: boolean;
+  /** Loja de demonstração: a tela mostra o aviso. */
+  isDemo?: boolean;
   branches: {
     id: string;
     name: string;

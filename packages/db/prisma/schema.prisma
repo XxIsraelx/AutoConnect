@@ -217,6 +217,12 @@ model Tenant {
   timezone          String  @default("America/Sao_Paulo")
   isActive          Boolean @default(true) @map("is_active")
   acceptsTradeIn    Boolean @default(false) @map("accepts_trade_in")
+  /// Loja de demonstração: a vitrine existe para o lojista em prospecção ver o
+  /// produto funcionando (a landing linka `/c/demo`), e por isso fica fora da
+  /// busca global, do mapa, das buscas salvas e dos alertas — um comprador de
+  /// verdade não pode mandar lead para uma loja que não existe. A vitrine e a
+  /// página do carro mostram o aviso.
+  isDemo            Boolean @default(false) @map("is_demo")
 
   /// Representante legal que assina pela concessionária.
   ///

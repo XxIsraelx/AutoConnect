@@ -25,6 +25,15 @@ const NA_VITRINE = {
   listingStatus: 'published',
 } as const;
 
+/**
+ * Loja de demonstração (`tenants.is_demo`) fica fora de tudo que é busca
+ * **entre lojas** — `/buscar`, buscas salvas —, onde um comprador de verdade
+ * mandaria lead para uma loja que não existe. A vitrine dela (`?tenantId=`,
+ * `/c/demo`) continua listando o estoque: é para lá que a landing manda o
+ * lojista ver o produto funcionando.
+ */
+const FORA_DA_DEMONSTRACAO = { tenant: { isDemo: false } } as const;
+
 @Injectable()
 export class CatalogService {
   private readonly logger = new Logger(CatalogService.name);
@@ -132,6 +141,7 @@ export class CatalogService {
         websiteUrl: true,
         primaryPhone: true,
         acceptsTradeIn: true,
+        isDemo: true,
         branches: {
           where: { isActive: true },
           orderBy: { createdAt: 'asc' },
@@ -225,7 +235,7 @@ export class CatalogService {
 
     const where = {
       ...NA_VITRINE,
-      ...(tenantId  ? { tenantId }  : {}),
+      ...(tenantId  ? { tenantId }  : FORA_DA_DEMONSTRACAO),
       ...(brandId   ? { brandId }   : {}),
       ...(condition ? { condition: condition as 'new' | 'used' | 'semi_new' | 'demo' } : {}),
       ...(fuel         ? { fuel: fuel as never } : {}),
@@ -295,6 +305,7 @@ export class CatalogService {
 
     return {
       ...NA_VITRINE,
+      ...FORA_DA_DEMONSTRACAO,
       ...(f.brandId      ? { brandId: f.brandId as string } : {}),
       ...(f.condition    ? { condition: f.condition as never } : {}),
       ...(f.fuel         ? { fuel: f.fuel as never } : {}),
@@ -479,6 +490,7 @@ export class CatalogService {
         websiteUrl: true,
         primaryPhone: true,
         acceptsTradeIn: true,
+        isDemo: true,
         branches: {
           where: { isActive: true },
           orderBy: { createdAt: 'asc' },

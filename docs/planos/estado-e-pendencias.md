@@ -31,6 +31,13 @@
 
 Auditadas em 04/09/2026, contra o repositório.
 
+**Como registrar** (regra em [CLAUDE.md](../../CLAUDE.md), seção "Estado do projeto"):
+achou e não resolveu na mesma tarefa, registra aqui antes de encerrar. Cada item diz
+**onde** (arquivo:linha, rota, tela ou comando), **o que é**, **evidência** (saída de
+comando, consulta, trecho de código), **impacto**, **sugestão de correção**, **como
+testar** e **quando, quem e em qual tarefa** encontrou. Resolvido: riscar com `~~…~~`
+e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem.
+
 **Bloqueiam uso real**
 - ⚠ **Template de contrato não revisado por advogado.** O sistema emite
   documento com efeito jurídico a partir de um template declarado no código
@@ -113,6 +120,70 @@ Auditadas em 04/09/2026, contra o repositório.
   com datas novas — sem isso ela envelhece e o filtro de 30 dias volta a ficar
   vazio. O banco de produção **não** foi semeado.
 - **CVEs do Next** só têm correção na linha 15.x (breaking changes).
+
+**Encontradas em 27/09/2026** — Claude Cowork, ao revisar o plano da nova landing
+
+- **Preço sem decisão: três tabelas diferentes.**
+  - Onde: `apps/web/src/app/page.tsx` (seção Planos), `packages/shared/src/domain/cobranca.ts`
+    (`CATALOGO_DE_PLANOS`) e o programa de fundadores (combinado fora do repositório em 22/09/2026).
+  - O que é: a home anuncia Trial de 14 dias com "até 10 veículos, 1 usuário" e Pro a R$ 297
+    com "até 5 usuários". A cobrança cobra Essencial R$ 279 (até 30 veículos), Crescimento
+    R$ 479 (até 80) e Profissional R$ 799 (ilimitado), com usuários ilimitados, e o trial roda
+    com o teto de 30 veículos. O programa de fundadores fala em 5 lojas grátis no "Pro como é
+    hoje", R$ 197 travado da 6ª loja em diante e R$ 297 como preço público.
+  - Evidência: `grep -n "R\$ 297" apps/web/src/app/page.tsx`; `CATALOGO_DE_PLANOS` em
+    `cobranca.ts`; [decisão de cobrança](../decisoes/2026-09-25%20cobranca%20e%20bloqueio%20por%20vencimento.md).
+  - Impacto: a loja lê um preço na home e recebe outro na cobrança. O rascunho do termo de
+    fundador promete "até 5 usuários" de um plano que não existe mais. E a home fura a regra de
+    `cobranca.ts` de que os valores moram só ali.
+  - Sugestão: decidir (o Israel adiou em 27/09/2026) e registrar em `docs/decisoes/`. A home
+    passa a ler `CATALOGO_DE_PLANOS` e `DURACAO_DO_TRIAL_DIAS` do shared em vez de texto fixo.
+  - Como testar: nenhum valor em R$ digitado à mão em `page.tsx`; teste que monta os planos da
+    home a partir do catálogo.
+- **Programa de fundadores não existe no repositório.**
+  - Onde: nenhum arquivo — buscar "fundador" em `docs/`, `apps/` e `packages/` não retorna nada.
+  - O que é: combinado em 22/09/2026 — 5 lojas não pagam nunca pelo plano, com cadastro do
+    estoque e treinamento feitos pelo Israel, em troca de feedback, depoimento e indicação. Não
+    há decisão registrada nem jeito de marcar uma loja como isenta.
+  - Impacto: a loja fundadora cai no trial de 14 dias e fica somente leitura quando ele vence
+    (`avaliarCobranca`). Hoje só o super admin estendendo o trial à mão evita isso.
+  - Sugestão: nota em `docs/decisoes/` e uma isenção explícita (plano ou marca de cortesia que
+    `avaliarCobranca` respeite), com teste. Depende do item de preço.
+  - Como testar: loja fundadora com trial vencido continua escrevendo; loja comum no mesmo
+    estado é bloqueada.
+  - Também afeta: a loja "AutoConnect" que recebe os pedidos de Raio-X no
+    [plano da nova landing](plano-nova-landing.md) precisa da mesma isenção.
+- ✅ **Resolvido em 27/09/2026** ([decisão](../decisoes/2026-09-27%20loja%20de%20demonstracao.md): loja de demonstração, fora da busca e do mapa). **Loja fictícia em produção aparece para compradores reais.**
+  - Onde: tabela `tenants`, slug `demo` ("Aurora Seminovos"); `/buscar`, o mapa e `/c/demo`.
+  - O que é: 25 veículos, 22 publicados, `created_at` em 04/10/2024. Contradiz a nota acima de
+    que o banco de produção não foi semeado.
+  - Evidência: no Supabase de produção em 27/09/2026,
+    `select t.slug, v.listing_status, count(*) from vehicles v join tenants t on t.id = v.tenant_id group by 1, 2`
+    → `demo`: 22 published e 3 draft; `autohaus`: 3 published.
+  - Impacto: comprador de verdade pode mandar lead ou agendar test drive com uma loja que não
+    existe, e o lojista em prospecção vê uma "concorrente" falsa no mapa.
+  - Sugestão: decidir entre manter como vitrine de demonstração (fora do `/buscar` e do mapa,
+    com aviso "loja de demonstração" em `/c/demo`) ou tirar (`is_active = false`). Descobrir como
+    ela foi criada.
+  - Como testar: `/buscar` e o mapa de produção sem a Aurora; `/c/demo` com o aviso, se ficar.
+- **"Já tenho conta →" da home leva o lojista ao login de cliente.**
+  - Onde: `apps/web/src/app/page.tsx`, CTA final (`href="/entrar"`, perto da linha 307).
+  - O que é: `/entrar` é o login do cliente final e, depois de logar, manda para `/buscar`. O
+    painel da concessionária é `/login` — o rodapé da própria home já aponta certo.
+  - Impacto: dono de loja que já tem conta entra pela porta errada e não chega ao painel.
+  - Sugestão: `href="/login"`.
+  - Como testar: "Já tenho conta" na home abre `/login`; logar como `tenant_admin` leva a
+    `/dashboard`.
+- **Exportação dos dados da loja incompleta.**
+  - Onde: exportações que existem — `GET /leads/export/csv` e, em `relatorios.controller.ts`,
+    `salespeople.csv`, `deals.csv` e `inventory.csv`.
+  - O que é: faltam agendamentos, conversas/mensagens e clientes vinculados.
+  - Impacto: o rascunho do termo de fundador (cláusula 6) e a portabilidade da LGPD pedem que a
+    loja leve todos os seus dados; hoje ela não consegue.
+  - Sugestão: CSV de agendamentos e de conversas no padrão de `relatorios`, ou um ZIP único em
+    `/configuracoes`, sempre dentro de `withTenant`.
+  - Como testar: e2e que baixa cada CSV com dois tenants e confirma que nenhum vaza dado do
+    outro; abrir no Excel e conferir os acentos.
 
 ## Onde o plano de paridade de CRM está
 
@@ -198,7 +269,7 @@ Duas correções ao plano já registradas **dentro dele**:
 
 ## Próximos passos sugeridos
 
-1. **Revisão jurídica do template de contrato, dos Termos e da Política de Privacidade** — bloqueia uso real
+1. **Revisão jurídica do template de contrato, dos Termos, da Política de Privacidade e do Termo do Programa de Fundadores** ([rascunho de 27/09/2026](https://claude.ai/code/artifact/75b007e3-22aa-4410-905c-7799be769db6)) — bloqueia uso real
 2. ~~Concluir o Google OAuth~~ — feito em 22/09/2026
 3. **Fase 3** do plano: estrutura pronta — consulta veicular com cache por
    custo de chamada e assinatura externa neutra (22/09/2026). Adaptador Clicksign
@@ -207,3 +278,4 @@ Duas correções ao plano já registradas **dentro dele**:
    ligada em 22/09/2026) e contratar a conta de produção da Clicksign
 4. ~~**Revisar responsividade** de `/relatorios`, `/agendamentos` e `/equipe`~~ — feito em 22/09/2026
 5. ~~**Seed com negócio faturado**~~ — feito em 22/09/2026 (`SEED_DEMO_RESET=1` renova as datas)
+6. **Nova landing de captação** — [plano](plano-nova-landing.md) em 5 fases; a 1ª não depende de decisão nenhuma

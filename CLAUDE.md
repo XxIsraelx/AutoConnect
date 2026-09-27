@@ -186,6 +186,9 @@ NEXT_PUBLIC_API_URL=http://localhost:4000      # sem /api/v1
 NEXT_PUBLIC_WS_URL=ws://localhost:4000
 NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=...          # upload de fotos
 NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=...       # precisa ser "unsigned"
+NEXT_PUBLIC_SITE_URL=...                       # domínio público, para a prévia do link (og:image)
+NEXT_PUBLIC_RAIO_X_TENANT_ID=...               # loja "AutoConnect" que recebe o Raio-X; vazio = pedido pelo WhatsApp
+NEXT_PUBLIC_CLARITY_ID=...                     # Clarity só na home e em /raio-x; vazio = não carrega
 ```
 
 ### Documentos privados — usadas pelo `DocumentosStorage`
@@ -337,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 974 testes (708 na API, 266 no `shared`):
+são 995 testes (718 na API, 277 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -494,6 +497,10 @@ O porquê de cada regra: [Onda 0 do plano de paridade](docs/planos/plano-paridad
   para o agendamento. A constraint `appointments_tem_contato` exige cliente,
   lead ou nome+telefone. O cron de lembrete pula quem não tem e-mail e marca
   `reminderSentAt` do mesmo jeito — é o que o mantém idempotente.
+- **O Raio-X da landing é lead da loja "AutoConnect"**, pelo mesmo
+  `POST /leads/public`, sem veículo, com consentimento próprio
+  (`TEXTO_DE_CONSENTIMENTO_RAIO_X`) e loja/cargo/origem no `message`
+  (`mensagemDoRaioX`, no shared). `raio-x.e2e-spec.ts` fixa o corpo.
 - **Clique em WhatsApp/telefone vira interação** (`ContatoDoLead`). O POST sai
   em paralelo ao clique: perder o registro é ruim, perder a ligação é pior.
 
@@ -645,7 +652,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
   foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
   migrations (ver *Testes e CI*).
-- Migrations atuais (21): `init`, `trade_in_and_dealer_setting`,
+- Migrations atuais (22): `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
   `add_announcements_invites_alerts_searches_goals`,
   `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`,
@@ -655,7 +662,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   `funil_lead_anonimo`, `rascunho_de_anuncio`,
   `rodizio_sla_carteira_motivo_perda`, `carteira_fechada_por_padrao`,
   `cobranca_asaas`, `validacao_de_saque`,
-  `filial_do_veiculo_geocodificacao_e_chat_sem_conta`.
+  `filial_do_veiculo_geocodificacao_e_chat_sem_conta`, `loja_de_demonstracao`.
 
 ---
 
@@ -716,6 +723,16 @@ Tabela de módulos, pendências auditadas, fases do plano e próximos passos:
 4 de 5, Fase 3 com a estrutura pronta — falta fornecedor de consulta; faltam 4
 e 5) e `docs/planos/plano-paridade-crm.md` (**Ondas 0, 1 e 3 fechadas**;
 faltam 2, 4 e 5).
+
+**Regra — achou e não resolveu, registrou.** Erro, bug, inconsistência, documentação
+desatualizada, dado estranho ou qualquer coisa deixada para trás que **não** for
+corrigida ou revisada na mesma tarefa entra em "Pendências conhecidas" de
+`docs/planos/estado-e-pendencias.md` antes de a tarefa terminar — mesmo pequena,
+mesmo fora do escopo. Fora do escopo não se corrige sem pedir: registra-se. Cada item
+diz onde, o que é, a evidência, o impacto, a sugestão de correção, como testar e
+quando/quem/em qual tarefa encontrou (formato no topo da seção). Resolvido: riscar
+com `~~…~~` e anotar "resolvido em DD/MM/AAAA" com o commit. A resposta final da
+tarefa diz o que foi registrado.
 
 **Bloqueiam uso real:** template de contrato sem revisão jurídica, ausência de
 fornecedor de consulta veicular e **ausência de conta na Asaas** — a camada de

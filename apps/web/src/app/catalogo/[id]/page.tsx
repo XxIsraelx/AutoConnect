@@ -8,6 +8,7 @@ const API = `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000'}/api/v
 interface DealerMeta {
   tradeName: string;
   logoUrl: string | null;
+  isDemo?: boolean;
   branches: { city: string; state: string }[];
 }
 
@@ -46,6 +47,8 @@ export async function generateMetadata(
   return {
     title,
     description: desc,
+    // Carro de loja de demonstração não vai para o Google (ver `/c/[slug]`).
+    ...(dealer.isDemo ? { robots: { index: false, follow: false } } : {}),
     openGraph: {
       title,
       description: desc,

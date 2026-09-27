@@ -28,6 +28,7 @@ com o código e lido pelo Claude quando o assunto aparece.
 - [Plano de implementação — vendas e contrato](planos/plano-implementacao-vendas.md)
 - [Plano — paridade de CRM e diferenciação](planos/plano-paridade-crm.md)
   · [levantamento dos CRMs do mercado](planos/levantamento-crms-e-paridade.md)
+- [Plano — nova landing de captação](planos/plano-nova-landing.md)
 - [Levantamento — vendas e contratos](planos/levantamento-vendas-e-contratos.md)
 - [Piloto simulado — uma semana na operação](produto/piloto-simulado-operacao.md)
   · [o primeiro dia, do zero](produto/piloto-simulado-primeiro-dia.md)
@@ -39,6 +40,7 @@ com o código e lido pelo Claude quando o assunto aparece.
 - [Vendas e contrato — decisões](decisoes/vendas-e-contrato.md)
   · [assinatura externa](decisoes/2026-09-22%20assinatura%20externa.md)
   · [cadastro em autosserviço](decisoes/2026-09-25%20cadastro%20em%20autosservico.md)
+  · [loja de demonstração](decisoes/2026-09-27%20loja%20de%20demonstracao.md)
 - [Estado, pendências e próximos passos](planos/estado-e-pendencias.md)
 
 ## Como pedir algo ao Claude usando o cofre

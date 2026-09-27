@@ -5,7 +5,7 @@ import Logo from '@/components/Logo';
 export const CONTATO_LEGAL = 'contato@autoconnect.app';
 
 /** Data de vigência exibida nas duas páginas. Mude junto com o texto. */
-export const VIGENCIA_LEGAL = '22 de setembro de 2026';
+export const VIGENCIA_LEGAL = '27 de setembro de 2026';
 
 /**
  * Moldura das páginas de Termos e Privacidade. São públicas (o Google exige os

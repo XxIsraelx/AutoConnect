@@ -47,6 +47,10 @@ export default function PrivacidadePage() {
       <ul>
         <li><strong>Conta:</strong> nome, e-mail, telefone e senha (guardada apenas como hash, nunca em texto).</li>
         <li>
+          <strong>Pedido de Raio-X do atendimento:</strong> nome, WhatsApp, nome da loja e cargo,
+          informados no formulário da página inicial ou de <Link href="/raio-x">/raio-x</Link>.
+        </li>
+        <li>
           <strong>Login com Google:</strong> se você escolher entrar com o Google, recebemos seu
           nome, e-mail e foto de perfil. Não acessamos sua agenda, seus contatos, seu Gmail nem
           qualquer outro dado da conta Google.
@@ -89,7 +93,8 @@ export default function PrivacidadePage() {
 
       <h3>O que não coletamos</h3>
       <p>
-        Não usamos ferramentas de publicidade, pixels de rastreamento nem analytics de terceiros.
+        Não usamos ferramentas de publicidade nem pixels de rastreamento. A única ferramenta de
+        medição de terceiros é o Microsoft Clarity, só na página inicial e na do Raio-X (seção 6).
         Não coletamos dados sensíveis (origem racial, saúde, religião, biometria etc.) e não
         tomamos decisões automatizadas que afetem seus direitos.
       </p>
@@ -118,6 +123,14 @@ export default function PrivacidadePage() {
           qualquer momento.
         </li>
         <li>
+          <strong>Fazer o Raio-X do atendimento e conversar sobre o resultado</strong> — seu
+          consentimento, dado no formulário do pedido (art. 7º, I), revogável a qualquer momento.
+        </li>
+        <li>
+          <strong>Medir o uso da página inicial e da página do Raio-X</strong> (Microsoft Clarity),
+          para saber o que funciona nelas — legítimo interesse (art. 7º, IX).
+        </li>
+        <li>
           <strong>Exercício de direitos em processos</strong> — art. 7º, VI.
         </li>
       </ul>
@@ -139,7 +152,8 @@ export default function PrivacidadePage() {
             <li>Railway — hospedagem da aplicação (servidores nos Estados Unidos);</li>
             <li>Cloudinary — hospedagem das fotos de veículos anunciados (Estados Unidos);</li>
             <li>Google — login com Google, quando você o escolhe;</li>
-            <li>Resend e/ou Google (Gmail) — envio de e-mails transacionais, como confirmação de conta, redefinição de senha, convites e lembretes.</li>
+            <li>Resend e/ou Google (Gmail) — envio de e-mails transacionais, como confirmação de conta, redefinição de senha, convites e lembretes;</li>
+            <li>Microsoft — Clarity, medição de uso da página inicial e da página do Raio-X (Estados Unidos).</li>
           </ul>
         </li>
         <li>
@@ -161,8 +175,8 @@ export default function PrivacidadePage() {
 
       <h2>6. Armazenamento no navegador e cookies</h2>
       <p>
-        Não usamos cookies de publicidade nem de rastreamento. Usamos o armazenamento local do seu
-        navegador (<em>localStorage</em>) apenas para o funcionamento do site:
+        Não usamos cookies de publicidade. Usamos o armazenamento local do seu navegador
+        (<em>localStorage</em>) para o funcionamento do site:
       </p>
       <ul>
         <li>manter você conectado (token de sessão);</li>
@@ -172,6 +186,13 @@ export default function PrivacidadePage() {
       </ul>
       <p>
         Esses itens ficam no seu aparelho e somem ao sair da conta ou limpar os dados do navegador.
+      </p>
+      <p>
+        Na <strong>página inicial</strong> e na <strong>página do Raio-X</strong>, o Microsoft
+        Clarity registra como a página é usada — cliques, rolagem, em que parte a pessoa desiste —
+        e usa cookies próprios para reconhecer a visita. O que é digitado nos formulários é
+        mascarado e não é gravado. O Clarity não roda no painel das concessionárias, na busca de
+        veículos nem nas páginas das lojas.
       </p>
 
       <h2>7. Como protegemos</h2>
