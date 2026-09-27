@@ -3,6 +3,7 @@ export * from './schemas/tenant';
 export * from './schemas/vehicle';
 export * from './schemas/lead';
 export * from './schemas/appointment';
+export * from './domain/contato';
 export * from './domain/telefone';
 export * from './domain/lead-duplicado';
 export * from './domain/deal';

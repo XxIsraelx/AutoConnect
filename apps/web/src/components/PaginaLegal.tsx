@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import Logo from '@/components/Logo';
+import { CONTATO_SUPORTE } from '@autoconnect/shared';
 
 /** Contato público para privacidade e suporte — o mesmo de `ErroAoCarregar`. */
-export const CONTATO_LEGAL = 'contato@autoconnect.app';
+export const CONTATO_LEGAL = CONTATO_SUPORTE;
 
 /** Data de vigência exibida nas duas páginas. Mude junto com o texto. */
 export const VIGENCIA_LEGAL = '27 de setembro de 2026';

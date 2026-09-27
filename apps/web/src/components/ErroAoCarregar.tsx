@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { AlertCircle, RefreshCw, Lock, LogIn } from 'lucide-react';
 import { ApiError } from '@/lib/api';
+import { CONTATO_SUPORTE } from '@autoconnect/shared';
 
-const SUPORTE = 'contato@autoconnect.app';
+const SUPORTE = CONTATO_SUPORTE;
 
 /**
  * Estado de erro no carregamento de uma tela.

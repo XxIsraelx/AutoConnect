@@ -18,6 +18,7 @@ import {
   reenviarVerificacaoSchema,
   signupTenantSchema,
   signupCustomerSchema,
+  CONTATO_SUPORTE,
 } from '@autoconnect/shared';
 import { Public } from '../../common/decorators/public.decorator';
 import { LimiteDeCadastro, LimiteDeReenvio } from './limite-de-cadastro';
@@ -56,7 +57,7 @@ export class AuthController {
     if (limite.permitir(ip ?? 'desconhecido')) return;
     throw new HttpException(
       `Muitos ${o_que} a partir deste endereço. Tente novamente em uma hora, ` +
-        'ou fale com a gente em contato@autoconnect.app.',
+        `ou fale com a gente em ${CONTATO_SUPORTE}.`,
       HttpStatus.TOO_MANY_REQUESTS,
     );
   }

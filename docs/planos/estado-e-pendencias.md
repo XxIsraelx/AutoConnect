@@ -185,7 +185,9 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
   - Como testar: e2e que baixa cada CSV com dois tenants e confirma que nenhum vaza dado do
     outro; abrir no Excel e conferir os acentos.
 
-- **E-mail de contato num domínio que talvez não exista: `contato@autoconnect.app`.**
+- ~~**E-mail de contato num domínio que talvez não exista**~~ — resolvido em
+  27/09/2026: `CONTATO_SUPORTE` no shared, um lugar só, apontando para o
+  endereço de suporte real. O domínio `autoconnect.app` nunca foi nosso.
   - Onde: `apps/web/src/components/PaginaLegal.tsx:5` (`CONTATO_LEGAL`, usado em `/termos` e
     `/privacidade`), `components/ErroAoCarregar.tsx:7` (`SUPORTE`),
     `components/AvisoDeEnvioDeFotos.tsx:32` e o plano Enterprise da home (`page.tsx:245`). A

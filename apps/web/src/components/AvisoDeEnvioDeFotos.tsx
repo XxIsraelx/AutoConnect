@@ -2,6 +2,7 @@
 
 import { AlertTriangle } from 'lucide-react';
 import { ENVIO_DE_FOTOS_CONFIGURADO } from '@/lib/uploadDeFotos';
+import { CONTATO_SUPORTE } from '@autoconnect/shared';
 
 /**
  * Faixa que aparece quando o envio de fotos não está configurado no ambiente.
@@ -29,7 +30,7 @@ export default function AvisoDeEnvioDeFotos({ className = '' }: { className?: st
         <p className="mt-0.5">
           A integração de imagens não está configurada, então nenhuma foto sobe — e sem
           foto o veículo não pode ser publicado. Não é problema das suas fotos:{' '}
-          <a href="mailto:contato@autoconnect.app" className="underline font-medium">
+          <a href={`mailto:${CONTATO_SUPORTE}`} className="underline font-medium">
             fale com o suporte do AutoConnect
           </a>
           .
