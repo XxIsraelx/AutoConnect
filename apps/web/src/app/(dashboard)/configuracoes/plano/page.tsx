@@ -10,8 +10,8 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import {
-  formatarBRL, MEIOS_DE_PAGAMENTO, ROTULO_FATURA, ROTULO_MEIO,
-  type MeioDePagamento, type PlanoPago, type SituacaoDeCobranca, type StatusDeFatura,
+  formatarBRL, MEIOS_DE_PAGAMENTO, ROTULO_FATURA, ROTULO_MEIO, ROTULO_MOTIVO_DE_CORTESIA,
+  type MeioDePagamento, type MotivoDeCortesia, type PlanoPago, type SituacaoDeCobranca, type StatusDeFatura,
 } from '@autoconnect/shared';
 
 /* ── Tipos (o que a API devolve em GET /cobranca) ────────── */
@@ -50,6 +50,8 @@ interface Resumo {
     canceledAt: string | null;
     meio: string | null;
     contratada: boolean;
+    /** Loja isenta (fundadora ou interna). `null` = paga como qualquer outra. */
+    cortesia: { desde: string; motivo: MotivoDeCortesia | null } | null;
   } | null;
   situacao: SituacaoDeCobranca;
   somenteLeitura: boolean;
@@ -70,6 +72,7 @@ const data = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 const CORES_DA_SITUACAO: Record<SituacaoDeCobranca, string> = {
+  cortesia: 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/25 text-emerald-800 dark:text-emerald-200',
   trial: 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/25 text-blue-800 dark:text-blue-200',
   trial_terminando: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200',
   ativa: 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/25 text-emerald-800 dark:text-emerald-200',
@@ -78,6 +81,7 @@ const CORES_DA_SITUACAO: Record<SituacaoDeCobranca, string> = {
 };
 
 const ROTULO_SITUACAO: Record<SituacaoDeCobranca, string> = {
+  cortesia: 'Cortesia',
   trial: 'Período de teste',
   trial_terminando: 'Teste acabando',
   ativa: 'Assinatura ativa',
@@ -239,7 +243,10 @@ export default function PlanoECobrancaPage() {
           )}
         </div>
         <p className="text-sm mt-2">
-          {resumo.aviso ??
+          {resumo.assinatura?.cortesia
+            ? `${resumo.assinatura.cortesia.motivo ? ROTULO_MOTIVO_DE_CORTESIA[resumo.assinatura.cortesia.motivo] : 'Cortesia'} ` +
+              `desde ${data(resumo.assinatura.cortesia.desde)}: sua loja não paga assinatura.`
+            : resumo.aviso ??
             (resumo.assinatura?.currentPeriodEnd
               ? `Tudo em dia. Próxima cobrança em ${data(resumo.assinatura.currentPeriodEnd)}.`
               : 'Tudo em dia.')}
@@ -282,7 +289,8 @@ export default function PlanoECobrancaPage() {
       </Section>
 
       {/* ── Escolher plano ───────────────────────────────── */}
-      {resumo.disponivel ? (
+      {/* Loja em cortesia não contrata: a API recusaria com 409. */}
+      {resumo.assinatura?.cortesia ? null : resumo.disponivel ? (
         <Section title={resumo.assinatura?.contratada ? 'Mudar de plano' : 'Escolher um plano'} icon={CreditCard}>
           <div className="grid gap-3 sm:grid-cols-3">
             {resumo.planos.map((p) => {

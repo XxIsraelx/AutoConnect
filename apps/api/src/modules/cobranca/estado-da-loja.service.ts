@@ -63,7 +63,10 @@ export class EstadoDaLojaService {
     const [assinatura, veiculos] = await Promise.all([
       this.privilegiado.tenantSubscription.findUnique({
         where: { tenantId },
-        select: { plan: true, status: true, trialEndsAt: true, currentPeriodEnd: true, graceUntil: true },
+        select: {
+          plan: true, status: true, trialEndsAt: true, currentPeriodEnd: true, graceUntil: true,
+          courtesySince: true,
+        },
       }),
       this.privilegiado.vehicle.count({
         where: { tenantId, status: { in: [...STATUS_QUE_CONTA_NO_LIMITE] } },

@@ -102,7 +102,7 @@ Fechadas em 27/09/2026: o Raio-X é a porta principal do hero e o cadastro a sec
 | 1. Correções e verdade | Feita. Planos mostram as faixas de `FAIXAS` **sem valor** até a decisão de preço |
 | 2. Raio-X | Feita no código (`RaioXForm`, `mensagemDoRaioX`, `raio-x.e2e-spec.ts`). **Falta em produção:** criar a loja "AutoConnect" pelo cadastro, estender o trial dela e preencher `NEXT_PUBLIC_RAIO_X_TENANT_ID` no web — sem a variável, o formulário vira botão de WhatsApp |
 | 3. Produto e calculadora | Feita. "Veja o sistema funcionando" troca a maquete por cinco telas reais do painel e linka a vitrine da Aurora, agora [loja de demonstração](../decisoes/2026-09-27%20loja%20de%20demonstracao.md). Calculadora com `valorEmRiscoEmCentavos` testada |
-| 4. Preço e fundadores | Bloqueada (decisão de preço e do programa) |
+| 4. Preço e fundadores | Preço feito: a seção de planos mostra os valores do catálogo (tabela de lançamento, [decisão](../decisoes/2026-09-27%20plano%20de%20precos.md)). Falta a seção de fundadores |
 | 5. Confiança e medição | FAQ, Clarity (só com `NEXT_PUBLIC_CLARITY_ID`), eventos e `/privacidade` feitos. "Quem está por trás" fora por decisão. ⚠ O Clarity grava cookies com base em legítimo interesse, sem banner de consentimento — confirmar na revisão jurídica |
 
 ## Telas do sistema na landing — como refazer

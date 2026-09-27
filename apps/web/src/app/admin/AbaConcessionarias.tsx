@@ -4,7 +4,10 @@ import { useMemo, useState } from 'react';
 import {
   Ban, CheckCircle2, ChevronRight, ExternalLink, X, Search, UserCheck, UserX, MailWarning, Loader2,
 } from 'lucide-react';
-import { SUBSCRIPTION_PLANS, deCentavos, formatarBRL } from '@autoconnect/shared';
+import {
+  MOTIVOS_DE_CORTESIA, ROTULO_MOTIVO_DE_CORTESIA, SUBSCRIPTION_PLANS, deCentavos, formatarBRL,
+  type MotivoDeCortesia,
+} from '@autoconnect/shared';
 import { ErroAoCarregar } from '@/components/ErroAoCarregar';
 import {
   Carregando, COBRANCA_COLOR, COBRANCA_LABEL, PLAN_COLOR, ROLE_LABEL, Vazio,
@@ -139,6 +142,20 @@ export function AbaConcessionarias({ chamar, avisar, sinal }: PropsDaAba) {
     }
   }
 
+  /** Concede (com motivo) ou revoga (`null`) a cortesia. Recarrega a loja e a lista: plano, trial e selo mudam juntos. */
+  async function cortesia(tenantId: string, motivo: MotivoDeCortesia | null) {
+    try {
+      await chamar(`/admin/tenants/${tenantId}/cortesia`, motivo
+        ? { method: 'PATCH', body: { motivo } }
+        : { method: 'DELETE' });
+      setAberta(await chamar<TenantDetail>(`/admin/tenants/${tenantId}`));
+      recarregar();
+      avisar(motivo ? `Cortesia concedida: ${ROTULO_MOTIVO_DE_CORTESIA[motivo]}` : 'Cortesia revogada: a loja tem 7 dias para escolher um plano');
+    } catch (e) {
+      avisar(mensagemDaAcao(e, 'Erro ao alterar a cortesia'), 'error');
+    }
+  }
+
   async function impersonar(tenantId: string) {
     try {
       const data = await chamar<{ token: string; user: unknown }>(`/admin/impersonate/${tenantId}`, { method: 'POST' });
@@ -217,6 +234,7 @@ export function AbaConcessionarias({ chamar, avisar, sinal }: PropsDaAba) {
           onFechar={() => setAberta(null)}
           onPlano={(p) => mudarPlano(aberta.id, p)}
           onTrial={(d) => estenderTrial(aberta.id, d)}
+          onCortesia={(m) => cortesia(aberta.id, m)}
           onImpersonar={() => impersonar(aberta.id)}
         />
       )}
@@ -224,11 +242,12 @@ export function AbaConcessionarias({ chamar, avisar, sinal }: PropsDaAba) {
   );
 }
 
-function GavetaDaLoja({ loja, onFechar, onPlano, onTrial, onImpersonar }: {
+function GavetaDaLoja({ loja, onFechar, onPlano, onTrial, onCortesia, onImpersonar }: {
   loja: TenantDetail;
   onFechar: () => void;
   onPlano: (plan: string) => void;
   onTrial: (days: number) => void;
+  onCortesia: (motivo: MotivoDeCortesia | null) => void;
   onImpersonar: () => void;
 }) {
   const m = loja.metrics;
@@ -354,6 +373,38 @@ function GavetaDaLoja({ loja, onFechar, onPlano, onTrial, onImpersonar }: {
                   </button>
                 ))}
               </div>
+            </div>
+            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <p className="text-xs text-slate-400 mb-2">
+                Cortesia — a loja não paga e nenhum prazo a bloqueia (plano Crescimento):
+              </p>
+              {loja.cobranca.cortesia ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-violet-700 dark:text-violet-300">
+                    {loja.cobranca.cortesia.motivo && loja.cobranca.cortesia.motivo in ROTULO_MOTIVO_DE_CORTESIA
+                      ? ROTULO_MOTIVO_DE_CORTESIA[loja.cobranca.cortesia.motivo as MotivoDeCortesia]
+                      : 'Cortesia'}{' '}
+                    desde {fmtDate(loja.cobranca.cortesia.desde)}
+                  </span>
+                  <button
+                    onClick={() => {
+                      if (confirm('Revogar a cortesia? A loja volta ao trial com 7 dias para escolher um plano.')) onCortesia(null);
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium border border-rose-200 dark:border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition"
+                  >
+                    Revogar
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2 flex-wrap">
+                  {MOTIVOS_DE_CORTESIA.map((m) => (
+                    <button key={m} onClick={() => onCortesia(m)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition">
+                      {ROTULO_MOTIVO_DE_CORTESIA[m]}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

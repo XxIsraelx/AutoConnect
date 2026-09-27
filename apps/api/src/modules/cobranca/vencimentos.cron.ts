@@ -74,6 +74,8 @@ export class VencimentosCron {
           { graceUntil: { not: null } },
         ],
         tenant: { isActive: true },
+        // Cortesia não tem prazo: nenhum aviso de vencimento faz sentido.
+        courtesySince: null,
       },
       select: {
         id: true, tenantId: true, plan: true, status: true,

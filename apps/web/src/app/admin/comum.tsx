@@ -109,6 +109,7 @@ export const PLAN_COLOR: Record<string, string> = {
  * bloqueado e quem está prestes a bloquear.
  */
 export const COBRANCA_COLOR: Record<string, string> = {
+  cortesia: 'bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400',
   trial: 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400',
   trial_terminando: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400',
   ativa: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
@@ -117,6 +118,7 @@ export const COBRANCA_COLOR: Record<string, string> = {
 };
 
 export const COBRANCA_LABEL: Record<string, string> = {
+  cortesia: 'cortesia',
   trial: 'em teste',
   trial_terminando: 'teste acabando',
   ativa: 'em dia',
