@@ -1,7 +1,7 @@
 import { Controller, Get, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { RelatoriosService } from './relatorios.service';
-import { desempenhoQuerySchema } from './desempenho.schema';
+import { desempenhoQuerySchema, portabilidadeQuerySchema } from './desempenho.schema';
 import { escopoDa } from '../../common/escopo';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -63,6 +63,44 @@ export class RelatoriosController {
   async csvEstoque(@Req() req: AuthRequest, @Res() res: Response): Promise<void> {
     const csv = await this.relatorios.csvDeEstoque(escopoDa(req.user), req.user);
     this.entregar(res, `estoque_${Date.now()}.csv`, csv);
+  }
+
+  /* ── Portabilidade ──────────────────────────────────────────── */
+
+  /** GET /tenant/reports/appointments.csv */
+  @Get('appointments.csv')
+  async csvAgendamentos(
+    @Req() req: AuthRequest,
+    @Res() res: Response,
+    @Query() query: unknown,
+  ): Promise<void> {
+    const { days } = portabilidadeQuerySchema.parse(query);
+    const csv = await this.relatorios.csvDeAgendamentos(escopoDa(req.user), req.user, days);
+    this.entregar(res, `agendamentos_${Date.now()}.csv`, csv);
+  }
+
+  /** GET /tenant/reports/conversations.csv — uma linha por conversa. */
+  @Get('conversations.csv')
+  async csvConversas(
+    @Req() req: AuthRequest,
+    @Res() res: Response,
+    @Query() query: unknown,
+  ): Promise<void> {
+    const { days } = portabilidadeQuerySchema.parse(query);
+    const csv = await this.relatorios.csvDeConversas(escopoDa(req.user), req.user, days);
+    this.entregar(res, `conversas_${Date.now()}.csv`, csv);
+  }
+
+  /** GET /tenant/reports/messages.csv — uma linha por mensagem. */
+  @Get('messages.csv')
+  async csvMensagens(
+    @Req() req: AuthRequest,
+    @Res() res: Response,
+    @Query() query: unknown,
+  ): Promise<void> {
+    const { days } = portabilidadeQuerySchema.parse(query);
+    const csv = await this.relatorios.csvDeMensagens(escopoDa(req.user), req.user, days);
+    this.entregar(res, `mensagens_${Date.now()}.csv`, csv);
   }
 
   private entregar(res: Response, arquivo: string, csv: string): void {

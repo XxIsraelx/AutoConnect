@@ -21,6 +21,36 @@ export function montarCsv(cabecalho: readonly string[], linhas: readonly unknown
 }
 
 /**
+ * Teto de linhas por exportação.
+ *
+ * Existe para a consulta não varrer a base inteira numa região a ~0,6s de
+ * distância. O que faltava era **dizer** que cortou: até 27/09/2026 a loja com
+ * mais de 5.000 negócios baixava um recorte e nada no arquivo avisava.
+ */
+export const TETO_DE_LINHAS_CSV = 5000;
+
+/**
+ * Monta o CSV e, se vier linha além do teto, corta e **avisa dentro do próprio
+ * arquivo**.
+ *
+ * O aviso é a última linha, numa coluna só, porque é onde o lojista está
+ * olhando: ele abre a planilha, não o cabeçalho HTTP. Quem chama consulta com
+ * `take: TETO_DE_LINHAS_CSV + 1` — é a linha extra que revela que havia mais.
+ */
+export function montarCsvComTeto(
+  cabecalho: readonly string[],
+  linhas: readonly unknown[][],
+): string {
+  const cortou = linhas.length > TETO_DE_LINHAS_CSV;
+  const corpo = cortou ? linhas.slice(0, TETO_DE_LINHAS_CSV) : linhas;
+  const aviso = [[
+    `Exportação cortada nas ${TETO_DE_LINHAS_CSV.toLocaleString('pt-BR')} linhas mais recentes. ` +
+    'Reduza o período para levar o resto.',
+  ]];
+  return montarCsv(cabecalho, cortou ? [...corpo, ...aviso] : corpo);
+}
+
+/**
  * O BOM não é enfeite: sem ele o Excel lê o arquivo como Latin-1 e "Peugeot
  * 208 Allure" vira "Peugeot 208 Allure" na tela do lojista.
  */

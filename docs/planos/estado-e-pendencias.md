@@ -177,10 +177,17 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
   27/09/2026 (`2835e34`, na fase 1 da nova landing): o CTA vive em
   `components/landing/CtaFinal.tsx` e aponta para `/login`. Conferido no HTML servido em
   produção em 27/09/2026 — `/entrar` só aparece no rodapé, como "Área do cliente".
-- **Exportação dos dados da loja incompleta.**
+- ◐ **Exportação dos dados da loja incompleta** — **em parte em 27/09/2026**: entraram
+  `appointments.csv`, `conversations.csv` e `messages.csv` (uma linha por mensagem, com o
+  texto), todos com o recorte de carteira do resto do painel e reunidos em
+  *Configurações › Levar seus dados*, ao lado dos quatro que já existiam. O teto de 5.000
+  linhas passou a **avisar dentro do arquivo** quando corta. **Falta a lista de clientes
+  vinculados**, que sai junto com o item D2 (listagem de clientes da loja) — as duas leem a
+  mesma relação, e duas consultas diferentes discordariam.
   - Onde: exportações que existem — `GET /leads/export/csv` e, em `relatorios.controller.ts`,
-    `salespeople.csv`, `deals.csv` e `inventory.csv`.
-  - O que é: faltam agendamentos, conversas/mensagens e clientes vinculados.
+    `salespeople.csv`, `deals.csv`, `inventory.csv`, `appointments.csv`, `conversations.csv`
+    e `messages.csv`.
+  - O que é: falta a lista de clientes vinculados.
   - Impacto: o rascunho do termo de fundador (cláusula 6) e a portabilidade da LGPD pedem que a
     loja leve todos os seus dados; hoje ela não consegue.
   - Sugestão: CSV de agendamentos e de conversas no padrão de `relatorios`, ou um ZIP único em

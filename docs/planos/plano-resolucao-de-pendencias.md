@@ -26,7 +26,7 @@ desatualizado.
 | **A** | Captação ligada, dinheiro visível, casa arrumada | ~1 dia | nós |
 | **B** | Três relógios de terceiro que precisam começar a correr | 1 dia nosso + espera | advogado, Clicksign, fornecedor |
 | **C** | Onda 2 do plano de paridade: WhatsApp, portais, push | 3 a 4 semanas | decisões 2 e 3 do plano de paridade |
-| **D** | Portabilidade LGPD e costura do que ficou pela metade | ~1 semana | nós |
+| **D** | Portabilidade LGPD e costura do que ficou pela metade | ~1 semana | ✅ D4 e ◐ D1 em 27/09/2026 |
 | **E** | Dívidas com gatilho: só viram trabalho quando o gatilho acontecer | — | o gatilho |
 | — | **Adiado por decisão** (NF-e, financeiro da loja) | — | — |
 
@@ -171,7 +171,7 @@ em 25/09/2026. Sobram os três que o mercado cobra, na ordem do
 
 ## Onda D — portabilidade e o que ficou pela metade (~1 semana)
 
-- **D1. Exportação completa dos dados da loja.** Existem
+- ◐ **D1. Exportação completa dos dados da loja** (parcial em 27/09/2026): agendamentos, conversas e mensagens entraram, reunidos em *Configurações › Levar seus dados*; **falta a lista de clientes**, que sai junto com o D2 — é a mesma consulta. Existem
   `GET /leads/export/csv`, `salespeople.csv`, `deals.csv` e `inventory.csv`;
   faltam **agendamentos, conversas/mensagens e clientes vinculados**. A
   portabilidade da LGPD e a cláusula 6 do termo de fundador pedem que a loja
@@ -185,7 +185,7 @@ em 25/09/2026. Sobram os três que o mercado cobra, na ordem do
   `cancel_reason_code` e nenhuma tela agrupa por ele — o lead já tem contagem,
   o negócio mostra só no detalhe. É a pergunta "por que perdemos" respondida
   uma vez por mês.
-- **D4. Aviso quando o CSV bate o teto.** Negócios e estoque exportam no máximo
+- ✅ **D4. Aviso quando o CSV bate o teto** (27/09/2026). O teto ficou; o silêncio não: a consulta pede `TETO + 1` e, se a linha extra vier, o arquivo termina dizendo que cortou. Em `montarCsvComTeto`, com teste. Negócios e estoque exportam no máximo
   5.000 linhas e a loja que passa disso recebe um recorte **sem aviso**. O teto
   fica; o silêncio não.
 
