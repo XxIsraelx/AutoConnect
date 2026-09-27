@@ -126,5 +126,12 @@ process.env.WHATSAPP_VERIFY_TOKEN = 'token-de-verificacao-de-teste';
 process.env.WHATSAPP_ACCESS_TOKEN = '';
 process.env.WHATSAPP_GRAPH_URL = '';
 
+// E-mail de entrada dos portais: simulado, com endereço e token fixos. Aqui não
+// sai nada (quem chama é o provedor), mas o token é o que separa entrega
+// autêntica de forjada, e os dois caminhos precisam de um valor conhecido.
+process.env.EMAIL_ENTRADA_FORNECEDOR = 'simulado';
+process.env.EMAIL_ENTRADA_TOKEN = 'token-de-entrada-de-teste';
+process.env.EMAIL_ENTRADA_ENDERECO = 'leads@entrada.teste';
+
 /** Nome do banco de teste, para os testes afirmarem onde estão conectados. */
 export const BANCO_DE_TESTE = verificada.pathname.replace(/^\//, '');

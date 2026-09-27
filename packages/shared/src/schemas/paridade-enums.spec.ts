@@ -78,7 +78,7 @@ describe('paridade entre os enums do Prisma e os schemas Zod', () => {
     for (const s of LEAD_SOURCES_MANUAIS) {
       expect(origens.has(s)).toBe(true);
     }
-    for (const automatica of ['website', 'app', 'trade_in'] as const) {
+    for (const automatica of ['website', 'app', 'trade_in', 'portal'] as const) {
       expect(conjunto(LEAD_SOURCES_MANUAIS).has(automatica as never)).toBe(false);
     }
   });

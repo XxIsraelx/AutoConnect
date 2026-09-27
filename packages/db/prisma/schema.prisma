@@ -131,6 +131,10 @@ enum LeadSource {
   ad
   trade_in
   other
+  /// Entrada de leads dos portais (OLX, Webmotors…). Qual portal fica no
+  /// `metadata.portal` do lead — um valor por portal aqui multiplicaria o enum
+  /// a cada integração nova.
+  portal
 }
 
 enum AppointmentType {
@@ -269,6 +273,8 @@ model Tenant {
   // Canais (WhatsApp oficial) — os modelos estão no fim do arquivo.
   whatsappAccounts          WhatsappAccount[]
   whatsappWebhookEvents     WhatsappWebhookEvent[]
+  portalConnections         PortalConnection[]
+  portalDeliveries          PortalDelivery[]
 
   @@map("tenants")
 }
@@ -1893,4 +1899,69 @@ model WhatsappWebhookEvent {
   @@unique([provider, eventKey])
   @@index([tenantId, receivedAt])
   @@map("whatsapp_webhook_events")
+}
+
+// ============ CANAIS: LEADS DOS PORTAIS ============
+//
+// "Capturar agora, entender depois": toda entrega é guardada crua; o que o
+// sistema sabe ler vira lead, o resto fica visível e é reprocessado quando o
+// leitor do portal existir. O porquê: `docs/decisoes/2026-09-27 leads dos portais.md`.
+
+/// O endereço de entrada de uma loja para um portal: a URL de webhook e o
+/// e-mail de encaminhamento carregam o mesmo token.
+///
+/// Só o hash do token é guardado, como no link do visitante e no convite de
+/// equipe: o endereço aparece uma vez, na hora de conectar, e gerar outro
+/// invalida o anterior. Uma conexão ativa por loja e portal (índice parcial
+/// `portal_connections_uma_ativa_idx`, na migration).
+model PortalConnection {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  /// `CHAVES_DE_PORTAL` do shared: olx, webmotors, icarros, mercadolivre, outro.
+  portal         String
+  tokenHash      String    @unique @map("token_hash")
+  active         Boolean   @default(true)
+  createdBy      String?   @map("created_by") @db.Uuid
+  lastReceivedAt DateTime? @map("last_received_at") @db.Timestamptz()
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deliveries PortalDelivery[]
+
+  @@index([tenantId])
+  @@map("portal_connections")
+}
+
+/// Cada entrega recebida de um portal, crua — a trilha, a idempotência e a
+/// matéria-prima do reprocessamento.
+///
+/// Aqui o corpo cru **é** guardado (no WhatsApp, não): o endereço é de uma loja
+/// só, então a entrega inteira é dela. É o que permite reler, com o leitor novo,
+/// o e-mail que o leitor antigo não entendeu.
+model PortalDelivery {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  connectionId String    @map("connection_id") @db.Uuid
+  portal       String
+  /// `webhook` ou `email`.
+  transport    String
+  /// Id do e-mail no provedor, id do lead no portal, ou o SHA-256 do corpo.
+  eventKey     String    @map("event_key")
+  /// `SITUACOES_DE_ENTREGA_DE_PORTAL` do shared.
+  status       String
+  /// O que mostrar na tela: o assunto do e-mail, ou o nome do lead.
+  summary      String?
+  /// Leads criados (ou encontrados pela deduplicação) a partir desta entrega.
+  leadIds      String[]  @default([]) @map("lead_ids") @db.Uuid
+  rawBody      String    @map("raw_body")
+  receivedAt   DateTime  @default(now()) @map("received_at") @db.Timestamptz()
+  processedAt  DateTime? @map("processed_at") @db.Timestamptz()
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  connection PortalConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, eventKey])
+  @@index([tenantId, receivedAt])
+  @@map("portal_deliveries")
 }
