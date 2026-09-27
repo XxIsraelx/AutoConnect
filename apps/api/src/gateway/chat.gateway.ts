@@ -8,12 +8,13 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import { Logger } from '@nestjs/common';
+import { HttpException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import { PrismaService, type ScopedClient } from '../common/prisma/prisma.service';
 import { PropostaChatService } from '../modules/deals/proposta-chat.service';
 import { ChatEventosService } from './chat-eventos.service';
+import { WhatsappService } from '../modules/whatsapp/whatsapp.service';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -34,7 +35,20 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     private readonly prisma: PrismaService,
     private readonly proposta: PropostaChatService,
     private readonly eventos: ChatEventosService,
+    private readonly whatsapp: WhatsappService,
   ) {}
+
+  /** O texto que a tela mostra quando o envio é recusado. */
+  private motivo(err: unknown): string {
+    if (err instanceof HttpException) {
+      const r = err.getResponse();
+      if (typeof r === 'string') return r;
+      const m = (r as { message?: unknown }).message;
+      if (typeof m === 'string') return m;
+    }
+    this.logger.error(`Envio pelo chat quebrou: ${err}`);
+    return 'Não foi possível enviar a mensagem.';
+  }
 
   /**
    * Entrega o servidor para quem emite de fora do socket — hoje, a mensagem do
@@ -57,6 +71,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       client.userId   = payload.sub;
       client.tenantId = payload.tenantId;
       client.role     = payload.role;
+      // A equipe da loja escuta a loja inteira: é por aqui que a lista de
+      // conversas descobre uma conversa nova (o cliente que escreveu no
+      // WhatsApp agora) sem precisar recarregar.
+      if (payload.tenantId) client.join(`tenant:${payload.tenantId}`);
 
       this.logger.log(`socket connected: ${client.id} (user: ${payload.sub})`);
     } catch {
@@ -135,6 +153,29 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     );
     if (!conv) return { ok: false, error: 'Sem acesso' };
 
+    // Conversa de WhatsApp: a mensagem sai pelo número oficial da loja, e quem
+    // grava, avisa a tela e confere a janela de 24 h é o serviço do WhatsApp.
+    if (conv.channel === 'whatsapp') {
+      if (!client.tenantId || client.role === 'customer') return { ok: false, error: 'Sem acesso' };
+      if (data.metadata?.proposal) {
+        return {
+          ok: false,
+          error: 'A proposta com botão de aceite é do chat do sistema. No WhatsApp, mande os valores por mensagem.',
+        };
+      }
+      try {
+        const enviada = await this.whatsapp.enviarTexto(
+          client.tenantId,
+          { id: client.userId, role: client.role ?? 'salesperson' },
+          conv.id,
+          data.body ?? '',
+        );
+        return { ok: true, messageId: enviada.id, deliveryStatus: enviada.deliveryStatus };
+      } catch (err) {
+        return { ok: false, error: this.motivo(err) };
+      }
+    }
+
     // Propostas só podem ser enviadas pela equipe da concessionária
     if (data.metadata?.proposal && client.role === 'customer') {
       return { ok: false, error: 'Apenas a concessionária envia propostas' };
@@ -172,10 +213,16 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       },
     }));
 
+    const agora = new Date();
     await this.noContexto(client, (tx) =>
       tx.conversation.update({
         where: { id: data.conversationId },
-        data:  { lastMessageAt: new Date() },
+        data:  {
+          lastMessageAt: agora,
+          // Última mensagem do cliente: a mesma coluna que abre a janela do
+          // WhatsApp, preenchida em todo canal para a tela ler de um jeito só.
+          ...(client.role === 'customer' ? { customerLastMessageAt: agora } : {}),
+        },
       }),
     );
 

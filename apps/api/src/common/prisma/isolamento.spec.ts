@@ -37,6 +37,9 @@ const MODELOS_DE_TENANT = [
   // gateway. Uma loja vendo a fatura da outra é preço e inadimplência de
   // concorrente à mostra.
   'tenantInvoice', 'billingWebhookEvent',
+  // WhatsApp oficial: o número da loja e os eventos do webhook, com o texto
+  // das mensagens dos clientes.
+  'whatsappAccount', 'whatsappWebhookEvent',
 ];
 
 /**
@@ -157,6 +160,7 @@ describe('isolamento por tenant — regra de arquitetura', () => {
     'modules/invitations/invitations.service.ts',
     'modules/map/map.service.ts',
     'gateway/chat.gateway.ts',
+    'modules/whatsapp/whatsapp.service.ts',
   ])('%s está migrado e não pode regredir', (arquivo) => {
     expect(infratores.get(arquivo) ?? []).toEqual([]);
   });
@@ -181,6 +185,9 @@ describe('isolamento por tenant — regra de arquitetura', () => {
     // são da plataforma, não de loja — não têm `tenant_id` e o RLS delas nega
     // tudo ao papel da aplicação. Só a conexão dona alcança.
     'modules/saques/saques.service.ts',
+    // O webhook do WhatsApp chega sem loja: acha a loja pelo id do número
+    // (só id e tenantId) e segue em withTenant, um evento por transação.
+    'modules/whatsapp/whatsapp.service.ts',
   ])('%s atravessa concessionárias pela conexão privilegiada, e isso é visível', (arquivo) => {
     const fonte = readFileSync(join(RAIZ, arquivo), 'utf8');
 

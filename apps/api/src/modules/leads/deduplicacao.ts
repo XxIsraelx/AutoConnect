@@ -85,7 +85,8 @@ export interface ContatoRepetido {
   vehicleIdAtual: string | null;
   source: string;
   message?: string | null;
-  origem: 'publico' | 'manual' | 'cliente';
+  /** `canal`: WhatsApp oficial ou portal — ver `LeadsService.criarDeCanal`. */
+  origem: 'publico' | 'manual' | 'cliente' | 'canal';
 }
 
 /**
