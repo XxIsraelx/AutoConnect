@@ -275,6 +275,7 @@ model Tenant {
   whatsappWebhookEvents     WhatsappWebhookEvent[]
   portalConnections         PortalConnection[]
   portalDeliveries          PortalDelivery[]
+  pushSubscriptions         PushSubscription[]
 
   @@map("tenants")
 }
@@ -605,6 +606,8 @@ model User {
   contractSignatures         ContractSignature[]
   /// Última posição do rodízio das lojas em que este usuário é o ponteiro.
   rodizioDeLeads             TenantCrmSettings[]       @relation("RodizioUltimoUsuario")
+  /// Os aparelhos em que o usuário ativou notificação push — ver o fim do arquivo.
+  pushSubscriptions          PushSubscription[]
 
   @@index([tenantId])
   @@index([role])
@@ -1964,4 +1967,32 @@ model PortalDelivery {
   @@unique([connectionId, eventKey])
   @@index([tenantId, receivedAt])
   @@map("portal_deliveries")
+}
+
+// ============ CANAIS: PUSH DO VENDEDOR ============
+
+/// Um aparelho (navegador) em que o vendedor ativou notificação push.
+///
+/// O endpoint é do serviço de push do navegador (Google, Mozilla, Apple) e
+/// identifica o aparelho: único, e o mesmo aparelho reinscrito atualiza a
+/// linha em vez de duplicar o aviso. Inscrição que o serviço declara expirada
+/// (404/410) sai daqui no primeiro envio que falha — é o navegador dizendo que
+/// desinstalaram o app ou limparam os dados.
+model PushSubscription {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  endpoint      String    @unique
+  p256dh        String
+  auth          String
+  userAgent     String?   @map("user_agent")
+  lastSuccessAt DateTime? @map("last_success_at") @db.Timestamptz()
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@map("push_subscriptions")
 }

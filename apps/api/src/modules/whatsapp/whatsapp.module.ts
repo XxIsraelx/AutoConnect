@@ -4,6 +4,7 @@ import { PrivilegedPrismaModule } from '../../common/prisma/privileged-prisma.mo
 import { ChatEventosModule } from '../../gateway/chat-eventos.service';
 import { LeadsModule } from '../leads/leads.module';
 import { CrmModule } from '../crm/crm.module';
+import { PushModule } from '../users/push/push.module';
 import { PROVEDOR_DE_WHATSAPP, provedorDeWhatsAppConfigurado } from './provedor';
 import { WhatsappService } from './whatsapp.service';
 import { WebhookWhatsappController, WhatsappController } from './whatsapp.controller';
@@ -14,7 +15,7 @@ import { WebhookWhatsappController, WhatsappController } from './whatsapp.contro
  * testes o leem pelo mesmo token de injeção.
  */
 @Module({
-  imports: [ConfigModule, PrivilegedPrismaModule, ChatEventosModule, LeadsModule, CrmModule],
+  imports: [ConfigModule, PrivilegedPrismaModule, ChatEventosModule, LeadsModule, CrmModule, PushModule],
   controllers: [WhatsappController, WebhookWhatsappController],
   providers: [
     WhatsappService,

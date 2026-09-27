@@ -15,6 +15,7 @@ import { PrismaService, type ScopedClient } from '../common/prisma/prisma.servic
 import { PropostaChatService } from '../modules/deals/proposta-chat.service';
 import { ChatEventosService } from './chat-eventos.service';
 import { WhatsappService } from '../modules/whatsapp/whatsapp.service';
+import { PushService } from '../modules/users/push/push.service';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -36,6 +37,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     private readonly proposta: PropostaChatService,
     private readonly eventos: ChatEventosService,
     private readonly whatsapp: WhatsappService,
+    private readonly push: PushService,
   ) {}
 
   /** O texto que a tela mostra quando o envio é recusado. */
@@ -227,6 +229,16 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     );
 
     this.server.to(`conversation:${data.conversationId}`).emit('conversation:message', msg);
+    // O cliente com conta escreveu: o vendedor pode estar com o painel fechado.
+    if (client.role === 'customer') {
+      this.push.avisarMensagem(conv.tenantId, {
+        conversationId: conv.id,
+        salespersonId: conv.salespersonId,
+        nome: msg.sender?.fullName ?? null,
+        canal: 'Chat',
+        texto: data.body ?? '',
+      });
+    }
     return { ok: true, messageId: msg.id };
   }
 

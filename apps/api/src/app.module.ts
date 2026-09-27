@@ -31,6 +31,7 @@ import { CobrancaModule } from './modules/cobranca/cobranca.module';
 import { SaquesModule } from './modules/saques/saques.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { PortaisModule } from './modules/portais/portais.module';
+import { PushModule } from './modules/users/push/push.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { PortaisModule } from './modules/portais/portais.module';
     SaquesModule,
     WhatsappModule,
     PortaisModule,
+    PushModule,
   ],
   providers: [
     {

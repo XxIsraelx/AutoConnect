@@ -27,3 +27,4 @@ export * from './domain/whatsapp';
 export * from './schemas/whatsapp';
 export * from './domain/portais';
 export * from './schemas/portais';
+export * from './domain/push';

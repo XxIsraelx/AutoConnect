@@ -39,6 +39,8 @@ import {
   enviarModeloDeWhatsAppSchema,
   simularWhatsAppSchema,
   simularLeadDePortalSchema,
+  inscricaoDePushSchema,
+  removerInscricaoDePushSchema,
 } from '@autoconnect/shared';
 import { acceptInviteSchema } from '../modules/invitations/invitations.controller';
 import { anularSchema, assinarSchema } from '../modules/contracts/contracts.controller';
@@ -203,6 +205,11 @@ const ROTAS: Record<string, Declaracao> = {
   /* Leads dos portais */
   'POST /portais/entregas/:p/reprocessar': { semCorpo: true },
   'POST /portais/:p/simular': { schema: simularLeadDePortalSchema },
+
+  /* Push do vendedor */
+  'POST /push/inscricoes': { schema: inscricaoDePushSchema },
+  'POST /push/inscricoes/remover': { schema: removerInscricaoDePushSchema },
+  'POST /push/teste': { semCorpo: true },
   'POST /public/conversations/:p/messages': { schema: mensagemDeVisitanteSchema },
   'PATCH /conversations/:p/close': { semCorpo: true },
 };

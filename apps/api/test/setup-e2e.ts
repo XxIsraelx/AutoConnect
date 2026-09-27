@@ -133,5 +133,13 @@ process.env.EMAIL_ENTRADA_FORNECEDOR = 'simulado';
 process.env.EMAIL_ENTRADA_TOKEN = 'token-de-entrada-de-teste';
 process.env.EMAIL_ENTRADA_ENDERECO = 'leads@entrada.teste';
 
+// Push do vendedor: simulado, sobrescrevendo o `.env`. Com as chaves VAPID no
+// `.env`, a suíte mandaria notificação de verdade para as inscrições que os
+// testes criam — endpoints fictícios, mas a chamada sairia.
+process.env.PUSH_FORNECEDOR = 'simulado';
+process.env.VAPID_PUBLIC_KEY = '';
+process.env.VAPID_PRIVATE_KEY = '';
+process.env.VAPID_SUBJECT = '';
+
 /** Nome do banco de teste, para os testes afirmarem onde estão conectados. */
 export const BANCO_DE_TESTE = verificada.pathname.replace(/^\//, '');

@@ -5,9 +5,10 @@ import { LeadsService } from './leads.service';
 import { LimitePorIp } from './limite-por-ip';
 import { EmailModule } from '../../common/email/email.module';
 import { CrmModule } from '../crm/crm.module';
+import { PushModule } from '../users/push/push.module';
 
 @Module({
-  imports: [PrivilegedPrismaModule, EmailModule, CrmModule],
+  imports: [PrivilegedPrismaModule, EmailModule, CrmModule, PushModule],
   controllers: [LeadsController],
   providers: [
     LeadsService,
