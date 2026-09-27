@@ -116,10 +116,48 @@ describe('schemas da concessionária', () => {
         city: 'Belo Horizonte',
         state: 'MG',
         postalCode: '30140-071',
+        latitude: -19.9245,
+        longitude: -43.9352,
         businessHours: expedienteCompleto,
       };
 
       expect(updateBranchSchema.safeParse(corpo).success).toBe(true);
+    });
+
+    /**
+     * B8 — a coordenada da filial.
+     *
+     * O schema já aceitava latitude e longitude e **nada as enviava**: não havia
+     * campo em lugar nenhum da interface, e o pino saía do geocodificador de
+     * município. Com a tela passando a mandá-las, faltavam duas regras que o
+     * Zod não tinha: meia coordenada é um ponto no meio do Atlântico, e apagar
+     * as duas precisa ser possível para desfazer um ponto errado.
+     */
+    describe('coordenada da filial', () => {
+      it('recusa meia coordenada, apontando o campo', () => {
+        const so = updateBranchSchema.safeParse({ latitude: -19.9245 });
+        expect(so.success).toBe(false);
+        if (!so.success) {
+          expect(so.error.issues[0].path).toEqual(['longitude']);
+        }
+
+        expect(updateBranchSchema.safeParse({ longitude: -43.9352 }).success).toBe(false);
+        // Meia coordenada apagada também é meia coordenada.
+        expect(
+          updateBranchSchema.safeParse({ latitude: null, longitude: -43.9352 }).success,
+        ).toBe(false);
+      });
+
+      it('aceita apagar as duas — é como se desfaz um ponto errado', () => {
+        const saida = updateBranchSchema.parse({ latitude: null, longitude: null });
+        expect(saida.latitude).toBeNull();
+        expect(saida.longitude).toBeNull();
+      });
+
+      it('recusa valor fora do planeta', () => {
+        expect(updateBranchSchema.safeParse({ latitude: 120, longitude: -43.9 }).success).toBe(false);
+        expect(updateBranchSchema.safeParse({ latitude: -19.9, longitude: 200 }).success).toBe(false);
+      });
     });
   });
 });

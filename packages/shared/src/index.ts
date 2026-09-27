@@ -18,3 +18,5 @@ export * from './domain/sla';
 export * from './domain/motivo-perda';
 export * from './domain/comissao';
 export * from './schemas/crm';
+export * from './domain/link-de-catalogo';
+export * from './schemas/conversation';

@@ -4,6 +4,10 @@ import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.s
 import { ehGlobal, type Escopo } from '../../common/escopo';
 import { Prisma } from '@autoconnect/db';
 import type { UpdateBranchInput, UpdateTenantInput } from '@autoconnect/shared';
+import {
+  GeocodificacaoService,
+  type FilialLocalizavel,
+} from '../map/geocodificacao.service';
 
 /* ── Haversine distance (km) ─────────────────────────────── */
 function haversine(
@@ -147,6 +151,7 @@ export class TenantsService {
     private readonly prisma: PrismaService,
     /** Consolidado da plataforma para o super admin — atravessa concessionárias. */
     private readonly privilegiado: PrivilegedPrismaService,
+    private readonly geo: GeocodificacaoService,
   ) {}
 
   findById(
@@ -499,8 +504,22 @@ export class TenantsService {
     // `businessHours` sai do Zod como objeto tipado e entra no Prisma como
     // Json. A conversão é explícita para que trocar a forma do expediente no
     // shared quebre aqui, e não em silêncio no banco.
-    const { businessHours, ...resto } = data;
-    return this.prisma.withTenant(tenantId, async (tx) => {
+    const { businessHours, latitude, longitude, ...resto } = data;
+
+    /**
+     * A coordenada que vem da tela é do lojista, e ele é a autoridade sobre
+     * onde fica a própria loja: entra como `manual` e a geocodificação nunca a
+     * sobrescreve. Apagar as duas devolve a filial ao pino do endereço — daí o
+     * `null` explícito na precisão, que é o que libera uma nova busca.
+     */
+    const coordenada =
+      latitude !== undefined || longitude !== undefined
+        ? latitude != null && longitude != null
+          ? { latitude, longitude, geocodePrecision: 'manual' as const, geocodedAt: new Date() }
+          : { latitude: null, longitude: null, geocodePrecision: null, geocodedAt: null }
+        : {};
+
+    const atualizada = await this.prisma.withTenant(tenantId, async (tx) => {
       const branch = await tx.dealershipBranch.findFirst({
         where: { id: branchId, tenantId },
       });
@@ -510,9 +529,16 @@ export class TenantsService {
         where: { id: branchId },
         data: {
           ...resto,
+          ...coordenada,
           ...(businessHours ? { businessHours: businessHours as Prisma.InputJsonValue } : {}),
         },
       });
     });
+
+    // Sem `await`: o endereço já está salvo, e a resposta do "Salvar filial"
+    // não pode ficar pendurada num serviço de terceiro — nem falhar com ele.
+    this.geo.agendar(atualizada as FilialLocalizavel);
+
+    return atualizada;
   }
 }

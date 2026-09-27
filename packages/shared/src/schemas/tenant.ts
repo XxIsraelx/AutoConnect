@@ -124,6 +124,15 @@ export const createBranchSchema = z.object({
   state: z.string().optional(),
   postalCode: z.string().optional(),
   country: z.string().default('BR'),
+  /**
+   * Coordenadas da filial. O schema as aceitava desde sempre e **nada as
+   * enviava**: não havia campo em lugar nenhum da interface, então o pino do
+   * mapa saía do geocodificador de município e ficava na praça central — duas
+   * lojas da mesma cidade no mesmo ponto, e o "Como chegar" 1,5 km fora.
+   *
+   * Vêm juntas ou não vêm (`refine` abaixo): meia coordenada é um ponto no
+   * meio do Atlântico.
+   */
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
   /**
@@ -150,7 +159,28 @@ export type CreateBranchInput = z.infer<typeof createBranchSchema>;
  */
 export const updateBranchSchema = createBranchSchema
   .omit({ isHeadquarters: true })
-  .partial();
+  .partial()
+  /**
+   * Na atualização a coordenada também pode ser **apagada**: limpar os dois
+   * campos em `/configuracoes` devolve a filial ao pino do endereço. Sem o
+   * `nullable`, o `undefined` de um campo vazio significaria "não mexer", e o
+   * lojista que errou o ponto não teria como desfazer.
+   */
+  .extend({
+    latitude: z.number().min(-90).max(90).nullable().optional(),
+    longitude: z.number().min(-180).max(180).nullable().optional(),
+  })
+  .refine(
+    (d) => {
+      const temLat = d.latitude !== undefined && d.latitude !== null;
+      const temLng = d.longitude !== undefined && d.longitude !== null;
+      return temLat === temLng;
+    },
+    {
+      message: 'Informe latitude e longitude juntas — ou apague as duas.',
+      path: ['longitude'],
+    },
+  );
 
 export type UpdateBranchInput = z.infer<typeof updateBranchSchema>;
 

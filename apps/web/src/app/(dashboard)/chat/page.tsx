@@ -5,6 +5,7 @@ import { io, Socket } from 'socket.io-client';
 import {
   Send, MessageSquare, Circle, Loader2,
   RefreshCw, AlertCircle, ChevronLeft, BadgeDollarSign, X, Archive,
+  Link as LinkIcon,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
@@ -17,7 +18,14 @@ interface Conversation {
   id: string;
   status: string;
   lastMessageAt: string | null;
-  customer: { id: string; fullName: string; email: string; avatarUrl: string | null };
+  /**
+   * Nulo quando a conversa é de um lead **sem conta** — o caso da Onda 0, que
+   * até aqui não tinha chat nenhum. Aí quem identifica é o contato copiado.
+   */
+  customer: { id: string; fullName: string; email: string; avatarUrl: string | null } | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
   salesperson: { id: string; fullName: string; email: string } | null;
   vehicle: { id: string; versionName: string | null; yearModel: number; brand: { name: string }; model: { name: string }; images: { url: string }[] } | null;
   messages: { body: string; createdAt: string; kind: string }[];
@@ -34,6 +42,16 @@ interface Message {
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+
+/** Com quem é a conversa — com conta ou sem. */
+function nomeDoContato(conv: Conversation): string {
+  return conv.customer?.fullName ?? conv.contactName ?? 'Visitante';
+}
+
+/** Conversa de quem não tem conta: entra por link, não por login. */
+function semConta(conv: Conversation): boolean {
+  return !conv.customer;
+}
 
 /* ── Helpers ──────────────────────────────────────────── */
 function fmtTime(iso: string) {
@@ -68,7 +86,7 @@ function ConversationItem({ conv, active, onClick }: {
       <div className="relative shrink-0">
         <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
           <span className="text-blue-600 dark:text-blue-400 text-sm font-bold">
-            {conv.customer.fullName?.charAt(0).toUpperCase()}
+            {nomeDoContato(conv).charAt(0).toUpperCase()}
           </span>
         </div>
         {conv.status === 'open' && (
@@ -77,7 +95,14 @@ function ConversationItem({ conv, active, onClick }: {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-0.5">
-          <p className="text-sm font-medium truncate">{conv.customer.fullName}</p>
+          <p className="text-sm font-medium truncate">
+            {nomeDoContato(conv)}
+            {semConta(conv) && (
+              <span className="ml-1.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                sem conta
+              </span>
+            )}
+          </p>
           {conv.lastMessageAt && (
             <span className="text-xs text-slate-400 shrink-0">{fmtDate(conv.lastMessageAt)}</span>
           )}
@@ -118,6 +143,50 @@ export default function ChatPage() {
 
   const [encerrando, setEncerrando] = useState(false);
   const [erroEncerrar, setErroEncerrar] = useState<string | null>(null);
+
+  /**
+   * Link de acesso do visitante sem conta.
+   *
+   * O banco guarda o hash, como no convite de equipe: o link cru só existe no
+   * instante em que é gerado. Pedir outro invalida o anterior — a tela diz isso
+   * antes, porque o cliente pode já estar com um aberto.
+   */
+  const [linkVisitante, setLinkVisitante] = useState<string | null>(null);
+  const [gerandoLink, setGerandoLink] = useState(false);
+  const [erroLink, setErroLink] = useState<string | null>(null);
+  const [copiado, setCopiado] = useState(false);
+
+  async function gerarLink(conversationId: string) {
+    if (!token) return;
+    setGerandoLink(true);
+    setErroLink(null);
+    try {
+      const r = await api<{ guestUrl: string }>(`/conversations/${conversationId}/guest-link`, {
+        method: 'POST', token,
+      });
+      setLinkVisitante(r.guestUrl);
+      setCopiado(false);
+    } catch (err) {
+      setErroLink(textoDoErro(err));
+    } finally {
+      setGerandoLink(false);
+    }
+  }
+
+  async function copiarLink() {
+    if (!linkVisitante) return;
+    try {
+      await navigator.clipboard.writeText(linkVisitante);
+      setCopiado(true);
+    } catch {
+      // Silencioso com motivo: a área de transferência é negada em alguns
+      // navegadores e contextos, e o link continua na tela para copiar à mão.
+    }
+  }
+
+  // Link é de uma conversa: trocar de conversa não pode deixar o anterior à
+  // mostra, que seria mandar o link do cliente errado.
+  useEffect(() => { setLinkVisitante(null); setErroLink(null); setCopiado(false); }, [activeId]);
 
   async function encerrar(id: string) {
     if (!token) return;
@@ -311,11 +380,11 @@ export default function ChatPage() {
                 <>
                   <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
                     <span className="text-blue-600 dark:text-blue-400 text-xs font-bold">
-                      {activeConv.customer.fullName?.charAt(0).toUpperCase()}
+                      {nomeDoContato(activeConv).charAt(0).toUpperCase()}
                     </span>
                   </div>
                   <div>
-                    <p className="text-sm font-medium">{activeConv.customer.fullName}</p>
+                    <p className="text-sm font-medium">{nomeDoContato(activeConv)}</p>
                     {activeConv.vehicle && (
                       <p className="text-xs text-slate-500">
                         {activeConv.vehicle.brand.name} {activeConv.vehicle.model.name} {activeConv.vehicle.yearModel}
@@ -346,6 +415,60 @@ export default function ChatPage() {
                             border-slate-200 dark:border-slate-800">
                 {erroEncerrar}
               </p>
+            )}
+
+            {/* ── Conversa sem conta (B11) ──────────────────────────
+                O lead da Onda 0 nasce sem conta, então não há login por onde
+                ele entrar: a porta é um link. Ele vai por e-mail quando há
+                endereço, e fica aqui para a loja mandar por WhatsApp — que é o
+                canal que a revenda usa de verdade. */}
+            {activeConv && semConta(activeConv) && (
+              <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800
+                              bg-amber-50/70 dark:bg-amber-950/20">
+                <div className="flex items-start gap-2">
+                  <LinkIcon size={14} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-slate-700 dark:text-slate-200 leading-snug">
+                      <b>{nomeDoContato(activeConv)}</b> não tem conta no AutoConnect.
+                      Ele lê e responde por um link — mande pelo WhatsApp
+                      {activeConv.contactPhone ? ` (${activeConv.contactPhone})` : ''}
+                      {activeConv.contactEmail ? '; o e-mail já foi enviado' : ''}.
+                    </p>
+
+                    {linkVisitante ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <code className="text-[11px] bg-white dark:bg-slate-900 border border-amber-200
+                                         dark:border-amber-500/30 rounded-lg px-2 py-1 break-all max-w-full">
+                          {linkVisitante}
+                        </code>
+                        <button onClick={() => void copiarLink()}
+                                className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+                          {copiado ? 'Copiado!' : 'Copiar'}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => void gerarLink(activeConv.id)}
+                        disabled={gerandoLink}
+                        className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold
+                                   px-2.5 py-1.5 rounded-lg border border-amber-300 dark:border-amber-500/40
+                                   text-amber-700 dark:text-amber-300 hover:bg-amber-100/70
+                                   dark:hover:bg-amber-500/10 transition disabled:opacity-50"
+                      >
+                        {gerandoLink
+                          ? <><Loader2 size={11} className="animate-spin" /> Gerando…</>
+                          : <>Gerar link de acesso</>}
+                      </button>
+                    )}
+                    <p className="text-[10px] text-slate-500 mt-1.5">
+                      Gerar um link novo invalida o anterior.
+                    </p>
+                    {erroLink && (
+                      <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">{erroLink}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Mensagens */}
@@ -379,7 +502,10 @@ export default function ChatPage() {
                   <div key={msg.id} className={cn('flex gap-2', isMe && 'flex-row-reverse')}>
                     {!isMe && (
                       <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center shrink-0 text-xs font-bold text-slate-500">
-                        {msg.sender?.fullName?.charAt(0).toUpperCase() ?? '?'}
+                        {/* `senderUserId` nulo é o visitante sem conta: quem
+                            identifica é o contato copiado na conversa. */}
+                        {(msg.sender?.fullName
+                          ?? (activeConv ? nomeDoContato(activeConv) : '?')).charAt(0).toUpperCase()}
                       </div>
                     )}
                     <div className={cn(

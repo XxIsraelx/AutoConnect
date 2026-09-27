@@ -20,6 +20,7 @@ import AvisoDeEnvioDeFotos from '@/components/AvisoDeEnvioDeFotos';
 
 /* ── Tipos ───────────────────────────────────────────────── */
 interface Brand { id: string; name: string }
+interface VarianteFipe { modelCode: string; name: string }
 interface FipeEstimate {
   found: boolean;
   price?: number;
@@ -27,8 +28,13 @@ interface FipeEstimate {
   vehicleName?: string;
   yearModel?: number;
   monthReference?: string;
+  /** Qual variante a API escolheu, e o quanto ela confia nessa escolha. */
+  modelCode?: string;
+  confianca?: 'alta' | 'media' | 'baixa';
+  alternativas?: VarianteFipe[];
 }
 interface Model { id: string; name: string; category: string | null }
+interface Branch { id: string; name: string; isHeadquarters: boolean }
 interface UploadedImage { url: string; uploading?: boolean; name: string }
 
 /**
@@ -193,10 +199,20 @@ function Combobox({
 }
 
 /* ── Card de referência FIPE ─────────────────────────────── */
-function FipeCard({ fipe, loading, enteredPrice }: {
+/**
+ * B16 — a FIPE escolhia a variante errada e mandava o lojista conferir um
+ * cadastro que estava certo ("ONIX Lollapalooza 2014" para um Onix 2022).
+ *
+ * A escolha melhorou na API; o que muda aqui é o **tom**: quando a confiança não
+ * é alta, o card diz "estimativa" e abre a lista de variantes para o lojista
+ * escolher. Afirmar um valor errado com segurança é pior que mostrar um valor
+ * aproximado e dizer que é aproximado.
+ */
+function FipeCard({ fipe, loading, enteredPrice, onEscolherVariante }: {
   fipe: FipeEstimate | null;
   loading: boolean;
   enteredPrice: number;
+  onEscolherVariante: (modelCode: string) => void;
 }) {
   if (loading) {
     return (
@@ -211,9 +227,12 @@ function FipeCard({ fipe, loading, enteredPrice }: {
     return (
       <div className="rounded-xl border border-slate-200 dark:border-slate-800
                       bg-slate-50/60 dark:bg-slate-900/40 px-4 py-3">
-        <p className="text-sm text-slate-500 flex items-center gap-2">
-          <LineChart size={15} className="shrink-0" />
-          Não encontramos este veículo na tabela FIPE — confira marca, modelo e ano.
+        <p className="text-sm text-slate-500 flex items-start gap-2">
+          <LineChart size={15} className="shrink-0 mt-0.5" />
+          <span>
+            A tabela FIPE não tem este modelo com o ano informado — pode ser um
+            nome diferente do usado por lá. <b>O preço pode ser salvo normalmente.</b>
+          </span>
         </p>
       </div>
     );
@@ -221,6 +240,8 @@ function FipeCard({ fipe, loading, enteredPrice }: {
 
   const fmt = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const diffPct = enteredPrice > 0 ? ((enteredPrice - fipe.price) / fipe.price) * 100 : null;
+  const estimativa = fipe.confianca !== 'alta';
+  const alternativas = fipe.alternativas ?? [];
 
   let verdict: { Icon: typeof Minus; cls: string; text: string } | null = null;
   if (diffPct !== null) {
@@ -243,13 +264,14 @@ function FipeCard({ fipe, loading, enteredPrice }: {
   }
 
   return (
-    <div className="rounded-xl border border-blue-200 dark:border-blue-900/50
-                    bg-blue-50/60 dark:bg-blue-950/20 px-4 py-3.5 space-y-2">
-      <div className="flex items-center justify-between gap-3">
+    <div className={`rounded-xl border px-4 py-3.5 space-y-2 ${estimativa
+      ? 'border-amber-200 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-950/20'
+      : 'border-blue-200 dark:border-blue-900/50 bg-blue-50/60 dark:bg-blue-950/20'}`}>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
-          <LineChart size={15} className="text-blue-500 shrink-0" />
+          <LineChart size={15} className={`shrink-0 ${estimativa ? 'text-amber-500' : 'text-blue-500'}`} />
           <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-            Referência FIPE: {fmt(fipe.price)}
+            {estimativa ? 'Estimativa FIPE: ' : 'Referência FIPE: '}{fmt(fipe.price)}
           </p>
         </div>
         {verdict && (
@@ -258,11 +280,31 @@ function FipeCard({ fipe, loading, enteredPrice }: {
           </span>
         )}
       </div>
-      <p className="text-[11px] text-slate-400 leading-snug">
+      <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
         {fipe.vehicleName} {fipe.yearModel} · código {fipe.fipeCode}
         {fipe.monthReference ? ` · ref. ${fipe.monthReference}` : ''}.
-        Valor de referência nacional — o preço final depende do estado e da região.
+        {estimativa
+          ? ' Não temos certeza de que é esta a versão do seu carro — confira abaixo.'
+          : ' Valor de referência nacional — o preço final depende do estado e da região.'}
       </p>
+
+      {alternativas.length > 0 && (
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
+            É outra versão? Escolha a do seu carro:
+          </label>
+          <select
+            className={`${inputCls} text-xs`}
+            value={fipe.modelCode ?? ''}
+            onChange={(e) => e.target.value && onEscolherVariante(e.target.value)}
+          >
+            <option value={fipe.modelCode ?? ''}>{fipe.vehicleName} (escolhida)</option>
+            {alternativas.map((a) => (
+              <option key={a.modelCode} value={a.modelCode}>{a.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
     </div>
   );
 }
@@ -309,6 +351,7 @@ export default function NewVehiclePage() {
 
   const thisYear = new Date().getFullYear();
   const [form, setForm] = useState({
+    branchId: '',
     brandId: '', brandName: '',
     modelId: '', modelName: '',
     versionName: '',
@@ -350,6 +393,36 @@ export default function NewVehiclePage() {
       .catch((e) => setErroCatalogo(textoDoErro(e)));
   }, [tentativaCatalogo]);
 
+  /**
+   * Filiais da loja — B7.
+   *
+   * O assistente nunca gravava `branch_id`, e o cartão do mapa conta veículo
+   * **da filial**: toda loja anunciava "0 veíc." com o estoque publicado. Com
+   * uma filial só (o caso do dia zero) quem atribui é a API, e o campo nem
+   * aparece; o `select` abaixo existe para a loja que tem duas ou mais, onde
+   * chutar seria inventar um dado.
+   */
+  const [branches, setBranches] = useState<Branch[]>([]);
+  useEffect(() => {
+    if (!token) return;
+    api<{ tenant: { branches: Branch[] } | null }>('/tenant/me', { token })
+      .then(({ tenant }) => {
+        const lista = tenant?.branches ?? [];
+        setBranches(lista);
+        // Com várias, começa na matriz: é onde o estoque fica na maioria dos
+        // casos, e uma escolha visível é melhor que um campo vazio.
+        if (lista.length > 1) {
+          const matriz = lista.find((b) => b.isHeadquarters);
+          if (matriz) setForm((f) => (f.branchId ? f : { ...f, branchId: matriz.id }));
+        }
+      })
+      // Silencioso com motivo: com uma filial só — o caso comum — a API atribui
+      // sozinha e não há nada para escolher; com várias, a que recebe o estoque
+      // sem filial continua sendo a matriz, na contagem do mapa. Nada que o
+      // lojista esperasse ver desaparece daqui.
+      .catch(() => {});
+  }, [token]);
+
   /* carrega modelos ao escolher marca */
   useEffect(() => {
     if (!form.brandId) { setModels([]); return; }
@@ -378,7 +451,18 @@ export default function NewVehiclePage() {
   const [fipe, setFipe] = useState<FipeEstimate | null>(null);
   const [fipeLoading, setFipeLoading] = useState(false);
   const [erroFipe, setErroFipe] = useState(false);
-  const fipeKey = `${form.brandName}|${form.modelName}|${form.versionName}|${form.yearModel}|${form.fuel}`;
+  /**
+   * Variante escolhida à mão pelo lojista, quando ele discorda da automática.
+   * Entra na chave da consulta, então trocar a versão refaz a busca — e ganha de
+   * qualquer heurística na API.
+   */
+  const [fipeVariante, setFipeVariante] = useState('');
+  // Motor e câmbio entram na consulta: são o que separa "ONIX 1.0 Turbo Aut."
+  // de "ONIX 1.0 Mec." quando o modelo tem 38 variantes.
+  const fipeKey = [
+    form.brandName, form.modelName, form.versionName, form.yearModel,
+    form.fuel, form.engine, form.transmission, fipeVariante,
+  ].join('|');
   const fipeFetchedKey = useRef('');
 
   useEffect(() => {
@@ -395,24 +479,30 @@ export default function NewVehiclePage() {
       yearModel: form.yearModel,
       ...(form.versionName ? { versionName: form.versionName } : {}),
       ...(form.fuel ? { fuel: form.fuel } : {}),
+      ...(form.engine ? { engine: form.engine } : {}),
+      ...(form.transmission ? { transmission: form.transmission } : {}),
+      ...(fipeVariante ? { modelCode: fipeVariante } : {}),
     });
     api<FipeEstimate>(`/fipe/estimate?${qs}`, { token })
       .then(setFipe)
       // Sem o aviso o card sumia, e a ausência parecia "sem referência".
       .catch(() => { setFipe(null); setErroFipe(true); })
       .finally(() => setFipeLoading(false));
-  }, [step, token, fipeKey, form.brandName, form.modelName, form.versionName, form.yearModel, form.fuel]);
+  }, [step, token, fipeKey, fipeVariante, form.brandName, form.modelName, form.versionName,
+      form.yearModel, form.fuel, form.engine, form.transmission]);
 
   const isUsed = form.condition !== 'new';
   const usage  = form.firstRegistration ? usageLabel(form.firstRegistration) : null;
 
   /* validação por passo */
   const canNext = useMemo(() => {
-    if (step === 1) return !!form.brandId && !!form.modelId;
+    if (step === 1) {
+      return !!form.brandId && !!form.modelId && (branches.length < 2 || !!form.branchId);
+    }
     if (step === 2) return !!form.yearModel && !!form.yearMake && form.mileageKm !== '';
     if (step === 3) return brlToNumber(form.price) > 0;
     return true;
-  }, [step, form]);
+  }, [step, form, branches.length]);
 
   /* upload de imagens */
   async function handleFiles(files: FileList | File[]) {
@@ -441,6 +531,9 @@ export default function NewVehiclePage() {
     setError(''); setSubmitting(true);
     try {
       const body = {
+        // Vai só quando a tela perguntou: com uma filial só, quem escolhe é a
+        // API (e a escolha é a mesma — a matriz).
+        ...(form.branchId ? { branchId: form.branchId } : {}),
         brandId: form.brandId,
         modelId: form.modelId,
         versionName: form.versionName || undefined,
@@ -547,6 +640,23 @@ export default function NewVehiclePage() {
                 Tentar novamente
               </button>
             </p>
+          )}
+
+          {branches.length > 1 && (
+            <Field
+              label="Filial *"
+              hint="Em qual loja o carro está. É o que faz o mapa e a busca mostrarem o estoque certo."
+            >
+              <select value={form.branchId} onChange={(e) => set('branchId', e.target.value)}
+                      className={inputCls}>
+                <option value="">Selecione a filial</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}{b.isHeadquarters ? ' (matriz)' : ''}
+                  </option>
+                ))}
+              </select>
+            </Field>
           )}
 
           <Field label="Versão / Trim" hint="Opcional — ex: 1.0 Turbo Comfortline">
@@ -682,7 +792,12 @@ export default function NewVehiclePage() {
       {/* ── PASSO 3: Preço ── */}
       {step === 3 && (
         <div className="space-y-5">
-          <FipeCard fipe={fipe} loading={fipeLoading} enteredPrice={brlToNumber(form.price)} />
+          <FipeCard
+            fipe={fipe}
+            loading={fipeLoading}
+            enteredPrice={brlToNumber(form.price)}
+            onEscolherVariante={setFipeVariante}
+          />
           {erroFipe && !fipeLoading && (
             <p className="text-xs text-slate-500">
               Não foi possível consultar a tabela FIPE agora. O preço pode ser salvo mesmo assim.

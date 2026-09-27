@@ -30,6 +30,9 @@ import {
   updateTenantSchema,
   updateBranchSchema,
   updateVehicleSchema,
+  iniciarConversaSchema,
+  conversaDoLeadSchema,
+  mensagemDeVisitanteSchema,
 } from '@autoconnect/shared';
 import { acceptInviteSchema } from '../modules/invitations/invitations.controller';
 import { anularSchema, assinarSchema } from '../modules/contracts/contracts.controller';
@@ -180,8 +183,10 @@ const ROTAS: Record<string, Declaracao> = {
   'PATCH /crm/settings': { schema: updateCrmSettingsSchema },
 
   /* Conversas */
-  'POST /conversations': { semSchema: 'corpo `{ tenantId, vehicleId?, leadId? }` só anotado' },
-  'POST /conversations/from-lead': { semSchema: 'corpo `{ leadId }` só anotado' },
+  'POST /conversations': { schema: iniciarConversaSchema },
+  'POST /conversations/from-lead': { schema: conversaDoLeadSchema },
+  'POST /conversations/:p/guest-link': { semCorpo: true },
+  'POST /public/conversations/:p/messages': { schema: mensagemDeVisitanteSchema },
   'PATCH /conversations/:p/close': { semCorpo: true },
 };
 

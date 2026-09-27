@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   Building2, Phone, Globe, Palette, MapPin, ChevronRight,
   Mail, Hash, Check, Loader2, AlertCircle, Save, Clock, Repeat, UsersRound,
+  Crosshair, ExternalLink,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
@@ -38,6 +39,10 @@ interface Branch {
   city: string | null;
   state: string | null;
   postalCode: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  /** 'manual' | 'address' | 'city' — de onde veio o pino. */
+  geocodePrecision: string | null;
   businessHours?: unknown;
 }
 
@@ -207,6 +212,20 @@ function BusinessHoursEditor({
   );
 }
 
+/**
+ * De onde vem o pino da loja — dito na tela, porque "aproximado" e "exato"
+ * mudam o que o cliente encontra ao seguir o "Como chegar".
+ */
+function PrecisaoDoPino({ precisao }: { precisao: string | null }) {
+  const rotulo =
+    precisao === 'manual'  ? { txt: 'ponto marcado por você', cls: 'text-emerald-600 dark:text-emerald-400' }
+    : precisao === 'address' ? { txt: 'pelo endereço', cls: 'text-emerald-600 dark:text-emerald-400' }
+    : precisao === 'city'    ? { txt: 'aproximado — centro da cidade', cls: 'text-amber-600 dark:text-amber-400' }
+    : { txt: 'ainda não localizada', cls: 'text-slate-400' };
+
+  return <span className={`text-xs font-medium ${rotulo.cls}`}>{rotulo.txt}</span>;
+}
+
 /* ── Página ───────────────────────────────────────────────── */
 
 export default function ConfiguracoesPage() {
@@ -226,6 +245,9 @@ export default function ConfiguracoesPage() {
     name: '', phone: '', email: '',
     addressLine: '', addressNumber: '', complement: '',
     neighborhood: '', city: '', state: '', postalCode: '',
+    // Texto, não número: o campo tem que aceitar estar vazio (apagar as duas
+    // devolve o pino ao endereço) e o sinal de menos digitado no meio.
+    latitude: '', longitude: '',
   });
   const [hours, setHours] = useState<BusinessHours>(defaultBusinessHours());
 
@@ -272,6 +294,8 @@ export default function ConfiguracoesPage() {
             city:         b.city          ?? '',
             state:        b.state         ?? '',
             postalCode:   b.postalCode    ?? '',
+            latitude:     b.latitude  != null ? String(b.latitude)  : '',
+            longitude:    b.longitude != null ? String(b.longitude) : '',
           });
           setHours(hasBusinessHours(b.businessHours) ? b.businessHours : defaultBusinessHours());
         }
@@ -320,6 +344,23 @@ export default function ConfiguracoesPage() {
   async function saveBranch(e: React.FormEvent) {
     e.preventDefault();
     if (!token || !tenant?.branches[0]) return;
+
+    /**
+     * Coordenada: as duas juntas ou nenhuma (a API recusa meia coordenada, que
+     * é um ponto no meio do Atlântico). Vazio nas duas envia `null`, o que
+     * devolve a filial ao pino do endereço — é como se desfaz um ponto errado.
+     */
+    const lat = branchForm.latitude.trim().replace(',', '.');
+    const lng = branchForm.longitude.trim().replace(',', '.');
+    if ((lat === '') !== (lng === '')) {
+      showToast('err', 'Preencha latitude e longitude juntas — ou deixe as duas em branco.');
+      return;
+    }
+    if (lat !== '' && (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng)))) {
+      showToast('err', 'Latitude e longitude precisam ser números, como -19.9245 e -43.9352.');
+      return;
+    }
+
     setSavingBranch(true);
     try {
       await api(`/tenant/branch/${tenant.branches[0].id}`, {
@@ -336,9 +377,13 @@ export default function ConfiguracoesPage() {
           city:          branchForm.city          || undefined,
           state:         branchForm.state         || undefined,
           postalCode:    branchForm.postalCode    || undefined,
+          latitude:      lat === '' ? null : Number(lat),
+          longitude:     lng === '' ? null : Number(lng),
           businessHours: hours,
         }),
       });
+      // Recarrega para a faixa de precisão do pino refletir o que foi gravado.
+      load();
       showToast('ok', 'Endereço salvo!');
     } catch (err) {
       showToast('err', err instanceof Error ? err.message : 'Erro ao salvar');
@@ -625,6 +670,50 @@ export default function ConfiguracoesPage() {
                            placeholder="SP" />
                   </Field>
                 </div>
+              </div>
+
+              {/* ── Onde o pino cai no mapa (B8) ──────────────────
+                  Não havia campo de coordenada em lugar nenhum da interface,
+                  embora o schema já os aceitasse: o mapa geocodificava só o
+                  município, o pino ficava na praça central e duas lojas da
+                  mesma cidade caíam no mesmo ponto. Agora o endereço completo é
+                  geocodificado sozinho — e quem quiser precisão de porta marca
+                  o ponto aqui, que nunca é sobrescrito. */}
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2 mb-1 mt-2 flex-wrap">
+                  <Crosshair size={14} className="text-blue-600 dark:text-blue-400" />
+                  <span className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Posição no mapa
+                  </span>
+                  <PrecisaoDoPino precisao={tenant.branches[0].geocodePrecision} />
+                </div>
+                <p className="text-xs text-slate-500 mb-3">
+                  Deixe em branco para usarmos o endereço acima. Para acertar a porta
+                  da loja: abra o Google Maps, toque e segure no ponto exato e copie
+                  os dois números que aparecem.
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Latitude">
+                    <input className={input} value={branchForm.latitude} inputMode="decimal"
+                           onChange={e => setB('latitude', e.target.value)}
+                           placeholder="-19.9245" />
+                  </Field>
+                  <Field label="Longitude">
+                    <input className={input} value={branchForm.longitude} inputMode="decimal"
+                           onChange={e => setB('longitude', e.target.value)}
+                           placeholder="-43.9352" />
+                  </Field>
+                </div>
+                {branchForm.latitude && branchForm.longitude && (
+                  <a
+                    href={`https://www.openstreetmap.org/?mlat=${encodeURIComponent(branchForm.latitude)}&mlon=${encodeURIComponent(branchForm.longitude)}#map=18/${encodeURIComponent(branchForm.latitude)}/${encodeURIComponent(branchForm.longitude)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 mt-2 text-xs font-medium text-blue-600
+                               dark:text-blue-400 hover:underline"
+                  >
+                    Conferir este ponto no mapa <ExternalLink size={11} />
+                  </a>
+                )}
               </div>
 
               {/* Horário de funcionamento */}

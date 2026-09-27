@@ -106,12 +106,38 @@ export class VehiclesService {
     return vehicle;
   }
 
+  /**
+   * A filial do veículo — a matriz quando a loja tem uma só.
+   *
+   * B7 do piloto do primeiro dia: o assistente de cadastro nunca gravava
+   * `branch_id`, e o cartão do mapa conta veículo **da filial**. Toda loja
+   * anunciava "0 veíc." com o estoque publicado no ar.
+   *
+   * A escolha é a mesma do backfill da migration e da contagem do mapa: matriz,
+   * e na falta dela a filial ativa mais antiga — mas **só quando não há
+   * ambiguidade**. Loja com várias filiais e nenhuma matriz recebe `null`, e
+   * quem pergunta é a tela (o `select` de filial aparece a partir da segunda).
+   * Chutar a filial de um estoque que se divide entre duas lojas físicas seria
+   * inventar um dado que ninguém conferiu.
+   */
+  private async filialPadrao(tx: ScopedClient, tenantId: string): Promise<string | null> {
+    const filiais = await tx.dealershipBranch.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, isHeadquarters: true },
+      orderBy: [{ isHeadquarters: 'desc' }, { createdAt: 'asc' }],
+    });
+    if (filiais.length === 0) return null;
+    if (filiais.length === 1) return filiais[0].id;
+    return filiais[0].isHeadquarters ? filiais[0].id : null;
+  }
+
   async create(tenantId: string, input: CreateVehicleInput): Promise<unknown> {
     const {
       featureIds,
       previousOwners,
       firstRegistration,
       singleOwner,
+      branchId,
       ...data
     } = input;
 
@@ -121,10 +147,24 @@ export class VehiclesService {
     if (firstRegistration) metadata.firstRegistration = firstRegistration;
     if (singleOwner !== undefined) metadata.singleOwner = singleOwner;
 
-    return this.prisma.withTenant(tenantId, (tx) =>
-      tx.vehicle.create({
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      let filial = branchId ?? null;
+      if (filial) {
+        // Filial de outra loja chegaria ao Prisma como erro de chave
+        // estrangeira, ou seja, um 500 para um dado que a rota pode conferir.
+        const existe = await tx.dealershipBranch.findFirst({
+          where: { id: filial, tenantId },
+          select: { id: true },
+        });
+        if (!existe) throw new NotFoundException('Filial não encontrada');
+      } else {
+        filial = await this.filialPadrao(tx, tenantId);
+      }
+
+      return tx.vehicle.create({
         data: {
           ...data,
+          ...(filial ? { branchId: filial } : {}),
           tenantId,
           price: data.price,
           ...(Object.keys(metadata).length
@@ -138,8 +178,8 @@ export class VehiclesService {
           brand: { select: { id: true, name: true } },
           model: { select: { id: true, name: true } },
         },
-      }),
-    );
+      });
+    });
   }
 
   async update(
@@ -492,10 +532,16 @@ export class VehiclesService {
         );
       }
 
+      // Mesma filial padrão do cadastro avulso: a planilha não tem coluna de
+      // filial, e sem isto o estoque importado entraria sem `branch_id` — o
+      // caminho por onde a contagem do mapa voltaria a zerar.
+      const filial = await this.filialPadrao(tx, tenantId);
+
       const created = await tx.vehicle.createMany({
         data: rows.map(({ brandName, modelName, ...rest }) => ({
           ...rest,
           tenantId,
+          ...(filial ? { branchId: filial } : {}),
           brandId: brandIdByKey.get(brandName.trim().toLowerCase())!,
           modelId: modelIdByKey.get(`${brandName.trim().toLowerCase()}|${modelName.trim().toLowerCase()}`)!,
         })),

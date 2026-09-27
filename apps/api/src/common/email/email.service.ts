@@ -204,6 +204,31 @@ export class EmailService implements OnApplicationBootstrap {
     await this.send(opts.to, subject, html, opts.inviteUrl);
   }
 
+  /**
+   * A loja abriu uma conversa com quem **não tem conta** → manda o link.
+   *
+   * O lead da Onda 0 nasce sem conta, então não há login por onde ele entrar: o
+   * link é a porta. O e-mail é o caminho automático; quando não há endereço (ou
+   * nenhum provedor está configurado), a loja copia o link da própria tela e
+   * manda pelo WhatsApp, que é o canal que a revenda usa.
+   */
+  async sendConviteDeConversa(opts: {
+    to: string;
+    dealerName: string;
+    url: string;
+  }): Promise<void> {
+    const subject = `${opts.dealerName} respondeu você`;
+    const html = this.buildHtml(
+      'A loja quer falar com você 💬',
+      `A <b>${esc(opts.dealerName)}</b> abriu uma conversa sobre o veículo que você pediu informação. ` +
+        'Clique abaixo para ler e responder — <b>sem criar conta</b>.',
+      opts.url,
+      'Abrir a conversa',
+      'Este link é só seu: quem o tiver entra na conversa. Se você não pediu informação a esta loja, ignore este e-mail.',
+    );
+    await this.send(opts.to, subject, html, opts.url);
+  }
+
   /** Cliente solicitou agendamento → avisa a concessionária */
   async sendAppointmentRequested(opts: {
     to: string;

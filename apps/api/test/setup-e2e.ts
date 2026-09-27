@@ -101,6 +101,14 @@ process.env.COBRANCA_WEBHOOK_TOKEN = 'token-de-cobranca-de-teste';
 process.env.ASAAS_API_KEY = '';
 process.env.ASAAS_API_URL = '';
 
+// Geocodificação: desligada. Quem responde é a Nominatim (OpenStreetMap), um
+// serviço gratuito e sem chave — não há credencial para zerar, então a trava é
+// uma variável própria. Sem ela, cada rodada que lê o mapa mandaria uma busca
+// por filial de teste para um serviço de terceiro, sequenciadas a 1 req/s, e a
+// suíte ficaria pendurada em rede. A lógica da escolha é exercitada em
+// `geocodificacao.spec.ts`, com `fetch` de mentira.
+process.env.GEOCODIFICACAO_DESLIGADA = '1';
+
 // Validação de saque: token fixo, sobrescrevendo o `.env`. Aqui não sai
 // requisição nenhuma (quem chama é a Asaas), mas o token é o que separa
 // "recusa tudo" de "decide de verdade" — e os dois caminhos precisam ser

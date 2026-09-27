@@ -63,15 +63,18 @@ de layout).
 | **A8** | Convida um vendedor por e-mail | ❌ | O convite é criado e o link existe, mas **a tela de aceite chama uma rota que não está registrada**: `Cannot POST /api/v1/public/invitations/accept` (B2). Nenhum vendedor entra na loja. |
 | **A9** | Define meta e comissão | ✅ | Meta da equipe e por vendedor gravam; a comissão grava e a tela cita a base ("2,5% sobre R$ 0,00 — valor de venda dos negócios faturados no mês"). A correção de 25/09 aparece. |
 | **A10** | Dashboard numa loja quase vazia | 🟡 | Ajuda mais do que envergonha — o checklist dá o que fazer. Mas dois dos quatro itens **nunca ficam verdes**: o horário não salva e o logo só aceita URL de imagem já hospedada. |
-| **B11** | `/buscar` sem conta: acha a loja? | 🟡 | Acha, e o mapa é bonito. Mas o cartão da loja diz **"0 veíc."** com o estoque publicado (B7), e o pin cai no **centro de Belo Horizonte**, não no endereço (B8). A aba "Veículos" acha o carro por busca textual. |
+| **B11** | `/buscar` sem conta: acha a loja? | ✅ *(27/09)* | ~~Acha, e o mapa é bonito. Mas o cartão da loja diz **"0 veíc."** com o estoque publicado (B7), e o pin cai no **centro de Belo Horizonte**, não no endereço (B8).~~ O cartão conta o estoque publicado (B7) e o pino sai do **endereço**, com a posição ajustável na tela (B8). A aba "Veículos" acha o carro por busca textual. |
 | **B12** | Demonstra interesse **sem criar conta** | ✅ | O melhor fluxo do produto. Consentimento LGPD com o texto copiado para o lead, mensagem de sucesso clara, rodízio atribuiu ao Wesley, prazo de resposta calculado. O segundo envio virou interação `duplicate` no mesmo lead, sem lead novo. |
 | **B13** | Pede avaliação do carro na troca | ❌ | O botão **não existe**: a chave "Aceitar veículo na troca" não salva (B5). Ligada à força no banco, o formulário funciona — e o lead que ele gera entra **sem dono, sem prazo, sem consentimento LGPD e sem telefone normalizado** (B9). |
 | **B14** | Cria conta, favorita, salva busca, cria alerta | 🟡 | Tudo funciona. Mas o cadastro do consumidor tem **3 etapas e pede CPF, data de nascimento e endereço completo** para favoritar um carro, e "salvar busca" está atrás de um ícone sem rótulo, dentro de um painel, num link de 11 px. |
 | **B15** | Agenda uma visita pela página pública | 🟡 | Agendou **domingo, 27 de setembro às 18:30** — com a loja fechada, sem vendedor atribuído e sem vínculo com o lead que ela já tinha criado (B10). |
 | **C16** | Os leads chegaram? Atribuídos? Relógio andando? | 🟡 | O lead do site: sim, com "NO PRAZO · faltam 7h" e o nome do Wesley. O de troca: aparece, com o Fiat Argo e "a avaliar", mas com **"Atribuir"** e **sem etiqueta de prazo**. |
-| **C17** | Responde pelo chat e fecha até o negócio | 🟡 | O negócio abre pelo card do lead e anda pela máquina de estados (Rascunho → Proposta), com preço negociável, margem, comissão e contrato bloqueado com o motivo na tela. **O chat, não:** o botão "Conversar" só aparece para lead com conta vinculada, e o lead anônimo — o da Onda 0 — nunca tem (B11). |
+| **C17** | Responde pelo chat e fecha até o negócio | ✅ *(27/09)* | O negócio abre pelo card do lead e anda pela máquina de estados (Rascunho → Proposta), com preço negociável, margem, comissão e contrato bloqueado com o motivo na tela. ~~**O chat, não:** o botão "Conversar" só aparece para lead com conta vinculada, e o lead anônimo — o da Onda 0 — nunca tem (B11).~~ **O chat também:** a conversa passou a existir sem conta, e o visitante entra por um link (B11). |
 
-**Contagem:** 3 ✅ + 7 🟡 + 7 ❌.
+**Contagem no dia do piloto:** 3 ✅ + 7 🟡 + 7 ❌. As marcas das linhas são as
+daquele dia; as correções de 25/09 e 27/09 estão anotadas bug a bug na §3, e
+duas linhas (B11 e C17) mudaram de marca porque **todos** os defeitos que as
+puxavam para baixo caíram.
 
 ---
 
@@ -123,12 +126,36 @@ resistir aos dois desiste quando o vendedor não consegue entrar.**
 ## 3. Bugs
 
 > **Nove foram corrigidos em 25/09/2026** — B1, B2, B4, B5, B6, B9, B10, B12 e
-> B13, mais o teto de fotos do B17. O relatório fica como está: é o registro do
-> que foi encontrado, com a marca de correção em cada item. O que **não** foi
-> mexido, por ser decisão de produto: B3 (CNPJ da BrasilAPI), B7 (`branch_id` do
-> veículo e a contagem do mapa), B8 (coordenada da filial), B11 (chat do lead
-> anônimo), B14 (`?vehicleId` × `?v=`), B15 (catálogo global de marcas sem papel
-> nem Zod), B16 (FIPE escolhendo a variante errada) e o resto do B17.
+> B13, mais o teto de fotos do B17. **Mais cinco em 27/09/2026** — B7, B8, B11,
+> B14 e B16. O relatório fica como está: é o registro do que foi encontrado, com
+> a marca de correção em cada item. O que **não** foi mexido: B3 (CNPJ da
+> BrasilAPI), B15 (catálogo global de marcas sem papel nem Zod) e o resto do B17.
+
+> **O que mudou de entendimento em 27/09/2026**, ao corrigir os cinco:
+>
+> - **B7 tinha duas faces, não uma.** O relatório apontou o assistente que não
+>   grava `branch_id`. Mas a contagem é `branch._count.vehicles`: qualquer
+>   caminho que criasse veículo sem filial — importação de planilha, chamada
+>   direta da rota, dado antigo — voltaria a zerar o cartão. Corrigir só o
+>   cadastro teria deixado a armadilha armada.
+> - **O defeito do B8 não era geocodificar o município; era não saber que
+>   aquilo era aproximado.** O ponto da praça central era persistido como se
+>   fosse o endereço, e por isso nunca melhorava — nem quando a loja preenchia
+>   rua e número. A coluna de precisão é o que torna o município provisório, e
+>   é ela que permite o "Como chegar" pelo endereço escrito em vez do pino.
+> - **B11 não se resolve fazendo a conversa existir.** Sem uma porta para o
+>   visitante, a loja escreveria para ninguém e acharia que estava atendendo —
+>   pior que o botão ausente. O link de acesso é a metade que o relatório não
+>   pedia e sem a qual a outra metade não vale nada.
+> - **O B16 escondia dois erros a mais.** Não é só o empate de 38 variantes: a
+>   FIPE grafa turbo como **"TB"**, então "1.0 Turbo" nunca teve chance de casar
+>   com a variante certa; e o sufixo de combustível de **flex é `5`, não `1`** —
+>   o código mandava flex para gasolina e só não errava porque caía no "pega o
+>   primeiro daquele ano". Nenhum dos dois aparecia no relatório porque os dois
+>   se escondem atrás do mesmo sintoma.
+> - **O `?vehicleId=` do B14 não podia simplesmente sumir.** Link de carro é
+>   colado em WhatsApp; trocar o nome do parâmetro sem aceitar o antigo teria
+>   transformado um defeito de um clique num defeito de link morto.
 
 Ordenados por quanto custam. Os quatro primeiros impedem o uso.
 
@@ -307,6 +334,16 @@ a loja que informa um fixo publica um botão de WhatsApp que não leva a lugar
 nenhum.
 
 ### B7 — O mapa anuncia "0 veíc." com o estoque publicado
+
+> ✅ **Corrigido em 27/09/2026, pelos dois lados.** (1) O veículo passou a
+> **nascer na filial**: o assistente atribui a matriz quando a loja tem uma só —
+> o caso de 100% das lojas no dia zero — e mostra um `select` de filial a partir
+> da segunda, onde chutar seria inventar um dado que ninguém conferiu. A mesma
+> regra vale para a importação de planilha. (2) **A contagem deixou de depender
+> disso**: o mapa soma o estoque publicado **sem filial** na filial de recepção
+> da loja (a matriz, e na falta dela a mais antiga), numa filial só, para não
+> contar o mesmo carro duas vezes. A migration traz o **backfill** do estoque
+> que já existia. Uma coluna vazia não faz mais o cartão mentir.
 **Gravidade: média-alta. Quebra a tela de descoberta.**
 
 1. Publicar um veículo pelo `/veiculos/novo`.
@@ -319,6 +356,22 @@ textual por "Onix" acha o carro; o cartão e o balão do pin dizem que a loja es
 vazia. Confirmado em `GET /api/v1/map/dealerships`: `"vehiclesCount": 0`.
 
 ### B8 — O pin (e a rota do Google Maps) apontam para o centro da cidade
+
+> ✅ **Corrigido em 27/09/2026.** A geocodificação passou a tentar o **endereço
+> completo** (rua, número, bairro, CEP, cidade) antes do município, no **mesmo
+> serviço que o projeto já usava** — a Nominatim do OpenStreetMap, gratuita e
+> sem chave; o ViaCEP, também já usado, devolve endereço e não coordenada, então
+> não serve aqui. Três garantias novas: a **precisão é gravada**
+> (`geocode_precision`), então o ponto de município é provisório e vira endereço
+> assim que a filial tem rua; `/configuracoes` ganhou **latitude e longitude**,
+> que entram como `manual` e nunca são sobrescritas (apagar as duas devolve o
+> pino ao endereço); e o pino de município deixou de servir como destino — o
+> "Como chegar" passa a usar o **endereço escrito**, com aviso de "pino
+> aproximado" no cartão. Falha da Nominatim (rede, 429, 5xx, ponto fora do
+> Brasil) nunca trava cadastro nem salvamento: a busca roda fora do caminho da
+> resposta e o pino continua sendo o que já estava gravado. Medido na loja de
+> demonstração: de `-21,1775 / -47,8103` (centro de Ribeirão Preto) para
+> `-21,1987 / -47,8080` (Av. Presidente Vargas, 2200).
 **Gravidade: média.**
 Não há campo de latitude/longitude em lugar nenhum da interface, embora
 `createBranchSchema` os aceite. O `map.service.ts:77` geocodifica **só o
@@ -378,6 +431,24 @@ minutos antes**. A loja recebe três registros soltos da mesma cliente (lead do
 site, lead de troca, agendamento) e não tem como saber que são a mesma pessoa.
 
 ### B11 — Lead anônimo não tem chat: a Onda 0 e o chat não se encontram
+
+> ✅ **Corrigido em 27/09/2026 — a conversa passou a existir sem conta.**
+> `conversations.customer_user_id` virou anulável e o contato é **copiado**,
+> como no agendamento sem conta; a constraint `conversations_tem_quem_responde`
+> exige conta **ou** nome + link, porque conversa sem os dois seria uma caixa de
+> saída sem destinatário. O visitante entra por um link
+> (`/conversa/<token>`), lê e responde **sem criar conta**; o token é guardado em
+> hash, como o convite de equipe, e pedir outro invalida o anterior. A loja
+> recebe o link na própria tela para mandar pelo WhatsApp — que é o canal da
+> revenda — e ele sai por e-mail quando há endereço.
+>
+> **O que ficou de fora, e por quê:** o visitante **não tem WebSocket** — ele não
+> tem JWT, e autenticar socket por link exigiria um segundo mecanismo de
+> identidade. A página dele pergunta de novo a cada 6 s; o vendedor, que tem
+> socket, recebe a mensagem na hora (`ChatEventosService`). Também não há anexo
+> nem proposta pelo lado do visitante: aceitar arquivo de quem só tem um link é
+> abrir um depósito anônimo. Teto de 30 mensagens por IP em 10 min, na memória
+> do processo, como o resto (⚠ duas réplicas = teto × réplicas).
 **Gravidade: média-alta.**
 `leads/page.tsx:1114` — o botão "Conversar" é renderizado sob
 `{lead.customer?.id && ...}`. O lead da Onda 0 nasce **sem conta** por
@@ -427,6 +498,13 @@ intenção estava certa, a implementação não. Qualquer link velho, compartilh
 no WhatsApp, vira uma tela branca de erro para o consumidor.
 
 ### B14 — O carro clicado na página da loja não abre
+
+> ✅ **Corrigido em 27/09/2026.** O nome do parâmetro passou a morar num módulo
+> só (`domain/link-de-catalogo.ts`, no shared): quem monta o link e quem o lê
+> usam a mesma fonte. O canônico é `?v=`; **o `?vehicleId=` antigo continua
+> abrindo o carro**, porque link compartilhado já está por aí.
+> `links-do-catalogo.spec.ts` varre o `apps/web` e quebra se uma tela nova
+> inventar o terceiro nome.
 **Gravidade: baixa-média (um clique a mais, e o link compartilhado não funciona).**
 `c/[slug]/PublicDealerClient.tsx:365` linka para
 `/catalogo/<tenant>?vehicleId=<id>`, mas `CatalogoContent.tsx:874` lê
@@ -443,6 +521,26 @@ armadilha nº 3 do CLAUDE.md viva numa rota de escrita. A poluição que o pilot
 anterior viu no banco de teste (`Marca 4qtdeq0e`, …) tem exatamente essa porta.
 
 ### B16 — A FIPE erra o modelo e culpa o cadastro do lojista
+
+> ✅ **Corrigido em 27/09/2026.** Três mudanças. (1) **O empate acabou**: a
+> pontuação passou a cobrar por palavra que ninguém pediu, então "ONIX 1.0 12V TB
+> Flex" ganha de "ONIX Lollapalooza 1.0 F.Power" para quem cadastrou "Onix"; e
+> "Turbo" do lojista casa com o **"TB"** da FIPE, que era o motivo de a versão
+> pontuar abaixo do mínimo. (2) **O ano elimina antes da escolha**: os melhores
+> candidatos têm os anos consultados (no máximo seis, em paralelo, com cache de
+> 24 h) e quem não tem o ano do cadastro não concorre — a variante de 2014
+> deixou de disputar com um carro 2022. (3) **A confiança é dita**: "alta" só
+> quando **uma** variante contém tudo o que o lojista cadastrou; senão o card
+> fica âmbar, diz *"Estimativa FIPE"* e abre a lista de versões para ele
+> escolher. De quebra, `flex` é o sufixo **5** na FIPE, não `1` — o código antigo
+> mandava flex para gasolina e só não errava por causa do "pega o primeiro do
+> ano".
+>
+> Conferido contra a API ao vivo: o mesmo Onix 2022 flex 1.0 Turbo que devolvia
+> *"confira marca, modelo e ano"* agora devolve **R$ 66.755** (ONIX HATCH 1.0
+> 12V TB Flex 5p Aut.) como **estimativa**, com a Plus e a LT oferecidas ao lado;
+> escolher a Plus refaz a consulta e vira referência **firme** de R$ 69.856.
+> Argo Drive 1.0 2019 e City 1.5 EX 2023 saem com confiança alta.
 **Gravidade: média (é o recurso que mais impressiona numa demonstração).**
 
 1. Cadastrar Chevrolet Onix 2022, flex, versão "1.0 Turbo".
@@ -502,8 +600,9 @@ cadastro que está certo. (Fiat Argo 2019 funcionou: `fipeReference: 49864`.)
 > [decisão](../decisoes/2026-09-25%20cadastro%20em%20autosservico.md). O
 > endereço virou item do checklist de primeiros passos; a razão social virou
 > campo editável em `/configuracoes`, porque é ela que sai no contrato. **Segue
-> aberto:** coordenada da loja (B8), WhatsApp separado do telefone, comissão
-> padrão e importação de estoque.
+> aberto:** WhatsApp separado do telefone, comissão padrão e importação de
+> estoque. A coordenada da loja (B8) saiu da lista em 27/09/2026 — ela é
+> geocodificada do endereço e ajustável em `/configuracoes`.
 
 ### O que é pedido e não precisava ser (loja)
 
@@ -520,8 +619,12 @@ e-mail, senha e nome da loja ganha esse dono antes da etapa 2.
 
 ### O que falta ser pedido
 
-- **Coordenada da loja** (ou confirmação do pino no mapa). Hoje o mapa — a tela
-  que o produto usa como diferencial — sempre aponta para o centro da cidade.
+- ~~**Coordenada da loja** (ou confirmação do pino no mapa). Hoje o mapa — a tela
+  que o produto usa como diferencial — sempre aponta para o centro da cidade.~~
+  ✅ 27/09/2026 — o pino sai do **endereço completo**, e `/configuracoes` tem
+  latitude e longitude para acertar a porta (B8). Ainda não é pedido **no
+  cadastro**, de propósito: o formulário público tem cinco campos e o endereço
+  já é item do checklist de primeiros passos.
 - **WhatsApp da loja**, separado do telefone comercial. O botão de WhatsApp já
   existe em vitrine e catálogo, apontando para um número que pode ser fixo.
 - **Horário de funcionamento na hora do cadastro**, não escondido em
@@ -569,9 +672,11 @@ em uso.
    sem dono, sem prazo e sem consentimento (B9); o agendamento entra sem
    vendedor e sem vínculo com o lead da mesma pessoa (B10). Só o formulário de
    interesse foi contemplado.
-5. **Colocar o carro na filial.** O assistente não pergunta e o veículo nasce
+5. ~~**Colocar o carro na filial.** O assistente não pergunta e o veículo nasce
    sem `branch_id`, o que zera a contagem do mapa (B7). Com uma filial só — que
-   é o caso de 100% das lojas no dia zero —, isso deveria ser automático.
+   é o caso de 100% das lojas no dia zero —, isso deveria ser automático.~~
+   ✅ 27/09/2026 — é automático com uma filial, é perguntado a partir da segunda,
+   e a contagem do mapa deixou de depender da coluna estar preenchida.
 6. **Costurar a mesma pessoa.** Juliana mandou um interesse, ofereceu um carro
    na troca, criou conta com o mesmo e-mail e agendou uma visita. O painel mostra
    isso como **quatro coisas sem relação**. O telefone canônico e o e-mail já
@@ -621,7 +726,7 @@ que o `apps/web` envia e confira que o schema correspondente os reconhece. É o
 irmão gêmeo da armadilha nº 1 do CLAUDE.md: aqui a tela existe, a rota existe, e
 o que se perde é o dado.
 
-**5ª — Dar dono e relógio a todo lead, e costurar a mesma pessoa.** 🟡 *(25/09/2026 — troca e agendamento feitos; o chat do lead anônimo continua aberto)*
+**5ª — Dar dono e relógio a todo lead, e costurar a mesma pessoa.** ✅ *(25/09/2026 — troca e agendamento; 27/09/2026 — o chat do lead anônimo)*
 O funil da Onda 0 funciona muito bem por um caminho só. O lead de troca entra
 órfão, sem prazo e sem consentimento LGPD; o agendamento entra sem vendedor e
 sem vínculo; e o lead anônimo — o que o produto foi construído para capturar —
@@ -629,7 +734,9 @@ sem vínculo; e o lead anônimo — o que o produto foi construído para captura
 de verdade, é o gerente olhando uma tela que diz que está tudo no prazo enquanto
 a proposta de troca mais valiosa da semana dorme sem responsável e sem alarme.
 Na ordem: rodízio e SLA no lead de troca e no agendamento; consentimento no
-formulário de troca; e o chat aberto para lead sem conta.
+formulário de troca; e o chat aberto para lead sem conta. **Os três foram
+feitos** — o último em 27/09/2026, com a conversa existindo sem conta e o
+visitante entrando por um link.
 
 **Fora da lista, mas anote:** ✅ *(as duas foram feitas em 25/09/2026)* B6 (a máscara que estraga o telefone fixo) custa
 três linhas e evita que o dono veja o próprio número errado na página pública no

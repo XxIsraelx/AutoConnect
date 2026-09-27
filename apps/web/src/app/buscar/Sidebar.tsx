@@ -17,6 +17,7 @@ import { useAuthStore } from '@/store/auth';
 import CompareDrawer from './CompareDrawer';
 import { getOpenStatus, getOpenHoursList } from '@/lib/businessHours';
 import { getVisited, markVisited } from './visited';
+import { linkDoVeiculoNoCatalogo } from '@autoconnect/shared';
 import type { DealershipPin, PublicVehicle, VehiclesPage, PublicBrand, SavedSearch } from './types';
 
 /* ── Helpers ─────────────────────────────────────────────── */
@@ -49,16 +50,37 @@ function formatDistance(km: number) {
 
 /** Abre Google Maps com rota ou busca de endereço.
  *  Se `origin` for fornecido, a rota já parte da localização do usuário. */
+/** O pino vale como destino? Só quando não é o centro do município. */
+export function pinoConfiavel(pin: DealershipPin): boolean {
+  return (
+    pin.latitude !== null && pin.longitude !== null &&
+    pin.geocodePrecision !== 'city' &&
+    // `null` é dado antigo, de antes da coluna existir: era geocodificação de
+    // município, então também não serve como destino.
+    pin.geocodePrecision !== null
+  );
+}
+
 export function directionsUrl(
   pin: DealershipPin,
   origin?: { lat: number; lng: number } | null,
 ) {
-  if (pin.latitude && pin.longitude) {
+  // Coordenada só quando ela aponta para a loja. Com o pino no centro da
+  // cidade, o endereço escrito leva o cliente mais perto da porta do que o
+  // ponto — era o caso em que o "Como chegar" errava por 1,5 km.
+  if (pinoConfiavel(pin)) {
     const base = `https://www.google.com/maps/dir/?api=1&destination=${pin.latitude},${pin.longitude}`;
     return origin ? `${base}&origin=${origin.lat},${origin.lng}` : base;
   }
   const addr = [pin.addressLine, pin.city, pin.state].filter(Boolean).join(', ');
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr || pin.name)}`;
+  if (addr) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`;
+  }
+  if (pin.latitude && pin.longitude) {
+    const base = `https://www.google.com/maps/dir/?api=1&destination=${pin.latitude},${pin.longitude}`;
+    return origin ? `${base}&origin=${origin.lat},${origin.lng}` : base;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(pin.name)}`;
 }
 
 const condMap: Record<string, { label: string; cls: string }> = {
@@ -572,6 +594,11 @@ function DealerDetail({
             <span className="text-sm txt-fraco leading-snug">
               {[pin.addressLine, [pin.city, pin.state].filter(Boolean).join(', ')]
                 .filter(Boolean).join(' — ')}
+              {!pinoConfiavel(pin) && (
+                <span className="block text-[11px] text-amber-500/90 mt-0.5">
+                  Pino aproximado — confira o endereço ao sair.
+                </span>
+              )}
             </span>
           </div>
         )}
@@ -1074,7 +1101,7 @@ export default function Sidebar({
         compare={compare}
         onToggleCompare={toggleCompare}
         onAlert={setAlertVehicle}
-        onOpenVehicle={(v) => router.push(`/catalogo/${selected.tenant.id}?v=${v.id}`)}
+        onOpenVehicle={(v) => router.push(linkDoVeiculoNoCatalogo(selected.tenant.id, v.id))}
       />
       {overlays}
     </div>

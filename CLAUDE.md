@@ -337,7 +337,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 902 testes (646 na API, 256 no `shared`):
+são 974 testes (708 na API, 266 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -645,7 +645,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
   foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
   migrations (ver *Testes e CI*).
-- Migrations atuais (20): `init`, `trade_in_and_dealer_setting`,
+- Migrations atuais (21): `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
   `add_announcements_invites_alerts_searches_goals`,
   `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`,
@@ -654,7 +654,8 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   `comprador_do_contrato`, `representante_legal`, `assinatura_externa`,
   `funil_lead_anonimo`, `rascunho_de_anuncio`,
   `rodizio_sla_carteira_motivo_perda`, `carteira_fechada_por_padrao`,
-  `cobranca_asaas`, `validacao_de_saque`.
+  `cobranca_asaas`, `validacao_de_saque`,
+  `filial_do_veiculo_geocodificacao_e_chat_sem_conta`.
 
 ---
 

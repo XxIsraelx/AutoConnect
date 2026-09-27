@@ -2,6 +2,12 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
 import { ehGlobal, type Escopo } from '../../common/escopo';
+import { TAMANHO_MINIMO_DO_TOKEN_DE_VISITANTE } from '@autoconnect/shared';
+import { ChatEventosService } from '../../gateway/chat-eventos.service';
+import { EmailService } from '../../common/email/email.service';
+import {
+  hashDoToken, hashesIguais, linkDoVisitante, novoTokenDeVisitante,
+} from './visitante';
 
 /** Últimas mensagens e dados do veículo, iguais nas duas listagens. */
 const RESUMO = {
@@ -24,8 +30,15 @@ const RESUMO = {
 export class ConversationsService {
   constructor(
     private readonly prisma: PrismaService,
-    /** Consolidado da plataforma para o super admin. */
+    /**
+     * Consolidado da plataforma para o super admin — e o **único** lookup sem
+     * contexto do caminho do visitante: achar a loja da conversa a partir do
+     * token. Mesma forma do webhook de assinatura, que resolve o tenant do
+     * envelope antes de trabalhar dentro dele.
+     */
     private readonly privilegiado: PrivilegedPrismaService,
+    private readonly eventos: ChatEventosService,
+    private readonly email: EmailService,
   ) {}
 
   /** Lista conversas de uma concessionária */
@@ -144,48 +157,274 @@ export class ConversationsService {
     });
   }
 
-  /** Lojista abre (ou retoma) conversa a partir de um lead */
+  /**
+   * Lojista abre (ou retoma) conversa a partir de um lead — **com ou sem conta**.
+   *
+   * Antes, lead sem conta era recusado com 400, e a tela nem mostrava o botão.
+   * O lead da Onda 0 nasce sem conta por definição: o chat que o produto
+   * anuncia não existia para o lead que ele mesmo captura.
+   *
+   * Sem conta, a conversa nasce com o contato **copiado** (como o agendamento
+   * sem conta) e com um link de acesso para o visitante. O link cru sai daqui
+   * uma vez, em `linkDoVisitante`, e é o que a loja manda pelo WhatsApp — o
+   * e-mail sai junto quando há endereço.
+   */
   async getOrCreateFromLead(
     tenantId: string,
     salespersonId: string,
     leadId: string,
   ): Promise<unknown> {
-    return this.prisma.withTenant(tenantId, async (tx) => {
+    const resultado = await this.prisma.withTenant(tenantId, async (tx) => {
       const lead = await tx.lead.findFirst({
         where: { id: leadId, tenantId },
-        select: { id: true, customerUserId: true, vehicleId: true },
-      });
-      if (!lead) throw new NotFoundException('Lead não encontrado');
-      if (!lead.customerUserId) {
-        throw new BadRequestException(
-          'Este lead não tem um cliente cadastrado — só é possível conversar pelo chat com clientes que possuem conta.',
-        );
-      }
-
-      const existing = await tx.conversation.findFirst({
-        where: { customerUserId: lead.customerUserId, tenantId, status: { not: 'closed' } },
-      });
-      if (existing) {
-        // garante que o vendedor fique atribuído
-        if (!existing.salespersonId) {
-          return tx.conversation.update({
-            where: { id: existing.id },
-            data: { salespersonId },
-          });
-        }
-        return existing;
-      }
-
-      return tx.conversation.create({
-        data: {
-          customerUserId: lead.customerUserId,
-          tenantId,
-          vehicleId: lead.vehicleId ?? null,
-          leadId: lead.id,
-          salespersonId,
+        select: {
+          id: true, customerUserId: true, vehicleId: true,
+          contactName: true, contactPhone: true, contactEmail: true,
         },
       });
+      if (!lead) throw new NotFoundException('Lead não encontrado');
+
+      const existente = await tx.conversation.findFirst({
+        where: {
+          tenantId,
+          status: { not: 'closed' },
+          ...(lead.customerUserId
+            ? { customerUserId: lead.customerUserId }
+            : { leadId: lead.id, customerUserId: null }),
+        },
+      });
+
+      if (existente) {
+        // garante que o vendedor fique atribuído
+        const conversa = existente.salespersonId
+          ? existente
+          : await tx.conversation.update({
+              where: { id: existente.id },
+              data: { salespersonId },
+            });
+        return { conversa, token: null as string | null, email: null as string | null };
+      }
+
+      if (lead.customerUserId) {
+        const conversa = await tx.conversation.create({
+          data: {
+            customerUserId: lead.customerUserId,
+            tenantId,
+            vehicleId: lead.vehicleId ?? null,
+            leadId: lead.id,
+            salespersonId,
+          },
+        });
+        return { conversa, token: null as string | null, email: null as string | null };
+      }
+
+      // Sem conta: contato copiado + porta de entrada. A constraint
+      // `conversations_tem_quem_responde` recusa um sem o outro, de propósito —
+      // conversa sem conta e sem link seria uma caixa de saída sem destinatário.
+      const { token, hash } = novoTokenDeVisitante();
+      const conversa = await tx.conversation.create({
+        data: {
+          tenantId,
+          customerUserId: null,
+          leadId: lead.id,
+          vehicleId: lead.vehicleId ?? null,
+          salespersonId,
+          contactName: lead.contactName,
+          contactPhone: lead.contactPhone,
+          contactEmail: lead.contactEmail,
+          guestTokenHash: hash,
+        },
+      });
+      return { conversa, token, email: lead.contactEmail };
     });
+
+    if (resultado.token) {
+      await this.avisarVisitante(tenantId, resultado.email, resultado.token);
+    }
+
+    return {
+      ...resultado.conversa,
+      /** Só na criação: o valor cru não é guardado. */
+      guestUrl: resultado.token ? linkDoVisitante(resultado.token) : null,
+    };
+  }
+
+  /**
+   * Gera um link de acesso novo para o visitante e invalida o anterior.
+   *
+   * É o "reenviar convite" do chat: o hash é o que fica no banco, então o link
+   * não pode ser mostrado duas vezes. A tela diz que o anterior deixa de valer.
+   */
+  async novoLinkDeVisitante(tenantId: string, conversationId: string): Promise<unknown> {
+    const { token, hash } = novoTokenDeVisitante();
+
+    const conversa = await this.prisma.withTenant(tenantId, async (tx) => {
+      const atual = await tx.conversation.findFirst({
+        where: { id: conversationId, tenantId },
+        select: { id: true, customerUserId: true, contactName: true, contactEmail: true },
+      });
+      if (!atual) throw new NotFoundException('Conversa não encontrada');
+      if (atual.customerUserId) {
+        throw new BadRequestException(
+          'Esta conversa é de um cliente com conta — ele entra pelo próprio login.',
+        );
+      }
+      return tx.conversation.update({
+        where: { id: conversationId },
+        data: { guestTokenHash: hash },
+        select: { id: true, contactEmail: true },
+      });
+    });
+
+    await this.avisarVisitante(tenantId, conversa.contactEmail, token);
+
+    return { id: conversa.id, guestUrl: linkDoVisitante(token) };
+  }
+
+  /**
+   * Manda o link por e-mail quando há endereço.
+   *
+   * Falha de e-mail não derruba a abertura da conversa: a loja recebe o link na
+   * própria tela para copiar, que é o caminho que uma revenda usa de fato
+   * (WhatsApp). Mesmo princípio do contrato que é emitido sem ser arquivado.
+   */
+  private async avisarVisitante(
+    tenantId: string,
+    email: string | null,
+    token: string,
+  ): Promise<void> {
+    if (!email) return;
+    try {
+      const loja = await this.prisma.withTenant(tenantId, (tx) =>
+        tx.tenant.findUnique({ where: { id: tenantId }, select: { tradeName: true } }),
+      );
+      await this.email.sendConviteDeConversa({
+        to: email,
+        dealerName: loja?.tradeName ?? 'a concessionária',
+        url: linkDoVisitante(token),
+      });
+    } catch {
+      // Silencioso com motivo: o link está na tela da loja, e um provedor de
+      // e-mail ausente não pode impedir a conversa de existir.
+    }
+  }
+
+  /* ── O visitante sem conta ────────────────────────────────── */
+
+  /**
+   * Resolve a conversa a partir do token do link.
+   *
+   * O lookup por hash é o único passo privilegiado: não existe `app.tenant_id`
+   * nem `app.user_id` antes de saber de quem é a conversa. Achada a loja, tudo
+   * o mais roda dentro de `withTenant`.
+   */
+  private async conversaDoToken(token: string): Promise<{ id: string; tenantId: string }> {
+    if (!token || token.length < TAMANHO_MINIMO_DO_TOKEN_DE_VISITANTE) {
+      throw new NotFoundException('Conversa não encontrada');
+    }
+    const hash = hashDoToken(token);
+    const conversa = await this.privilegiado.conversation.findFirst({
+      where: { guestTokenHash: hash },
+      select: { id: true, tenantId: true, guestTokenHash: true },
+    });
+    if (!conversa?.guestTokenHash || !hashesIguais(conversa.guestTokenHash, hash)) {
+      throw new NotFoundException('Conversa não encontrada');
+    }
+    return { id: conversa.id, tenantId: conversa.tenantId };
+  }
+
+  /** A conversa e as mensagens, para a página pública do visitante. */
+  async visitanteLe(token: string): Promise<unknown> {
+    const { id, tenantId } = await this.conversaDoToken(token);
+
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const conversa = await tx.conversation.findFirstOrThrow({
+        where: { id, tenantId },
+        select: {
+          id: true, status: true, contactName: true, lastMessageAt: true,
+          tenant: { select: { tradeName: true, logoUrl: true, slug: true, primaryPhone: true } },
+          vehicle: RESUMO.vehicle,
+          salesperson: { select: { fullName: true } },
+        },
+      });
+
+      const mensagens = await tx.message.findMany({
+        where: { conversationId: id },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true, body: true, kind: true, createdAt: true, senderUserId: true,
+          sender: { select: { fullName: true } },
+        },
+      });
+
+      return {
+        conversa,
+        // `senderUserId` nulo é o próprio visitante: ele não tem usuário.
+        mensagens: mensagens.map((m) => ({
+          id: m.id,
+          body: m.body,
+          kind: m.kind,
+          createdAt: m.createdAt,
+          deLoja: m.senderUserId !== null,
+          autor: m.senderUserId === null ? conversa.contactName : (m.sender?.fullName ?? null),
+        })),
+      };
+    });
+  }
+
+  /** O visitante responde. Sem conta, sem anexo, sem proposta. */
+  async visitanteEscreve(token: string, body: string): Promise<unknown> {
+    const { id, tenantId } = await this.conversaDoToken(token);
+
+    const mensagem = await this.prisma.withTenant(tenantId, async (tx) => {
+      const conversa = await tx.conversation.findFirst({
+        where: { id, tenantId },
+        select: { id: true, status: true, contactName: true },
+      });
+      if (!conversa) throw new NotFoundException('Conversa não encontrada');
+      if (conversa.status === 'closed') {
+        throw new BadRequestException('Esta conversa foi encerrada pela loja.');
+      }
+
+      const criada = await tx.message.create({
+        data: {
+          conversationId: id,
+          tenantId,
+          // Sem usuário: é o visitante. É o que distingue os dois lados na tela.
+          senderUserId: null,
+          body,
+          kind: 'text',
+        },
+        select: { id: true, body: true, kind: true, createdAt: true, senderUserId: true },
+      });
+
+      await tx.conversation.update({
+        where: { id },
+        data: {
+          lastMessageAt: new Date(),
+          unreadCountSalesperson: { increment: 1 },
+        },
+      });
+
+      return { ...criada, autor: conversa.contactName };
+    });
+
+    // O vendedor com a conversa aberta vê na hora; o visitante não tem socket.
+    this.eventos.emitir(id, 'conversation:message', {
+      ...mensagem,
+      conversationId: id,
+      tenantId,
+      sender: null,
+    });
+
+    return {
+      id: mensagem.id,
+      body: mensagem.body,
+      kind: mensagem.kind,
+      createdAt: mensagem.createdAt,
+      deLoja: false,
+      autor: mensagem.autor,
+    };
   }
 
   /** Fecha conversa */

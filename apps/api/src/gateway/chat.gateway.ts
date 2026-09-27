@@ -3,6 +3,7 @@ import {
   MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
@@ -12,6 +13,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import { PrismaService, type ScopedClient } from '../common/prisma/prisma.service';
 import { PropostaChatService } from '../modules/deals/proposta-chat.service';
+import { ChatEventosService } from './chat-eventos.service';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -23,7 +25,7 @@ interface AuthenticatedSocket extends Socket {
   namespace: '/chat',
   cors: { origin: process.env.WEB_URL ?? 'http://localhost:3000', credentials: true },
 })
-export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server!: Server;
   private readonly logger = new Logger(ChatGateway.name);
 
@@ -31,7 +33,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly jwt: JwtService,
     private readonly prisma: PrismaService,
     private readonly proposta: PropostaChatService,
+    private readonly eventos: ChatEventosService,
   ) {}
+
+  /**
+   * Entrega o servidor para quem emite de fora do socket — hoje, a mensagem do
+   * visitante sem conta, que entra por rota REST pública. Sem isto o vendedor
+   * com a conversa aberta só veria a resposta ao recarregar a página.
+   */
+  afterInit(servidor: Server) {
+    this.eventos.registrar(servidor);
+  }
 
   async handleConnection(client: AuthenticatedSocket) {
     try {

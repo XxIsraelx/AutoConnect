@@ -73,6 +73,26 @@ enum ListingStatus {
   unpublished
 }
 
+/// De onde vieram as coordenadas da filial — e, por consequência, o quanto o
+/// pino do mapa pode ser confiado.
+///
+/// Existe porque a coluna `latitude`/`longitude` sozinha não distingue "o dono
+/// marcou o ponto da loja" de "geocodificamos o município e caiu na praça
+/// central". Sem essa distinção, o município persistido virava definitivo: duas
+/// lojas da mesma cidade no mesmo pino, e o "Como chegar" levando o cliente a
+/// 1,5 km do lugar certo, para sempre.
+///
+/// `manual` nunca é sobrescrito. `city` é provisório — assim que a filial ganha
+/// rua e número, a próxima leitura do mapa tenta subir para `address`.
+enum GeocodePrecision {
+  /// Informado na tela de configurações pelo próprio lojista.
+  manual
+  /// Geocodificado a partir de rua, número, bairro, CEP e cidade.
+  address
+  /// Só o município — aproximação, e o alvo de um upgrade futuro.
+  city
+}
+
 enum FuelType {
   gasoline
   ethanol
@@ -469,6 +489,12 @@ model DealershipBranch {
   location       Unsupported("geography(Point, 4326)")?
   latitude       Float?
   longitude      Float?
+  /// Como as coordenadas acima foram obtidas. Ver `GeocodePrecision`.
+  geocodePrecision GeocodePrecision?                    @map("geocode_precision")
+  /// Quando a última tentativa de geocodificação aconteceu — inclusive a que
+  /// falhou. É o que impede uma filial sem endereço de bater na Nominatim a
+  /// cada abertura do mapa.
+  geocodedAt     DateTime?                              @map("geocoded_at") @db.Timestamptz()
   businessHours  Json                                   @default("{}") @map("business_hours")
   isActive       Boolean                                @default(true) @map("is_active")
   createdAt      DateTime                               @default(now()) @map("created_at") @db.Timestamptz()
@@ -982,7 +1008,18 @@ model SalespersonAvailability {
 model Conversation {
   id                     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId               String             @map("tenant_id") @db.Uuid
-  customerUserId         String             @map("customer_user_id") @db.Uuid
+  /// Nulo quando a conversa é de um lead **sem conta** — o caso que a Onda 0
+  /// criou e o chat não atendia. Ver `contactName` e `guestTokenHash`.
+  customerUserId         String?            @map("customer_user_id") @db.Uuid
+  /// Contato **copiado** do lead, como no agendamento sem conta: a conversa
+  /// precisa dizer com quem é mesmo que o lead seja apagado depois.
+  contactName            String?            @map("contact_name")
+  contactPhone           String?            @map("contact_phone")
+  contactEmail           String?            @map("contact_email") @db.Citext
+  /// sha256 do link de acesso do visitante sem conta (o mesmo esquema de
+  /// `UserInvitation.tokenHash`). É a única porta de entrada dele — sem isso a
+  /// loja escreveria para ninguém.
+  guestTokenHash         String?            @unique @map("guest_token_hash")
   salespersonId          String?            @map("salesperson_id") @db.Uuid
   vehicleId              String?            @map("vehicle_id") @db.Uuid
   leadId                 String?            @map("lead_id") @db.Uuid
@@ -994,7 +1031,7 @@ model Conversation {
   updatedAt              DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
 
   tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer    User      @relation("ConversationsAsCustomer", fields: [customerUserId], references: [id], onDelete: Cascade)
+  customer    User?     @relation("ConversationsAsCustomer", fields: [customerUserId], references: [id], onDelete: Cascade)
   salesperson User?     @relation("ConversationsAsSalesperson", fields: [salespersonId], references: [id])
   vehicle     Vehicle?  @relation(fields: [vehicleId], references: [id])
   lead        Lead?     @relation(fields: [leadId], references: [id])

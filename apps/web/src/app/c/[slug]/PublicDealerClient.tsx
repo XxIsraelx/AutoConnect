@@ -15,7 +15,9 @@ import ScheduleModal from '@/components/ScheduleModal';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import TradeInModal from '@/components/TradeInModal';
 import FormularioDeInteresse from '@/components/FormularioDeInteresse';
-import { escolherWhatsApp, formatarTelefoneBr } from '@autoconnect/shared';
+import {
+  escolherWhatsApp, formatarTelefoneBr, linkDoVeiculoNoCatalogo,
+} from '@autoconnect/shared';
 
 /* ── Tipos ─────────────────────────────────────────────── */
 interface Dealer {
@@ -371,7 +373,7 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
                         {fmtPrice(v.promoPrice ?? v.price)}
                       </p>
                       <Link
-                        href={`/catalogo/${dealer.id}?vehicleId=${v.id}`}
+                        href={linkDoVeiculoNoCatalogo(dealer.id, v.id)}
                         className="text-[10px] font-medium text-blue-600 hover:underline"
                       >
                         Ver mais →

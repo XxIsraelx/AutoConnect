@@ -8,6 +8,12 @@ export interface DealershipPin {
   email: string | null;
   latitude: number | null;
   longitude: number | null;
+  /**
+   * De onde vem o pino: `manual` (a loja marcou), `address` (geocodificado do
+   * endereço) ou `city` (só o município — aproximado). Antes tudo era `city` e
+   * nada dizia, então o "Como chegar" mandava o cliente para a praça central.
+   */
+  geocodePrecision: 'manual' | 'address' | 'city' | null;
   vehiclesCount: number;
   businessHours?: unknown;
   tenant: {

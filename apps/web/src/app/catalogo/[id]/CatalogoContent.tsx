@@ -22,7 +22,7 @@ import type {
   VehiclesPage, PublicBrand,
 } from '../../../app/buscar/types';
 import SeloProcedencia from './SeloProcedencia';
-import { escolherWhatsApp, formatarTelefoneBr } from '@autoconnect/shared';
+import { escolherWhatsApp, formatarTelefoneBr, veiculoDaBusca } from '@autoconnect/shared';
 
 /* ── Helpers ─────────────────────────────────────────────── */
 
@@ -866,9 +866,12 @@ export default function CatalogoContent() {
   // Drawer
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
 
-  // Abre o veículo direto quando chega com ?v=<id> (ex: vindo da busca)
+  // Abre o veículo direto quando a URL pede um (do `/buscar` ou da vitrine da
+  // loja). Os dois nomes de parâmetro moram em `link-de-catalogo` — a vitrine
+  // montava `?vehicleId=` e esta tela lia só `?v=`, então o carro clicado na
+  // vitrine abria a lista. Link antigo continua valendo.
   useEffect(() => {
-    const v = new URLSearchParams(window.location.search).get('v');
+    const v = veiculoDaBusca(window.location.search);
     if (v) setSelectedVehicleId(v);
   }, []);
 

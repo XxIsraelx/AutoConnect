@@ -1111,20 +1111,25 @@ function LeadCard({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-2 border-t borda">
         <ContatoDoLead leadId={lead.id} phone={phone} email={email} compacto />
         <div className="ml-auto flex items-center gap-3 shrink-0">
-          {lead.customer?.id && (
-            <button
-              onClick={() => onChat(lead)}
-              disabled={chatLoading}
-              className="flex items-center gap-1 text-[10px] font-semibold text-blue-600 dark:text-blue-400
-                         hover:text-blue-300 transition-colors disabled:opacity-50"
-              title="Conversar pelo chat"
-            >
-              {chatLoading
-                ? <Loader2 size={10} className="animate-spin" />
-                : <MessageSquare size={10} />}
-              Conversar
-            </button>
-          )}
+          {/* B11 — o botão exigia `lead.customer?.id`, e o lead da Onda 0 nasce
+              sem conta por definição: o chat que o produto anuncia não existia
+              justamente para o lead que ele mesmo captura. Agora a conversa
+              existe sem conta, com o contato copiado, e o visitante entra por
+              um link que a loja manda pelo WhatsApp (ou que sai por e-mail). */}
+          <button
+            onClick={() => onChat(lead)}
+            disabled={chatLoading}
+            className="flex items-center gap-1 text-[10px] font-semibold text-blue-600 dark:text-blue-400
+                       hover:text-blue-300 transition-colors disabled:opacity-50"
+            title={lead.customer?.id
+              ? 'Conversar pelo chat'
+              : 'Conversar — o cliente recebe um link, sem precisar de conta'}
+          >
+            {chatLoading
+              ? <Loader2 size={10} className="animate-spin" />
+              : <MessageSquare size={10} />}
+            Conversar
+          </button>
           <button
             onClick={() => onShowHistory(lead)}
             className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-blue-400 transition-colors"
@@ -1163,19 +1168,26 @@ export default function LeadsPage() {
   const [csvLoading, setCsvLoading]     = useState(false);
   const [erroCsv, setErroCsv]           = useState('');
   const [chatLoadingId, setChatLoadingId] = useState<string | null>(null);
+  const [erroChat, setErroChat] = useState<string | null>(null);
   const [novoLead, setNovoLead]           = useState(false);
   const [avisoDeDedupe, setAvisoDeDedupe] = useState(false);
 
   async function openChat(lead: Lead) {
-    if (!token || !lead.customer?.id) return;
+    if (!token) return;
     setChatLoadingId(lead.id);
+    setErroChat(null);
     try {
       const conv = await api<{ id: string }>('/conversations/from-lead', {
         method: 'POST', token, body: { leadId: lead.id },
       });
+      // O `guestUrl` da resposta não é levado na URL de propósito: link de
+      // acesso em barra de endereço acaba em histórico e em print. A tela do
+      // chat gera o dela quando o vendedor pede.
       router.push(`/chat?c=${conv.id}`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Não foi possível abrir a conversa.');
+      // `alert` não mostra erro de campo e não deixa rastro na tela; a faixa
+      // segue o padrão do projeto (falha de ação, inline).
+      setErroChat(textoDoErro(err));
       setChatLoadingId(null);
     }
   }
@@ -1347,6 +1359,12 @@ export default function LeadsPage() {
       {erroCsv && (
         <p className="text-xs text-rose-600 dark:text-rose-400 -mt-2">
           Falha ao exportar: {erroCsv}
+        </p>
+      )}
+
+      {erroChat && (
+        <p className="text-xs text-rose-600 dark:text-rose-400 -mt-2">
+          Não foi possível abrir a conversa: {erroChat}
         </p>
       )}
 
