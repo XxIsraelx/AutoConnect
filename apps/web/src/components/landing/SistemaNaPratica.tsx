@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SECOES, waLink } from './config';
 
@@ -12,32 +12,41 @@ import { SECOES, waLink } from './config';
  * desenhos: se uma tela mudar, a captura se refaz — o roteiro está no plano
  * da landing.
  *
+ * As capturas entram num MacBook desenhado aqui — moldura, câmera, base e uma
+ * janela de navegador com o endereço da tela —, para o visitante ler "é o
+ * sistema aberto num computador", e não "é uma imagem".
+ *
  * E a vitrine ao vivo é a da loja de demonstração (`/c/demo`, a "Aurora
  * Seminovos"), que fica fora da busca e do mapa e avisa que é demonstração.
  */
 const TELAS = [
   {
     chave: 'leads',
+    rota: '/leads',
     rotulo: 'Leads',
     legenda: 'Cada lead chega com o vendedor da vez e o prazo de primeiro contato correndo — no prazo, vencendo ou estourado.',
   },
   {
     chave: 'chat',
+    rota: '/chat',
     rotulo: 'Chat',
     legenda: 'O cliente conversa sem criar conta, e o vendedor responde pelo painel, com a conversa presa ao lead.',
   },
   {
     chave: 'agenda',
+    rota: '/agendamentos',
     rotulo: 'Agenda',
     legenda: 'Test drives e avaliações da semana, com quem já confirmou e quem ainda não.',
   },
   {
     chave: 'negocio',
+    rota: '/negocios',
     rotulo: 'Negócio',
     legenda: 'Valor de venda, desconto, custo, margem e comissão de cada carro vendido.',
   },
   {
     chave: 'relatorios',
+    rota: '/relatorios',
     rotulo: 'Relatórios',
     legenda: 'Funil de conversão, margem por mês, dias em estoque e desempenho de cada vendedor.',
   },
@@ -77,21 +86,52 @@ export default function SistemaNaPratica() {
         ))}
       </div>
 
-      <figure role="tabpanel" className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-950 overflow-hidden shadow-2xl shadow-slate-300/50 dark:shadow-none">
-        {/* No celular a tela do painel fica pequena: o toque abre a imagem inteira. */}
-        <a href={src} target="_blank" rel="noopener" aria-label={`Abrir a tela de ${tela.rotulo} em tamanho real`}>
-          <Image
-            key={src}
-            src={src}
-            alt={`Tela de ${tela.rotulo} do AutoConnect: ${tela.legenda}`}
-            width={2880}
-            height={1800}
-            sizes="(min-width: 1152px) 1104px, 100vw"
-            className="w-full h-auto"
-            priority={tela.chave === 'leads'}
-          />
-        </a>
-        <figcaption className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-4 text-sm text-slate-600 dark:text-slate-300">
+      <figure role="tabpanel">
+        <div className="relative isolate">
+          {/* Brilho atrás do computador, para ele não sumir no fundo escuro. */}
+          <div aria-hidden className="absolute -z-10 inset-x-[15%] inset-y-[10%] rounded-full bg-brand-accent/15 blur-3xl" />
+
+          {/* Tampa: moldura preta com a câmera no alto. */}
+          <div className="relative mx-auto w-[92%] rounded-t-[10px] sm:rounded-t-[22px] bg-slate-950 dark:bg-slate-900 p-[1.6%] pb-[2%] ring-1 ring-slate-900/20 dark:ring-slate-700/70">
+            <span aria-hidden className="absolute left-1/2 top-[0.55%] -translate-x-1/2 w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-slate-700" />
+            <div className="overflow-hidden rounded-[3px] sm:rounded-md bg-slate-950">
+              {/* Janela do navegador, no escuro como o painel capturado. */}
+              <div aria-hidden className="flex items-center gap-2 h-5 sm:h-8 px-2 sm:px-3 bg-slate-800 border-b border-slate-700/60">
+                <span className="flex gap-1 sm:gap-1.5 shrink-0">
+                  <span className="w-1.5 h-1.5 sm:w-2.5 sm:h-2.5 rounded-full bg-[#ff5f57]" />
+                  <span className="w-1.5 h-1.5 sm:w-2.5 sm:h-2.5 rounded-full bg-[#febc2e]" />
+                  <span className="w-1.5 h-1.5 sm:w-2.5 sm:h-2.5 rounded-full bg-[#28c840]" />
+                </span>
+                <span className="mx-auto flex items-center justify-center gap-1 min-w-0 w-[55%] rounded sm:rounded-md bg-slate-900 px-2 py-px sm:py-1 text-[7px] sm:text-xs text-slate-400">
+                  <Lock className="w-1.5 h-1.5 sm:w-3 sm:h-3 shrink-0" />
+                  <span className="truncate">autoconnectapp.com.br{tela.rota}</span>
+                </span>
+                {/* Contrapeso dos três botões, para o endereço ficar no centro. */}
+                <span className="w-[26px] sm:w-[42px] shrink-0" />
+              </div>
+              {/* No celular a tela do painel fica pequena: o toque abre a imagem inteira. */}
+              <a href={src} target="_blank" rel="noopener" aria-label={`Abrir a tela de ${tela.rotulo} em tamanho real`}>
+                <Image
+                  key={src}
+                  src={src}
+                  alt={`Tela de ${tela.rotulo} do AutoConnect: ${tela.legenda}`}
+                  width={2880}
+                  height={1800}
+                  sizes="(min-width: 1152px) 980px, 90vw"
+                  className="block w-full h-auto"
+                  priority={tela.chave === 'leads'}
+                />
+              </a>
+            </div>
+          </div>
+
+          {/* Base: alumínio, mais larga que a tampa, com o rebaixo para abrir. */}
+          <div aria-hidden className="relative h-2 sm:h-4 rounded-b-[8px] sm:rounded-b-[18px] bg-gradient-to-b from-slate-300 via-slate-200 to-slate-400 dark:from-slate-500 dark:via-slate-600 dark:to-slate-700 shadow-xl shadow-slate-900/20 dark:shadow-black/50">
+            <span className="absolute left-1/2 top-0 -translate-x-1/2 w-[14%] h-1/2 rounded-b-md bg-slate-400/70 dark:bg-slate-800/70" />
+          </div>
+        </div>
+
+        <figcaption className="mt-6 text-center text-sm text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
           {tela.legenda}
           <span className="sm:hidden text-slate-400"> Toque na imagem para ampliar.</span>
         </figcaption>

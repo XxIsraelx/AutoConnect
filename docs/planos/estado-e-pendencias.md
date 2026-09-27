@@ -223,6 +223,19 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
   - Como testar: `grep` sem "Nada acontece quando o trial"; a contagem bate com a saída do portão.
   - Encontrado em: 27/09/2026 · Claude Code · na tarefa da seção "No celular" da landing.
 
+- **Aviso de hidratação no `<html>` em toda página, no modo dev.**
+  - Onde: `apps/web/src/app/layout.tsx` (`SCRIPT_TEMA` e `<html lang="pt-BR">`).
+  - O que é: o script de tema roda antes do React e põe `class="dark"` e `style="color-scheme"`
+    no `<html>`; o HTML do servidor não os tem, e o React avisa "Extra attributes from the
+    server: class,style" a cada carga.
+  - Evidência: console do navegador em `http://localhost:3000/` com `pnpm dev`.
+  - Impacto: só ruído no console de desenvolvimento (em produção o React não avisa e mantém os
+    atributos) — mas o ruído esconde aviso de hidratação de verdade quando aparecer um.
+  - Sugestão: `<html lang="pt-BR" suppressHydrationWarning>`, que é o uso previsto para
+    script de tema; vale só para os atributos do próprio `<html>`, não para os filhos.
+  - Como testar: recarregar a home em dev e o console não trazer mais o aviso.
+  - Encontrado em: 27/09/2026 · Claude Code · ao verificar a moldura do celular na landing.
+
 **Lacunas frente ao mercado** — Claude Cowork, 27/09/2026, na pesquisa de preços
 ([plano de preços](https://claude.ai/code/artifact/daf7ac7d-5114-4621-9028-3759dbb07be8)).
 O que os concorrentes com preço público entregam e o AutoConnect não. Várias já estão num
