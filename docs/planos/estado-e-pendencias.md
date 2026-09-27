@@ -387,6 +387,39 @@ conserto do plano pendente de pagamento
   - Como testar: e2e — cliente agenda pelo site, o vendedor com aparelho inscrito recebe o aviso.
   - Encontrado em: 27/09/2026 · Claude Code (sessão 2) · no item C3.
 
+**Encontradas em 27/09/2026** — Claude Code (sessão 2), nos logs do deploy da Onda C (`fd8c0b8`)
+
+- **Lembrete de agendamento com e-mail recusado é tentado de novo a cada hora.**
+  - Onde: `apps/api/src/modules/tasks/tasks.service.ts` (`enviarLembretes`, o `catch`) e os
+    agendamentos da loja de demonstração (`packages/db/prisma/demo.ts`, e-mails `@example.com`).
+  - O que é: quando o envio lança, `reminderSentAt` não é gravado, e o cron da hora seguinte
+    tenta de novo — até o agendamento sair da janela de 24 h. O Resend recusa `@example.com`
+    por validação (erro permanente), então cada agendamento da loja demo gera até 24 tentativas.
+  - Evidência: log da API em produção, 27/09/2026 19:00 UTC — `Falha no lembrete do
+    agendamento b9bfe327…: Resend recusou o e-mail para demo.cliente.priscila@example.com:
+    validation_error — Invalid \`to\` field` (e o mesmo para `8bc187ab…`).
+  - Impacto: ruído no log toda hora (esconde falha de verdade), chamadas perdidas ao Resend, e
+    o mesmo vale para um endereço real inválido de cliente.
+  - Sugestão: pular lojas `isDemo` nos crons de e-mail; e tratar a recusa de validação (4xx do
+    provedor) como definitiva — gravar `reminderSentAt` com a falha anotada —, deixando a nova
+    tentativa só para erro passageiro (rede, 5xx).
+  - Como testar: e2e do cron com um agendamento cujo e-mail o provedor simulado recusa por
+    validação — uma tentativa só; loja demo — nenhuma.
+  - Encontrado em: 27/09/2026 · Claude Code (sessão 2) · ao verificar o deploy da Onda C.
+
+- **O site em produção roda sem o `sharp`.**
+  - Onde: `apps/web/package.json` (sem `sharp`) e o serviço web no Railway.
+  - O que é: o Next 14 avisa que, sem o `sharp`, a otimização de imagem do `next/image` usa
+    a alternativa em WebAssembly — mais lenta e com mais memória.
+  - Evidência: log do serviço web em produção, 27/09/2026 19:26 UTC — `For production Image
+    Optimization with Next.js, the optional 'sharp' package is strongly recommended`.
+  - Impacto: a landing usa `next/image` nas telas do sistema e do celular (capturas grandes);
+    a primeira otimização de cada tamanho fica lenta e pesa na memória do serviço.
+  - Sugestão: `pnpm --filter @autoconnect/web add sharp` (a imagem do Railway é Linux x64; o
+    pnpm baixa o binário certo no build).
+  - Como testar: o aviso some do log do serviço web depois do deploy.
+  - Encontrado em: 27/09/2026 · Claude Code (sessão 2) · ao verificar o deploy da Onda C.
+
 **Lacunas frente ao mercado** — Claude Cowork, 27/09/2026, na pesquisa de preços
 ([plano de preços](https://claude.ai/code/artifact/daf7ac7d-5114-4621-9028-3759dbb07be8)).
 O que os concorrentes com preço público entregam e o AutoConnect não. Várias já estão num
