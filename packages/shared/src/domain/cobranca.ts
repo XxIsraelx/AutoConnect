@@ -27,13 +27,80 @@
 export const PLANOS_PAGOS = ['essencial', 'crescimento', 'profissional'] as const;
 export type PlanoPago = (typeof PLANOS_PAGOS)[number];
 
+/* ── Tabelas de preço ─────────────────────────────────────────── */
+
+/**
+ * As tabelas de preço, **com nome**. Cada loja guarda a tabela em que
+ * contratou (`tenant_subscriptions.price_table`) e paga por ela para sempre —
+ * inclusive se mudar de plano: quem entrou no Essencial de lançamento e sobe
+ * para o Crescimento paga o Crescimento de lançamento, não o da tabela cheia
+ * (decisão de 27/09/2026, `docs/decisoes/2026-09-27 plano de precos.md`).
+ *
+ * Subir a tabela é **acrescentar** uma entrada aqui e trocar `TABELA_VIGENTE`.
+ * Nunca editar uma tabela que já existe: há loja pagando por ela.
+ */
+export const TABELAS_DE_PRECO = {
+  'lancamento-2026-09': { essencial: 19_700n, crescimento: 34_700n, profissional: 59_700n },
+} as const satisfies Record<string, Record<PlanoPago, bigint>>;
+
+export type TabelaDePreco = keyof typeof TABELAS_DE_PRECO;
+export type ConjuntoDeTabelas = Record<string, Record<PlanoPago, bigint>>;
+
+/** A tabela de quem contrata hoje pela primeira vez. */
+export const TABELA_VIGENTE: TabelaDePreco = 'lancamento-2026-09';
+
+/**
+ * A tabela que vale para a loja: a travada, se ela tiver uma que ainda exista;
+ * senão a vigente. Nome desconhecido (tabela apagada por engano, lixo no
+ * banco) cai na vigente em vez de quebrar a contratação.
+ */
+export function tabelaDaLoja(
+  travada: string | null | undefined,
+  tabelas: ConjuntoDeTabelas = TABELAS_DE_PRECO,
+  vigente: string = TABELA_VIGENTE,
+): string {
+  return travada && Object.prototype.hasOwnProperty.call(tabelas, travada) ? travada : vigente;
+}
+
+/* ── Ciclo de cobrança ─────────────────────────────────────────── */
+
+export const CICLOS_DE_COBRANCA = ['mensal', 'anual'] as const;
+export type CicloDeCobranca = (typeof CICLOS_DE_COBRANCA)[number];
+
+export const ROTULO_CICLO: Record<CicloDeCobranca, string> = {
+  mensal: 'Mensal',
+  anual: 'Anual',
+};
+
+/** No anual, a loja paga 10 meses e usa 12 (cerca de 17% de desconto). */
+export const MESES_COBRADOS_NO_ANUAL = 10n;
+
+/** Quanto tempo um pagamento confirmado cobre. */
+export const DIAS_DO_CICLO: Record<CicloDeCobranca, number> = { mensal: 30, anual: 365 };
+
+/**
+ * O valor de uma cobrança, em centavos: o preço mensal do plano na tabela da
+ * loja, vezes os meses cobrados no ciclo. `bigint` do começo ao fim.
+ */
+export function precoDoPlano(
+  plano: PlanoPago,
+  opcoes: { tabela?: string | null; ciclo?: CicloDeCobranca },
+  tabelas: ConjuntoDeTabelas = TABELAS_DE_PRECO,
+  vigente: string = TABELA_VIGENTE,
+): bigint {
+  const mensal = tabelas[tabelaDaLoja(opcoes.tabela, tabelas, vigente)]![plano];
+  return (opcoes.ciclo ?? 'mensal') === 'anual' ? mensal * MESES_COBRADOS_NO_ANUAL : mensal;
+}
+
 export interface FaixaDePlano {
   plano: PlanoPago;
   nome: string;
-  /** Em centavos: dinheiro nunca é `number` de ponto flutuante. */
+  /** Em centavos, na tabela **vigente**. Para a loja, use `precoDoPlano`. */
   precoMensalCentavos: bigint;
   /** Teto de veículos **não arquivados**; `null` = ilimitado. */
   limiteVeiculos: number | null;
+  /** Teto de filiais **ativas**; `null` = ilimitado. Conferido ao criar filial. */
+  limiteFiliais: number | null;
   /** Frase curta para o cartão do plano na tela. */
   resumo: string;
 }
@@ -58,22 +125,26 @@ export const CATALOGO_DE_PLANOS: Record<PlanoPago, FaixaDePlano> = {
   essencial: {
     plano: 'essencial',
     nome: 'Essencial',
-    precoMensalCentavos: 19_700n,
+    precoMensalCentavos: TABELAS_DE_PRECO[TABELA_VIGENTE].essencial,
     limiteVeiculos: 30,
+    limiteFiliais: 1,
     resumo: 'Para a loja que gira até 30 carros no pátio.',
   },
   crescimento: {
     plano: 'crescimento',
     nome: 'Crescimento',
-    precoMensalCentavos: 34_700n,
+    precoMensalCentavos: TABELAS_DE_PRECO[TABELA_VIGENTE].crescimento,
     limiteVeiculos: 80,
+    limiteFiliais: 2,
     resumo: 'Para quem passou dos 30 e ainda cabe em 80.',
   },
   profissional: {
     plano: 'profissional',
     nome: 'Profissional',
-    precoMensalCentavos: 59_700n,
+    precoMensalCentavos: TABELAS_DE_PRECO[TABELA_VIGENTE].profissional,
     limiteVeiculos: null,
+    // "Mais, sob consulta": o super admin muda à mão quando a conversa fechar.
+    limiteFiliais: 5,
     resumo: 'Estoque ilimitado, sem teto de anúncios.',
   },
 };
@@ -95,6 +166,25 @@ export function ehPlanoPago(plano: string): plano is PlanoPago {
 export function limiteDeVeiculos(plano: string): number | null {
   if (ehPlanoPago(plano)) return CATALOGO_DE_PLANOS[plano].limiteVeiculos;
   return CATALOGO_DE_PLANOS.essencial.limiteVeiculos;
+}
+
+/**
+ * Teto de filiais ativas do plano. O trial roda com o da menor faixa, pelo
+ * mesmo motivo do estoque; a cortesia está no Crescimento e herda o dele.
+ *
+ * É conferido **só ao criar** filial: a loja que já tem mais filiais que o
+ * plano (desceu de plano, ou foi ajustada à mão) mantém todas — nenhuma filial
+ * some, só a próxima é recusada. Mesma regra do teto de estoque, que nunca
+ * despublica.
+ */
+export function limiteDeFiliais(plano: string): number | null {
+  if (ehPlanoPago(plano)) return CATALOGO_DE_PLANOS[plano].limiteFiliais;
+  return CATALOGO_DE_PLANOS.essencial.limiteFiliais;
+}
+
+/** A menor faixa cujo teto de filiais comporta `filiais`, para a mensagem de recusa. */
+export function faixaParaFiliais(filiais: number): FaixaDePlano | null {
+  return FAIXAS.find((f) => f.limiteFiliais === null || filiais <= f.limiteFiliais) ?? null;
 }
 
 /**
@@ -398,8 +488,9 @@ export interface ClienteDeCobranca {
 export interface NovaAssinatura {
   idClienteExterno: string;
   plano: PlanoPago;
-  /** Em centavos. O adaptador converte para a unidade do gateway. */
+  /** Em centavos, **por cobrança** (no anual, os 10 meses). O adaptador converte. */
   valorCentavos: bigint;
+  ciclo: CicloDeCobranca;
   meio: MeioDePagamento;
   /** Vencimento da primeira cobrança. */
   primeiroVencimento: Date;
@@ -529,15 +620,16 @@ export function aplicarEventoDeCobranca(
   atual: EstadoDaCobranca,
   evento: Pick<EventoDeCobranca, 'tipo' | 'fatura' | 'ocorridoEm'>,
   carenciaDias: number = DIAS_DE_CARENCIA,
+  ciclo: CicloDeCobranca = 'mensal',
 ): ResultadoDoEventoDeCobranca {
   const igual: ResultadoDoEventoDeCobranca = { estado: atual, mudou: false };
 
   switch (evento.tipo) {
     case 'pagamento_confirmado': {
-      // O período vai até um mês depois do vencimento da fatura paga; sem
-      // fatura no evento, um mês a partir de agora.
+      // O período vai até um ciclo depois do vencimento da fatura paga (30
+      // dias no mensal, 365 no anual); sem fatura no evento, a partir de agora.
       const base = evento.fatura?.vencimento ?? evento.ocorridoEm;
-      const fim = somarDias(base, 30);
+      const fim = somarDias(base, DIAS_DO_CICLO[ciclo]);
       if (atual.status === 'active' && atual.graceUntil === null &&
           atual.currentPeriodEnd?.getTime() === fim.getTime()) {
         return igual;

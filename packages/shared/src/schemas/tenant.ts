@@ -148,6 +148,14 @@ export const createBranchSchema = z.object({
 export type CreateBranchInput = z.infer<typeof createBranchSchema>;
 
 /**
+ * Nova filial pela loja (`POST /tenant/branch`). Sem `isHeadquarters`: a
+ * matriz nasce no cadastro e trocar de matriz merece rota própria. O teto de
+ * filiais do plano é conferido na API (`limiteDeFiliais`).
+ */
+export const novaFilialSchema = createBranchSchema.omit({ isHeadquarters: true });
+export type NovaFilialInput = z.infer<typeof novaFilialSchema>;
+
+/**
  * Atualização de filial: os mesmos campos da criação, todos opcionais.
  *
  * Existe para que o corpo passe pelo Zod em vez de ir cru para o Prisma —

@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.011 testes (730 na API, 281 no `shared`):
+são 1.036 testes (744 na API, 292 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -573,6 +573,16 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 cobranca e bloqueio por venci
   R$ 347), Profissional (ilimitado, R$ 597). Os valores moram **num lugar só**:
   `CATALOGO_DE_PLANOS` no shared — a landing também lê de lá. Porquê:
   `docs/decisoes/2026-09-27 plano de precos.md`.
+- **Preço travado por TABELA, não por valor.** `TABELAS_DE_PRECO` tem nome por
+  tabela; a loja grava a sua (`price_table`) na primeira contratação e paga por
+  ela em qualquer plano, para sempre. Subir preço é **acrescentar** tabela e
+  trocar `TABELA_VIGENTE` — nunca editar uma que existe. Preço de cobrança sai
+  de `precoDoPlano`, nunca de `precoMensalCentavos` direto.
+- **Anual:** 12 meses pelo preço de 10 (`billing_cycle`), `YEARLY` na Asaas, e
+  o pagamento cobre 365 dias em `aplicarEventoDeCobranca`.
+- **Filiais: 1 / 2 / 5 por plano** (`limiteDeFiliais`), conferido só ao criar
+  (`POST /tenant/branch`, `tenant_admin`, 422 acima do teto). Nunca desativa
+  filial existente; desativada não conta.
 - **Cortesia** (fundadora ou loja interna): `courtesy_since` na assinatura, só
   o super admin concede (`/admin › loja › Cortesia`). `avaliarCobranca` decide
   por ela antes de tudo — situação `cortesia`, nenhum prazo bloqueia, o cron não
@@ -672,7 +682,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
   foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
   migrations (ver *Testes e CI*).
-- Migrations atuais (23): `init`, `trade_in_and_dealer_setting`,
+- Migrations atuais (24): `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
   `add_announcements_invites_alerts_searches_goals`,
   `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`,
@@ -683,7 +693,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   `rodizio_sla_carteira_motivo_perda`, `carteira_fechada_por_padrao`,
   `cobranca_asaas`, `validacao_de_saque`,
   `filial_do_veiculo_geocodificacao_e_chat_sem_conta`, `loja_de_demonstracao`,
-  `cortesia_de_cobranca`.
+  `cortesia_de_cobranca`, `preco_travado_e_ciclo`.
 
 ---
 

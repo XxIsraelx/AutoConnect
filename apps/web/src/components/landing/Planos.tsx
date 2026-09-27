@@ -44,6 +44,10 @@ export default function Planos() {
               </li>
               <li className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
                 <CheckCircle2 size={15} className="text-brand-accent shrink-0" />
+                {f.limiteFiliais === 1 ? '1 loja' : `Até ${f.limiteFiliais} filiais`}
+              </li>
+              <li className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                <CheckCircle2 size={15} className="text-brand-accent shrink-0" />
                 Usuários ilimitados
               </li>
               <li className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
@@ -63,7 +67,8 @@ export default function Planos() {
           Criar conta grátis
         </Link>
         <p className="text-xs text-slate-400 max-w-lg mx-auto">
-          Preço de lançamento: quem assinar agora continua com ele quando a tabela subir.{' '}
+          Preço de lançamento: quem assinar agora continua com ele quando a tabela subir, em
+          qualquer plano. No anual, 12 meses pelo preço de 10.{' '}
           {DURACAO_DO_TRIAL_DIAS} dias grátis, sem cartão, sem taxa de implantação e sem fidelidade.{' '}
           <a
             href={waLink('Oi, Israel! Quero saber qual plano serve para a minha loja.')}
