@@ -26,6 +26,9 @@
 | **Consulta veicular** | ✅ estrutura | ✅ completo | cache, idempotência e custo; **falta fornecedor real** |
 | **Cobrança e bloqueio** | ✅ completo | ✅ completo | camada neutra, faixas por estoque, somente leitura com carência, cron de avisos, painel do super admin; **adaptador Asaas escrito e NÃO exercitado — falta conta** ([decisão](../decisoes/2026-09-25%20cobranca%20e%20bloqueio%20por%20vencimento.md)) |
 | **Assinatura externa** | ✅ estrutura | ✅ completo | camada neutra, webhook com HMAC, provedor simulado e adaptador Clicksign (API 3.0, testado no sandbox); **ligado em sandbox; falta assinatura de ponta a ponta e conta de produção** ([decisão](../decisoes/2026-09-22%20assinatura%20externa.md)) |
+| **WhatsApp oficial** | ✅ estrutura | ✅ completo | desde 27/09/2026 (sessão 2, item C1): camada neutra com provedor simulado, webhook com HMAC do corpo cru e idempotente, cliente que escreve vira lead pelo caminho do formulário (dedupe, rodízio, prazo), resposta pelo chat com a janela de 24 h conferida na API, modelos aprovados, status de entrega, uso do mês em **Canais**. **Adaptador da Meta escrito e NÃO exercitado — falta a conta** ([decisão](../decisoes/2026-09-27%20whatsapp%20oficial.md)) |
+| **Leads dos portais** | ✅ estrutura | ✅ completo | desde 27/09/2026 (sessão 2, item C2): endereço de entrada por loja e portal (URL de webhook e e-mail de encaminhamento, token só em hash), entregas guardadas cruas e reprocessáveis, formato AutoConnect no webhook e leitor genérico de e-mail com rótulos, código de confirmação do Gmail na tela, lead pelo caminho do formulário com origem `portal`. **Falta a conta do e-mail de entrada (Postmark) e uma notificação real da OLX** ([decisão](../decisoes/2026-09-27%20leads%20dos%20portais.md)) |
+| **Push do vendedor** | ✅ completo | ✅ completo | desde 27/09/2026 (sessão 2, item C3): Web Push com VAPID pelo service worker (sem app de loja), lead novo para o vendedor da vez (ou a gerência, sem responsável), mensagem do cliente para quem cuida da conversa, aparelho que muda de dono, logout que desinscreve. Verificado de ponta a ponta com o serviço de push real. **Falta só cadastrar as chaves VAPID no Railway** ([decisão](../decisoes/2026-09-27%20push%20do%20vendedor.md)) |
 
 ## Pendências conhecidas
 
@@ -315,6 +318,66 @@ conserto do plano pendente de pagamento
     `NODE_ENV=production` e ver o aviso no boot; a tela do plano mostrar o selo.
   - Encontrado em: 27/09/2026 · Claude Code · na auditoria de pendências.
 
+**Encontradas em 27/09/2026** — Claude Code (sessão 2), ao fazer o WhatsApp oficial (C1)
+
+- **A mensagem do vendedor no chat do sistema não para o prazo de primeiro contato.**
+  - Onde: `apps/api/src/gateway/chat.gateway.ts` (`onSend`, ramo que não é WhatsApp) e
+    `packages/shared/src/domain/sla.ts` (`INTERACOES_DE_PRIMEIRA_RESPOSTA`, que inclui `chat`).
+  - O que é: o comentário do `sla.ts` diz que a mensagem do vendedor no chat conta como
+    primeira resposta, mas nenhum caminho a registra: o gateway grava a mensagem e não cria a
+    interação nem chama `SlaService.registrarPrimeiraResposta`.
+  - Evidência: `grep -rn registrarPrimeiraResposta apps/api/src` só acha
+    `LeadsService.addInteraction` (a interação registrada à mão) e o WhatsApp novo.
+  - Impacto: o vendedor que responde o lead pelo chat do sistema aparece com o prazo
+    estourado, e o relatório de tempo de resposta conta contra ele.
+  - Sugestão: no `onSend`, para mensagem da equipe numa conversa com `leadId`, fazer o que
+    `WhatsappService.gravarSaida` faz — interação `chat` na primeira mensagem da conversa e
+    `registrarPrimeiraResposta(..., 'chat')`. O gateway é da sessão 2; não corrigido aqui
+    para não misturar com o C1.
+  - Como testar: e2e do gateway — lead com prazo, vendedor escreve pelo socket,
+    `first_responded_at` preenchido e uma interação `chat` na timeline.
+  - Encontrado em: 27/09/2026 · Claude Code (sessão 2) · no item C1.
+
+- **O lembrete de agendamento ainda não sai pelo WhatsApp.**
+  - Onde: o modelo existe (`lembrete_agendamento` em `MODELOS_DE_WHATSAPP`), mas o cron de
+    lembretes vive em `modules/appointments/`, que é da sessão 1 (item D1).
+  - O que é: o item 12 do plano de paridade pede "modelos aprovados para lembrete de
+    agendamento"; o envio automático não foi ligado para não escrever no módulo da outra
+    sessão.
+  - Impacto: o lembrete continua só por e-mail — e o agendamento sem conta, que é o comum,
+    muitas vezes não tem e-mail (o cron pula).
+  - Sugestão: depois do D1, o cron chama `WhatsappService.enviarModelo` (ou um método novo
+    que abra a conversa pelo telefone do agendamento) quando a loja tem número conectado.
+  - Como testar: agendamento amanhã com telefone e sem e-mail → o cron manda o modelo e
+    marca `reminderSentAt`.
+  - Encontrado em: 27/09/2026 · Claude Code (sessão 2) · no item C1.
+
+- **Foto, áudio e documento do cliente entram só como aviso.**
+  - Onde: `apps/api/src/modules/whatsapp/whatsapp.service.ts` (`aplicarMensagem`).
+  - O que é: a mensagem de mídia vira "o cliente enviou um áudio — abra no WhatsApp", com a
+    legenda. Baixar exige chamar a Meta pelo id da mídia e guardar o arquivo.
+  - Impacto: a foto do carro de troca, comum na negociação, não aparece no sistema.
+  - Sugestão: quando houver conta, baixar pela Graph API e guardar no bucket privado do
+    Supabase (mídia do cliente não é pública como a foto do anúncio).
+  - Como testar: cliente manda foto → a conversa mostra a imagem por URL assinada.
+  - Encontrado em: 27/09/2026 · Claude Code (sessão 2) · no item C1.
+
+**Encontrada em 27/09/2026** — Claude Code (sessão 2), ao fazer o push do vendedor (C3)
+
+- **O agendamento pedido pelo cliente não gera push.**
+  - Onde: `apps/api/src/modules/appointments/` (sessão 1) e `app/(dashboard)/layout.tsx`
+    (`useLeadsBadge`, que ainda avisa "Novo agendamento" com a aba aberta).
+  - O que é: o push cobre lead novo e mensagem do cliente; o agendamento feito pelo cliente
+    no site só aparece no contador do menu e no aviso da aba aberta.
+  - Impacto: o test drive pedido pelo site fica sem confirmação até alguém abrir o painel —
+    menor que o lead (o cliente já está engajado), mas é o mesmo "vendedor no pátio".
+  - Sugestão: no ponto em que o agendamento do cliente é criado, chamar
+    `PushService.avisarLeadNovo`-como (um `avisarAgendamento` novo no `PushService`) para o
+    vendedor do agendamento ou a gerência. Não feito aqui para não escrever no módulo de
+    agendamentos, que é da sessão 1 (item D1).
+  - Como testar: e2e — cliente agenda pelo site, o vendedor com aparelho inscrito recebe o aviso.
+  - Encontrado em: 27/09/2026 · Claude Code (sessão 2) · no item C3.
+
 **Lacunas frente ao mercado** — Claude Cowork, 27/09/2026, na pesquisa de preços
 ([plano de preços](https://claude.ai/code/artifact/daf7ac7d-5114-4621-9028-3759dbb07be8)).
 O que os concorrentes com preço público entregam e o AutoConnect não. Várias já estão num
@@ -340,6 +403,10 @@ existe por causa delas, e a tabela só sobe quando as duas primeiras existirem.
   - Como testar: carro publicado no AutoConnect aparece no portal em até N minutos e some ao
     ser vendido; lead de teste enviado pelo portal cai no funil com a fonte certa e no vendedor
     de plantão.
+  - **Situação em 27/09/2026:** a **entrada** está pronta (item C2, sessão 2) — endereço por
+    loja e portal, webhook e e-mail, testada com o provedor simulado; falta a conta do e-mail
+    de entrada e uma notificação real da OLX. A **publicação** continua sem módulo. Ver a
+    [decisão](../decisoes/2026-09-27%20leads%20dos%20portais.md).
 - ◐ **Emissão de nota fiscal (NF-e) — adiada por decisão em 27/09/2026** ([plano de resolução](plano-resolucao-de-pendencias.md#adiado-por-decisão)). A contradição entre os dois planos deixou de existir: os dois apontam para o adiamento.
   - Onde: não existe módulo. O [plano de vendas](plano-implementacao-vendas.md), Fase 5,
     prevê NF-e via emissor terceiro (Focus NFe, NFe.io, Tecnospeed); o
@@ -365,7 +432,12 @@ existe por causa delas, e a tabela só sobe quando as duas primeiras existirem.
     cobra por conversa: embutido no preço ou adicional).
   - Como testar: mensagem enviada ao número da loja aparece na caixa do vendedor de plantão, e
     a resposta dele sai pelo WhatsApp e conta no prazo de primeiro contato.
-- **App do vendedor com notificação.**
+  - **Situação em 27/09/2026:** a estrutura inteira está pronta e testada com o provedor
+    simulado (o "como testar" acima passa em `test/whatsapp.e2e-spec.ts`); falta a conta na
+    Meta e a decisão 2. Ver a [decisão](../decisoes/2026-09-27%20whatsapp%20oficial.md).
+- **App do vendedor com notificação.** — ◐ push pronto em 27/09/2026 (item C3, sessão 2);
+  falta cadastrar as chaves VAPID no Railway. Ver a
+  [decisão](../decisoes/2026-09-27%20push%20do%20vendedor.md).
   - Onde: item 14 da Onda 2; hoje site responsivo e PWA, sem push de verdade.
   - Evidência: 11 de 15 produtos no levantamento; MobiGestor e Autoconf têm app nas lojas.
   - Impacto: vendedor fora do computador não vê o lead novo a tempo, e o rodízio perde a razão.

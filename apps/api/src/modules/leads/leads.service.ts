@@ -8,6 +8,8 @@ import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.s
 import { ehGlobal, type Escopo } from '../../common/escopo';
 import { EmailService } from '../../common/email/email.service';
 import {
+  LEAD_SOURCES,
+  ROTULO_DA_ORIGEM_DE_LEAD,
   limiteDeAlertaSegundos,
   normalizarTelefoneBr,
   rotuloDoMotivo,
@@ -27,14 +29,38 @@ import { RodizioService } from '../crm/rodizio.service';
 import { SlaService } from '../crm/sla.service';
 import { AtribuicaoDeLead, type LeadDistribuido } from '../crm/atribuicao.service';
 import { carteiraDe, type Ator } from './carteira';
+import { PushService } from '../users/push/push.service';
 
 /** Dados do e-mail de "lead novo", montados dentro da transação e enviados fora. */
-interface AvisoDeLeadNovo {
+export interface AvisoDeLeadNovo {
   dealerEmail: string | null;
   dealerName: string;
   customerName: string;
   vehicleInfo: string;
   message: string | null;
+  /** O push para o vendedor da vez (ou para a gerência, se ficou sem responsável). */
+  push?: { tenantId: string; leadId: string; assignedTo: string | null; origem: string };
+}
+
+/** Um contato que chegou por canal externo — WhatsApp oficial hoje, portais depois. */
+export interface LeadDeCanal {
+  source: (typeof LEAD_SOURCES)[number];
+  contactName: string | null;
+  contactPhone: string | null;
+  contactEmail?: string | null;
+  vehicleId?: string | null;
+  message?: string | null;
+  /** Como aparece na primeira linha da timeline: "WhatsApp oficial", "OLX". */
+  comoChegou: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface LeadDeCanalCriado {
+  leadId: string;
+  deduplicado: boolean;
+  assignedTo: string | null;
+  /** Para `avisarDeLeadDeCanal`, depois do commit. Nulo quando deduplicou. */
+  aviso: AvisoDeLeadNovo | null;
 }
 
 @Injectable()
@@ -55,6 +81,8 @@ export class LeadsService {
     private readonly rodizio: RodizioService,
     private readonly sla: SlaService,
     private readonly atribuicao: AtribuicaoDeLead,
+    /** O aviso no celular do vendedor da vez — ver `PushService`. */
+    private readonly push: PushService,
   ) {}
 
   /* ── Rodízio e prazo, na criação do lead ───────────────── */
@@ -168,6 +196,7 @@ export class LeadsService {
         customerName: customer.fullName,
         vehicleInfo,
         message: input.message ?? null,
+        push: { tenantId, leadId: lead.id, assignedTo, origem: ROTULO_DA_ORIGEM_DE_LEAD[input.source] },
       } satisfies AvisoDeLeadNovo,
     };
       },
@@ -301,6 +330,7 @@ export class LeadsService {
           customerName: input.contactName,
           vehicleInfo,
           message: input.message ?? null,
+          push: { tenantId, leadId: lead.id, assignedTo, origem: 'Site' },
         } satisfies AvisoDeLeadNovo,
       };
     });
@@ -455,7 +485,131 @@ export class LeadsService {
       return { lead, deduplicado: false };
     });
 
+    // Quem cadastra para si mesmo não precisa ser avisado; o lead que foi para
+    // o rodízio (ou para outro vendedor) precisa.
+    if (!deduplicado && lead.assignedTo !== criadorId) {
+      this.push.avisarLeadNovo(tenantId, {
+        leadId: lead.id,
+        assignedTo: lead.assignedTo,
+        nome: lead.contactName,
+        veiculo: null,
+        origem: ROTULO_DA_ORIGEM_DE_LEAD[input.source],
+      });
+    }
+
     return { ...lead, deduplicado };
+  }
+
+  /* ── Lead de canal (WhatsApp oficial, portais) ─────────── */
+
+  /**
+   * O cliente escreveu no WhatsApp da loja, ou um portal repassou o contato.
+   * Mesmas regras do formulário público — deduplicação, rodízio e prazo de
+   * primeiro contato —, com duas diferenças:
+   *
+   *  - roda **dentro** da transação de quem chama: o canal grava o lead, a
+   *    conversa e a mensagem juntos, e um lead sem a mensagem que o criou seria
+   *    um cartão sem motivo;
+   *  - o e-mail de "lead novo" não sai daqui. Quem chama o dispara com
+   *    `avisarDeLeadDeCanal` depois do commit — de dentro da transação, ele
+   *    avisaria de um lead que ainda pode ser desfeito.
+   *
+   * Sem consentimento gravado, de propósito: quem escreve para a loja no
+   * WhatsApp iniciou a conversa, e o portal colheu o aceite do lado dele. O
+   * texto de aceite deste sistema é o do formulário que ele exibe.
+   */
+  async criarDeCanal(
+    tx: ScopedClient,
+    tenantId: string,
+    entrada: LeadDeCanal,
+  ): Promise<LeadDeCanalCriado> {
+    const contactEmail = entrada.contactEmail?.trim() || null;
+
+    const existente = await acharLeadDuplicado(tx, tenantId, {
+      contactPhone: entrada.contactPhone,
+      contactEmail,
+    });
+    if (existente) {
+      await registrarContatoRepetido(tx, {
+        tenantId,
+        leadId: existente.id,
+        actorUserId: null,
+        vehicleId: entrada.vehicleId ?? null,
+        vehicleIdAtual: existente.vehicleId,
+        source: entrada.source,
+        message: entrada.message ?? null,
+        origem: 'canal',
+      });
+      const lead = await tx.lead.findUniqueOrThrow({
+        where: { id: existente.id },
+        select: { assignedTo: true },
+      });
+      return { leadId: existente.id, deduplicado: true, assignedTo: lead.assignedTo, aviso: null };
+    }
+
+    const tenant = await tx.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        tradeName: true,
+        branches: {
+          where: { isActive: true },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+          select: { email: true },
+        },
+      },
+    });
+    if (!tenant) throw new NotFoundException('Concessionária não encontrada');
+
+    const vehicleInfo = await this.descreverVeiculo(tx, entrada.vehicleId ?? null);
+    const criadoEm = new Date();
+    const { assignedTo, firstResponseDueAt, viaRodizio } =
+      await this.distribuirEAgendar(tx, tenantId, { criadoEm });
+
+    const lead = await tx.lead.create({
+      data: {
+        tenantId,
+        customerUserId: null,
+        assignedTo,
+        firstResponseDueAt,
+        vehicleId: entrada.vehicleId ?? null,
+        contactName: entrada.contactName,
+        contactEmail,
+        contactPhone: entrada.contactPhone,
+        contactPhoneNormalized: normalizarTelefoneBr(entrada.contactPhone),
+        source: entrada.source,
+        status: 'new',
+        message: entrada.message ?? null,
+        metadata: (entrada.metadata ?? {}) as Prisma.InputJsonValue,
+      },
+      select: { id: true },
+    });
+
+    await this.registrarCriacao(tx, tenantId, lead.id, null, entrada.comoChegou, criadoEm);
+    if (viaRodizio) {
+      await this.rodizio.registrarNaTimeline(
+        tx, tenantId, lead.id, assignedTo, new Date(criadoEm.getTime() + 1),
+      );
+    }
+
+    return {
+      leadId: lead.id,
+      deduplicado: false,
+      assignedTo,
+      aviso: {
+        dealerEmail: tenant.branches[0]?.email ?? null,
+        dealerName: tenant.tradeName,
+        customerName: entrada.contactName ?? entrada.contactPhone ?? 'Cliente',
+        vehicleInfo,
+        message: entrada.message ?? null,
+        push: { tenantId, leadId: lead.id, assignedTo, origem: entrada.comoChegou },
+      },
+    };
+  }
+
+  /** O e-mail de "lead novo" de um lead de canal, depois do commit. */
+  avisarDeLeadDeCanal(aviso: AvisoDeLeadNovo | null): void {
+    this.avisarLojaDeLeadNovo(aviso);
   }
 
   /* ── Auxiliares compartilhados ─────────────────────────── */
@@ -502,9 +656,23 @@ export class LeadsService {
       .trim();
   }
 
-  /** E-mail de "lead novo" para a loja. Fora da transação e não bloqueante. */
+  /**
+   * O aviso de "lead novo": o push no celular do vendedor da vez e o e-mail da
+   * loja. Fora da transação e não bloqueante. O push sai mesmo sem e-mail
+   * cadastrado — é ele que chega ao vendedor no pátio.
+   */
   private avisarLojaDeLeadNovo(aviso: AvisoDeLeadNovo | null): void {
-    if (!aviso?.dealerEmail) return;
+    if (!aviso) return;
+    if (aviso.push) {
+      this.push.avisarLeadNovo(aviso.push.tenantId, {
+        leadId: aviso.push.leadId,
+        assignedTo: aviso.push.assignedTo,
+        nome: aviso.customerName,
+        veiculo: aviso.vehicleInfo,
+        origem: aviso.push.origem,
+      });
+    }
+    if (!aviso.dealerEmail) return;
 
     this.email
       .sendLeadNotification({

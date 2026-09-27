@@ -131,6 +131,10 @@ enum LeadSource {
   ad
   trade_in
   other
+  /// Entrada de leads dos portais (OLX, Webmotors…). Qual portal fica no
+  /// `metadata.portal` do lead — um valor por portal aqui multiplicaria o enum
+  /// a cada integração nova.
+  portal
 }
 
 enum AppointmentType {
@@ -266,6 +270,12 @@ model Tenant {
   crmSettings               TenantCrmSettings?
   invoices                  TenantInvoice[]
   billingWebhookEvents      BillingWebhookEvent[]
+  // Canais (WhatsApp oficial) — os modelos estão no fim do arquivo.
+  whatsappAccounts          WhatsappAccount[]
+  whatsappWebhookEvents     WhatsappWebhookEvent[]
+  portalConnections         PortalConnection[]
+  portalDeliveries          PortalDelivery[]
+  pushSubscriptions         PushSubscription[]
 
   @@map("tenants")
 }
@@ -596,6 +606,8 @@ model User {
   contractSignatures         ContractSignature[]
   /// Última posição do rodízio das lojas em que este usuário é o ponteiro.
   rodizioDeLeads             TenantCrmSettings[]       @relation("RodizioUltimoUsuario")
+  /// Os aparelhos em que o usuário ativou notificação push — ver o fim do arquivo.
+  pushSubscriptions          PushSubscription[]
 
   @@index([tenantId])
   @@index([role])
@@ -1063,21 +1075,43 @@ model Conversation {
   lastMessageAt          DateTime?          @map("last_message_at") @db.Timestamptz()
   unreadCountCustomer    Int                @default(0) @map("unread_count_customer")
   unreadCountSalesperson Int                @default(0) @map("unread_count_salesperson")
+  /// Por onde a conversa acontece. `chat` é o do próprio sistema (cliente com
+  /// conta, ou visitante pelo link); `whatsapp` entra e sai pelo número oficial
+  /// da loja — ver `modules/whatsapp`.
+  channel                ConversationChannel @default(chat)
+  /// Número da loja por onde a conversa de WhatsApp passa.
+  whatsappAccountId      String?            @map("whatsapp_account_id") @db.Uuid
+  /// Telefone do cliente na forma canônica (`contatoDoWhatsApp` no shared). É a
+  /// chave que junta a resposta do cliente à conversa que a loja abriu — o
+  /// `wa_id` sozinho não serve, porque às vezes vem sem o nono dígito.
+  contactPhoneNormalized String?            @map("contact_phone_normalized")
+  /// Endereço do cliente no canal (o `wa_id`), gravado quando ele escreve.
+  externalContactId      String?            @map("external_contact_id")
+  /// Última mensagem **do cliente**. No WhatsApp, é o que abre e fecha a
+  /// janela de 24 h de mensagem livre (`janelaDeAtendimentoAberta`).
+  customerLastMessageAt  DateTime?          @map("customer_last_message_at") @db.Timestamptz()
   createdAt              DateTime           @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt              DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
 
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer    User?     @relation("ConversationsAsCustomer", fields: [customerUserId], references: [id], onDelete: Cascade)
-  salesperson User?     @relation("ConversationsAsSalesperson", fields: [salespersonId], references: [id])
-  vehicle     Vehicle?  @relation(fields: [vehicleId], references: [id])
-  lead        Lead?     @relation(fields: [leadId], references: [id])
-  messages    Message[]
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer        User?            @relation("ConversationsAsCustomer", fields: [customerUserId], references: [id], onDelete: Cascade)
+  salesperson     User?            @relation("ConversationsAsSalesperson", fields: [salespersonId], references: [id])
+  vehicle         Vehicle?         @relation(fields: [vehicleId], references: [id])
+  lead            Lead?            @relation(fields: [leadId], references: [id])
+  /// `NoAction`, não `SetNull`: a conversa de WhatsApp sem número violaria
+  /// `conversations_tem_quem_responde`. O número nunca é apagado (desconectar
+  /// é `active = false`), e na exclusão da loja os dois somem no mesmo comando.
+  whatsappAccount WhatsappAccount? @relation(fields: [whatsappAccountId], references: [id], onDelete: NoAction)
+  messages        Message[]
 
   @@index([tenantId])
   @@index([customerUserId])
   @@index([salespersonId])
   @@index([tenantId, lastMessageAt(sort: Desc)])
   @@index([tenantId, customerUserId], map: "conversations_tenant_customer_idx")
+  // Uma conversa de WhatsApp viva por número da loja e cliente: índice único
+  // PARCIAL (`conversations_whatsapp_viva_idx`), só na migration — duas
+  // entregas simultâneas do mesmo cliente abririam duas conversas sem ele.
   @@map("conversations")
 }
 
@@ -1093,12 +1127,21 @@ model Message {
   metadata       Json        @default("{}")
   readAt         DateTime?   @map("read_at") @db.Timestamptz()
   deliveredAt    DateTime?   @map("delivered_at") @db.Timestamptz()
+  /// Id da mensagem no canal externo (o `wamid` do WhatsApp). Único por loja:
+  /// é o que torna inofensiva a reentrega do webhook.
+  externalId     String?     @map("external_id")
+  /// `STATUS_DE_ENTREGA` do shared, para o que a loja mandou por canal externo.
+  /// Nulo no chat interno e nas mensagens recebidas.
+  deliveryStatus String?     @map("delivery_status")
+  /// Por que o canal recusou a mensagem, quando `deliveryStatus = 'falhou'`.
+  failureReason  String?     @map("failure_reason")
   createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz()
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User?        @relation(fields: [senderUserId], references: [id])
   vehicleRef   Vehicle?     @relation(fields: [vehicleRefId], references: [id])
 
+  @@unique([tenantId, externalId], map: "messages_tenant_external_id_key")
   @@index([conversationId, createdAt])
   @@index([tenantId])
   @@map("messages")
@@ -1786,4 +1829,170 @@ model ContractSignatureEvent {
   @@unique([requestId, eventKey])
   @@index([tenantId])
   @@map("contract_signature_events")
+}
+
+// ============ CANAIS: WHATSAPP OFICIAL ============
+//
+// Camada neutra: o provedor (a API de nuvem da Meta, ou o simulado) fica atrás
+// de `ProvedorDeWhatsApp`, e nada aqui guarda o payload dele. O porquê de cada
+// regra: `docs/decisoes/2026-09-27 whatsapp oficial.md`.
+
+/// Por onde uma conversa acontece — ver `Conversation.channel`.
+enum ConversationChannel {
+  chat
+  whatsapp
+}
+
+/// O número de WhatsApp oficial de uma loja.
+///
+/// Uma conta **ativa** por loja e um número ativo em uma loja só — os dois são
+/// índices únicos parciais na migration (`whatsapp_accounts_uma_ativa_por_loja_idx`
+/// e `whatsapp_accounts_numero_ativo_idx`). O segundo é o que importa: o
+/// webhook acha a loja pelo id do número, e dois donos para o mesmo número
+/// mandariam a conversa de uma loja para a outra.
+///
+/// Desconectar não apaga: `active = false` preserva as conversas que passaram
+/// por ele, e reconectar o mesmo número reativa a linha.
+model WhatsappAccount {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  provider       String
+  /// Id do número no provedor (`phone_number_id` na Meta).
+  externalId     String    @map("external_id")
+  /// O número que o cliente vê, na forma canônica.
+  displayPhone   String    @map("display_phone")
+  active         Boolean   @default(true)
+  /// Quem conectou. Sem chave estrangeira de propósito: é registro de
+  /// auditoria, e sobrevive à saída da pessoa da equipe.
+  connectedBy    String?   @map("connected_by") @db.Uuid
+  connectedAt    DateTime  @default(now()) @map("connected_at") @db.Timestamptz()
+  disconnectedAt DateTime? @map("disconnected_at") @db.Timestamptz()
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  @@index([tenantId])
+  @@index([provider, externalId])
+  @@map("whatsapp_accounts")
+}
+
+/// Cada evento recebido do provedor, uma linha — a idempotência e a trilha.
+///
+/// O corpo cru **não** é guardado, ao contrário da cobrança e da assinatura:
+/// uma entrega da Meta pode trazer eventos de várias contas (uma por loja), e
+/// gravá-la inteira na linha de uma loja guardaria a conversa da outra. Fica o
+/// evento normalizado, que é só desta loja, e o SHA-256 do corpo, que prova de
+/// qual entrega ele saiu.
+model WhatsappWebhookEvent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  provider   String
+  /// `chaveDoEventoDeWhatsApp` do shared: `msg:<id>` ou `status:<id>:<status>`.
+  eventKey   String   @map("event_key")
+  kind       String
+  applied    Boolean  @default(false)
+  normalized Json
+  rawSha256  String   @map("raw_sha256")
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz()
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, eventKey])
+  @@index([tenantId, receivedAt])
+  @@map("whatsapp_webhook_events")
+}
+
+// ============ CANAIS: LEADS DOS PORTAIS ============
+//
+// "Capturar agora, entender depois": toda entrega é guardada crua; o que o
+// sistema sabe ler vira lead, o resto fica visível e é reprocessado quando o
+// leitor do portal existir. O porquê: `docs/decisoes/2026-09-27 leads dos portais.md`.
+
+/// O endereço de entrada de uma loja para um portal: a URL de webhook e o
+/// e-mail de encaminhamento carregam o mesmo token.
+///
+/// Só o hash do token é guardado, como no link do visitante e no convite de
+/// equipe: o endereço aparece uma vez, na hora de conectar, e gerar outro
+/// invalida o anterior. Uma conexão ativa por loja e portal (índice parcial
+/// `portal_connections_uma_ativa_idx`, na migration).
+model PortalConnection {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  /// `CHAVES_DE_PORTAL` do shared: olx, webmotors, icarros, mercadolivre, outro.
+  portal         String
+  tokenHash      String    @unique @map("token_hash")
+  active         Boolean   @default(true)
+  createdBy      String?   @map("created_by") @db.Uuid
+  lastReceivedAt DateTime? @map("last_received_at") @db.Timestamptz()
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deliveries PortalDelivery[]
+
+  @@index([tenantId])
+  @@map("portal_connections")
+}
+
+/// Cada entrega recebida de um portal, crua — a trilha, a idempotência e a
+/// matéria-prima do reprocessamento.
+///
+/// Aqui o corpo cru **é** guardado (no WhatsApp, não): o endereço é de uma loja
+/// só, então a entrega inteira é dela. É o que permite reler, com o leitor novo,
+/// o e-mail que o leitor antigo não entendeu.
+model PortalDelivery {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  connectionId String    @map("connection_id") @db.Uuid
+  portal       String
+  /// `webhook` ou `email`.
+  transport    String
+  /// Id do e-mail no provedor, id do lead no portal, ou o SHA-256 do corpo.
+  eventKey     String    @map("event_key")
+  /// `SITUACOES_DE_ENTREGA_DE_PORTAL` do shared.
+  status       String
+  /// O que mostrar na tela: o assunto do e-mail, ou o nome do lead.
+  summary      String?
+  /// Leads criados (ou encontrados pela deduplicação) a partir desta entrega.
+  leadIds      String[]  @default([]) @map("lead_ids") @db.Uuid
+  rawBody      String    @map("raw_body")
+  receivedAt   DateTime  @default(now()) @map("received_at") @db.Timestamptz()
+  processedAt  DateTime? @map("processed_at") @db.Timestamptz()
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  connection PortalConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, eventKey])
+  @@index([tenantId, receivedAt])
+  @@map("portal_deliveries")
+}
+
+// ============ CANAIS: PUSH DO VENDEDOR ============
+
+/// Um aparelho (navegador) em que o vendedor ativou notificação push.
+///
+/// O endpoint é do serviço de push do navegador (Google, Mozilla, Apple) e
+/// identifica o aparelho: único, e o mesmo aparelho reinscrito atualiza a
+/// linha em vez de duplicar o aviso. Inscrição que o serviço declara expirada
+/// (404/410) sai daqui no primeiro envio que falha — é o navegador dizendo que
+/// desinstalaram o app ou limparam os dados.
+model PushSubscription {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  endpoint      String    @unique
+  p256dh        String
+  auth          String
+  userAgent     String?   @map("user_agent")
+  lastSuccessAt DateTime? @map("last_success_at") @db.Timestamptz()
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@map("push_subscriptions")
 }

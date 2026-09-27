@@ -9,9 +9,10 @@ import { PrismaModule } from '../../common/prisma/prisma.module';
 import { LimiteDeVisitante } from './limite-de-visitante';
 import { ChatEventosModule } from '../../gateway/chat-eventos.service';
 import { EmailModule } from '../../common/email/email.module';
+import { PushModule } from '../users/push/push.module';
 
 @Module({
-  imports: [PrivilegedPrismaModule, PrismaModule, ChatEventosModule, EmailModule],
+  imports: [PrivilegedPrismaModule, PrismaModule, ChatEventosModule, EmailModule, PushModule],
   controllers: [ConversationsController, PublicConversationsController],
   providers: [ConversationsService, LimiteDeVisitante],
   exports: [ConversationsService],

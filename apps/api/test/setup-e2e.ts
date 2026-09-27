@@ -115,5 +115,31 @@ process.env.GEOCODIFICACAO_DESLIGADA = '1';
 // exercitados a partir de um valor conhecido.
 process.env.ASAAS_SAQUE_TOKEN = 'token-de-saque-de-teste';
 
+// WhatsApp oficial: simulado, sobrescrevendo o `.env`. No dia em que o `.env`
+// tiver a Meta configurada, a suíte mandaria mensagem de verdade para os
+// telefones fictícios dos testes — e modelo custa. O simulado roda em memória.
+process.env.WHATSAPP_FORNECEDOR = 'simulado';
+process.env.WHATSAPP_APP_SECRET = 'segredo-do-app-whatsapp-de-teste';
+process.env.WHATSAPP_VERIFY_TOKEN = 'token-de-verificacao-de-teste';
+// E a credencial da Meta zerada: mesmo que alguém troque o fornecedor acima
+// por engano, sem token a fábrica cai no indisponível e nada sai.
+process.env.WHATSAPP_ACCESS_TOKEN = '';
+process.env.WHATSAPP_GRAPH_URL = '';
+
+// E-mail de entrada dos portais: simulado, com endereço e token fixos. Aqui não
+// sai nada (quem chama é o provedor), mas o token é o que separa entrega
+// autêntica de forjada, e os dois caminhos precisam de um valor conhecido.
+process.env.EMAIL_ENTRADA_FORNECEDOR = 'simulado';
+process.env.EMAIL_ENTRADA_TOKEN = 'token-de-entrada-de-teste';
+process.env.EMAIL_ENTRADA_ENDERECO = 'leads@entrada.teste';
+
+// Push do vendedor: simulado, sobrescrevendo o `.env`. Com as chaves VAPID no
+// `.env`, a suíte mandaria notificação de verdade para as inscrições que os
+// testes criam — endpoints fictícios, mas a chamada sairia.
+process.env.PUSH_FORNECEDOR = 'simulado';
+process.env.VAPID_PUBLIC_KEY = '';
+process.env.VAPID_PRIVATE_KEY = '';
+process.env.VAPID_SUBJECT = '';
+
 /** Nome do banco de teste, para os testes afirmarem onde estão conectados. */
 export const BANCO_DE_TESTE = verificada.pathname.replace(/^\//, '');

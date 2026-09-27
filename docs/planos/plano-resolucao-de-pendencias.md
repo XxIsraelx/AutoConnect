@@ -160,13 +160,24 @@ em 25/09/2026. Sobram os três que o mercado cobra, na ordem do
   histórico e a medição do tempo de resposta — que é o argumento do Raio-X.
   **Antes de começar:** a decisão 2 do plano de paridade (a API da Meta cobra
   por conversa: embutido no preço ou adicional).
+  🟡 **Estrutura pronta em 27/09/2026** (sessão 2): camada neutra, simulado, telas e
+  adaptador da Meta — **só falta a conta** e a decisão 2, que agora tem o uso do mês
+  medido em Canais. Ver a [decisão](../decisoes/2026-09-27%20whatsapp%20oficial.md).
 - **C2 — Entrada de leads dos portais (item 13).** Começar pela **ingestão**
   (webhook ou leitura da caixa que o portal já manda), OLX primeiro.
   **Antes de começar:** a decisão 3 (quais portais), que depende de onde as
   lojas fundadoras anunciam — pergunta de implantação.
+  🟡 **Entrada pronta em 27/09/2026** (sessão 2): endereço de entrada por loja e
+  portal, webhook no formato AutoConnect, e-mail encaminhado com leitor genérico,
+  entregas guardadas cruas e reprocessáveis — **falta a conta do e-mail de entrada
+  (Postmark) e uma notificação real da OLX** para o leitor específico. Ver a
+  [decisão](../decisoes/2026-09-27%20leads%20dos%20portais.md).
 - **C3 — Push do vendedor (item 14).** Service worker + web-push; hoje só
   funciona com a aba aberta, e o rodízio perde a razão se o vendedor não vê o
   lead a tempo.
+  ✅ **Feito em 27/09/2026** (sessão 2), verificado com o serviço de push real —
+  **falta só cadastrar as chaves VAPID no Railway**. Ver a
+  [decisão](../decisoes/2026-09-27%20push%20do%20vendedor.md).
 
 **Pronto quando:** o lead do portal entra sozinho, cai no vendedor de plantão e
 é respondido pelo WhatsApp sem ninguém copiar e colar.

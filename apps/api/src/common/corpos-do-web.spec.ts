@@ -34,6 +34,13 @@ import {
   iniciarConversaSchema,
   conversaDoLeadSchema,
   mensagemDeVisitanteSchema,
+  abrirConversaDeWhatsAppSchema,
+  conectarWhatsAppSchema,
+  enviarModeloDeWhatsAppSchema,
+  simularWhatsAppSchema,
+  simularLeadDePortalSchema,
+  inscricaoDePushSchema,
+  removerInscricaoDePushSchema,
 } from '@autoconnect/shared';
 import { acceptInviteSchema } from '../modules/invitations/invitations.controller';
 import { anularSchema, assinarSchema } from '../modules/contracts/contracts.controller';
@@ -188,6 +195,21 @@ const ROTAS: Record<string, Declaracao> = {
   'POST /conversations': { schema: iniciarConversaSchema },
   'POST /conversations/from-lead': { schema: conversaDoLeadSchema },
   'POST /conversations/:p/guest-link': { semCorpo: true },
+
+  /* WhatsApp oficial */
+  'POST /whatsapp/conta': { schema: conectarWhatsAppSchema },
+  'POST /whatsapp/conversas': { schema: abrirConversaDeWhatsAppSchema },
+  'POST /whatsapp/conversas/:p/modelo': { schema: enviarModeloDeWhatsAppSchema },
+  'POST /whatsapp/simular': { schema: simularWhatsAppSchema },
+
+  /* Leads dos portais */
+  'POST /portais/entregas/:p/reprocessar': { semCorpo: true },
+  'POST /portais/:p/simular': { schema: simularLeadDePortalSchema },
+
+  /* Push do vendedor */
+  'POST /push/inscricoes': { schema: inscricaoDePushSchema },
+  'POST /push/inscricoes/remover': { schema: removerInscricaoDePushSchema },
+  'POST /push/teste': { semCorpo: true },
   'POST /public/conversations/:p/messages': { schema: mensagemDeVisitanteSchema },
   'PATCH /conversations/:p/close': { semCorpo: true },
 };

@@ -5,6 +5,7 @@ import { ehGlobal, type Escopo } from '../../common/escopo';
 import { TAMANHO_MINIMO_DO_TOKEN_DE_VISITANTE } from '@autoconnect/shared';
 import { ChatEventosService } from '../../gateway/chat-eventos.service';
 import { EmailService } from '../../common/email/email.service';
+import { PushService } from '../users/push/push.service';
 import {
   hashDoToken, hashesIguais, linkDoVisitante, novoTokenDeVisitante,
 } from './visitante';
@@ -39,6 +40,7 @@ export class ConversationsService {
     private readonly privilegiado: PrivilegedPrismaService,
     private readonly eventos: ChatEventosService,
     private readonly email: EmailService,
+    private readonly push: PushService,
   ) {}
 
   /** Lista conversas de uma concessionária */
@@ -379,7 +381,7 @@ export class ConversationsService {
     const mensagem = await this.prisma.withTenant(tenantId, async (tx) => {
       const conversa = await tx.conversation.findFirst({
         where: { id, tenantId },
-        select: { id: true, status: true, contactName: true },
+        select: { id: true, status: true, contactName: true, salespersonId: true },
       });
       if (!conversa) throw new NotFoundException('Conversa não encontrada');
       if (conversa.status === 'closed') {
@@ -402,16 +404,28 @@ export class ConversationsService {
         where: { id },
         data: {
           lastMessageAt: new Date(),
+          customerLastMessageAt: new Date(),
           unreadCountSalesperson: { increment: 1 },
         },
       });
 
-      return { ...criada, autor: conversa.contactName };
+      return { ...criada, autor: conversa.contactName, salespersonId: conversa.salespersonId };
+    });
+
+    // O visitante não tem socket, e o vendedor pode estar sem o painel aberto.
+    this.push.avisarMensagem(tenantId, {
+      conversationId: id,
+      salespersonId: mensagem.salespersonId,
+      nome: mensagem.autor,
+      canal: 'Chat do site',
+      texto: body,
     });
 
     // O vendedor com a conversa aberta vê na hora; o visitante não tem socket.
+    const { salespersonId: _vendedor, ...publica } = mensagem;
+    void _vendedor;
     this.eventos.emitir(id, 'conversation:message', {
-      ...mensagem,
+      ...publica,
       conversationId: id,
       tenantId,
       sender: null,
