@@ -20,3 +20,4 @@ export * from './domain/comissao';
 export * from './schemas/crm';
 export * from './domain/link-de-catalogo';
 export * from './schemas/conversation';
+export * from './domain/raio-x';

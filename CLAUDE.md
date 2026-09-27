@@ -186,6 +186,8 @@ NEXT_PUBLIC_API_URL=http://localhost:4000      # sem /api/v1
 NEXT_PUBLIC_WS_URL=ws://localhost:4000
 NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=...          # upload de fotos
 NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=...       # precisa ser "unsigned"
+NEXT_PUBLIC_SITE_URL=...                       # domínio público, para a prévia do link (og:image)
+NEXT_PUBLIC_RAIO_X_TENANT_ID=...               # loja "AutoConnect" que recebe o Raio-X; vazio = pedido pelo WhatsApp
 ```
 
 ### Documentos privados — usadas pelo `DocumentosStorage`
@@ -494,6 +496,10 @@ O porquê de cada regra: [Onda 0 do plano de paridade](docs/planos/plano-paridad
   para o agendamento. A constraint `appointments_tem_contato` exige cliente,
   lead ou nome+telefone. O cron de lembrete pula quem não tem e-mail e marca
   `reminderSentAt` do mesmo jeito — é o que o mantém idempotente.
+- **O Raio-X da landing é lead da loja "AutoConnect"**, pelo mesmo
+  `POST /leads/public`, sem veículo, com consentimento próprio
+  (`TEXTO_DE_CONSENTIMENTO_RAIO_X`) e loja/cargo/origem no `message`
+  (`mensagemDoRaioX`, no shared). `raio-x.e2e-spec.ts` fixa o corpo.
 - **Clique em WhatsApp/telefone vira interação** (`ContatoDoLead`). O POST sai
   em paralelo ao clique: perder o registro é ruim, perder a ligação é pior.
 

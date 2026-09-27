@@ -1,12 +1,14 @@
 import Link from 'next/link';
 import { ArrowRight, ScanSearch } from 'lucide-react';
 import { DURACAO_DO_TRIAL_DIAS } from '@autoconnect/shared';
-import { SECOES, TITULO_DO_HERO, waLink } from './config';
+import { SECOES, TITULO_DO_HERO } from './config';
+import RaioXForm from './RaioXForm';
 
 /**
- * Duas portas: o Raio-X é a principal (o dono de loja que ainda não quer criar
- * conta) e o cadastro em autosserviço, a secundária. "Buscar veículos" saiu
- * daqui — é o caminho do comprador, e continua no rodapé.
+ * Duas portas: o Raio-X é a principal (o dono de loja que ainda não quer
+ * criar conta), com o formulário à vista, e o cadastro em autosserviço, a
+ * secundária. "Buscar veículos" saiu daqui — é o caminho do comprador, e
+ * continua no rodapé.
  */
 export default function Hero() {
   return (
@@ -36,14 +38,7 @@ export default function Hero() {
             Um cliente oculto chama sua loja e você recebe o laudo em 24 h: quanto tempo levou a
             resposta, se houve retorno e onde a venda esfriou.
           </p>
-          <a
-            href={waLink('Oi, Israel! Quero o Raio-X gratuito do atendimento da minha loja.')}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex w-full items-center justify-center gap-2 bg-brand-accent text-white font-semibold px-6 py-3.5 rounded-xl hover:bg-blue-600 transition text-sm"
-          >
-            Pedir o Raio-X gratuito
-          </a>
+          <RaioXForm secao="hero" />
           <div className="mt-4 text-center">
             <Link
               href="/comecar"

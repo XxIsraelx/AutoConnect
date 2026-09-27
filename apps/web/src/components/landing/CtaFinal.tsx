@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
-import { SECOES, waLink } from './config';
+import { SECOES } from './config';
+import RaioXForm from './RaioXForm';
 
 /**
  * "Já tenho conta" leva ao `/login` — o painel da loja. Apontava para
@@ -17,26 +18,21 @@ export default function CtaFinal() {
         <p className="text-blue-100 mb-8 max-w-lg mx-auto">
           O Raio-X é gratuito e o laudo chega no seu WhatsApp em 24 h.
         </p>
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <a
-            href={waLink('Oi, Israel! Quero o Raio-X gratuito do atendimento da minha loja.')}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 bg-white text-brand-accent font-semibold px-7 py-3.5 rounded-xl hover:bg-blue-50 transition text-sm"
-          >
-            Pedir o Raio-X gratuito
-          </a>
-          <Link
-            href="/comecar"
-            className="flex items-center gap-2 text-sm font-semibold text-white px-6 py-3.5 rounded-xl border border-white/40 hover:bg-white/10 transition"
-          >
-            Criar conta grátis
-            <ArrowRight size={16} />
+        <div className="mx-auto max-w-md rounded-2xl bg-white dark:bg-slate-900 p-5 text-slate-900 dark:text-slate-100 mb-6">
+          <RaioXForm secao="final" />
+        </div>
+        <Link
+          href="/comecar"
+          className="inline-flex items-center gap-2 text-sm font-semibold text-white px-6 py-3 rounded-xl border border-white/40 hover:bg-white/10 transition"
+        >
+          Criar conta grátis
+          <ArrowRight size={16} />
+        </Link>
+        <div>
+          <Link href="/login" className="inline-block mt-6 text-sm text-blue-100 hover:text-white font-medium">
+            Já tenho conta →
           </Link>
         </div>
-        <Link href="/login" className="inline-block mt-6 text-sm text-blue-100 hover:text-white font-medium">
-          Já tenho conta →
-        </Link>
       </div>
     </section>
   );
