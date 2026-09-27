@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import { CalendarCheck, Camera, Inbox, MessagesSquare, Smartphone } from 'lucide-react';
+import {
+  BatteryFull, CalendarCheck, Camera, Inbox, MessagesSquare, Signal, Smartphone, Wifi,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SECOES } from './config';
 
@@ -15,12 +17,24 @@ import { SECOES } from './config';
  * no lead (`ContatoDoLead`), a foto do veículo sai da câmera (`accept="image/*"`
  * no cadastro) e o manifesto é `standalone`. Notificação com o app fechado
  * **não** existe — o aviso de lead novo é a contagem no menu, com a tela aberta.
+ *
+ * A captura fica entre uma barra de status e uma de gestos, desenhadas aqui:
+ * são elas que ficam sob os cantos arredondados da tela, e não o menu e o
+ * contador do topo do painel, que a curva cortava.
  */
+
+/** Cor do cabeçalho do painel no tema escuro, medida na captura. */
+const COR_DO_TOPO = '#0f172b';
+/** Fundo das páginas do painel no tema escuro (slate-950). */
+const COR_DO_FUNDO = '#020617';
+
 const TELAS = [
   {
     chave: 'leads',
     rotulo: 'Leads',
     icone: Inbox,
+    // A lista continua abaixo da dobra: o pé esmaece em vez de cortar um cartão seco.
+    rodape: COR_DO_FUNDO,
     titulo: 'O lead chega, o prazo aparece',
     texto:
       'Cada lead mostra quanto falta para o primeiro contato. Um toque no WhatsApp ou no telefone abre a conversa e já registra o contato no lead — o gerente vê que foi atendido sem o vendedor anotar nada.',
@@ -29,6 +43,8 @@ const TELAS = [
     chave: 'chat',
     rotulo: 'Chat',
     icone: MessagesSquare,
+    // A captura termina na barra de digitação, que tem a cor do cabeçalho.
+    rodape: null,
     titulo: 'Responde de onde estiver',
     texto:
       'No pátio, no test drive ou fora da loja: a conversa com o cliente segue no celular, presa ao lead, e fica no histórico para quem assumir depois.',
@@ -37,6 +53,7 @@ const TELAS = [
     chave: 'agenda',
     rotulo: 'Agenda',
     icone: CalendarCheck,
+    rodape: COR_DO_FUNDO,
     titulo: 'O dia na palma da mão',
     texto:
       'Test drives e visitas de hoje e de amanhã, com quem já confirmou. O vendedor confirma, remarca e marca o comparecimento ali mesmo.',
@@ -115,7 +132,7 @@ export default function NoCelular() {
           </ul>
         </div>
 
-        <figure className="order-1 lg:order-2 mx-auto">
+        <figure className="order-1 lg:order-2">
           <div role="tablist" aria-label="Telas no celular" className="lg:hidden flex justify-center gap-2 mb-5">
             {TELAS.map((t) => (
               <button
@@ -135,20 +152,56 @@ export default function NoCelular() {
               </button>
             ))}
           </div>
-          <div
-            role="tabpanel"
-            className="relative w-[250px] sm:w-[280px] aspect-[390/844] rounded-[2.6rem] border-[10px] border-slate-900 dark:border-slate-700 bg-slate-950 overflow-hidden shadow-2xl shadow-slate-400/40 dark:shadow-none"
-          >
-            <Image
-              key={tela.chave}
-              src={`/landing/mobile/${tela.chave}.webp`}
-              alt={`Tela de ${tela.rotulo} do AutoConnect no celular: ${tela.titulo}.`}
-              fill
-              sizes="280px"
-              className="object-cover object-top"
-            />
+          <div role="tabpanel" className="relative isolate mx-auto w-[270px] sm:w-[300px]">
+            {/* Brilho atrás do aparelho, para ele não sumir no fundo escuro. */}
+            <div aria-hidden className="absolute -z-10 inset-x-4 inset-y-24 rounded-full bg-brand-accent/25 blur-3xl" />
+            {/* Botões laterais */}
+            <span aria-hidden className="absolute -left-[3px] top-28 h-8 w-[3px] rounded-l bg-slate-700" />
+            <span aria-hidden className="absolute -left-[3px] top-40 h-14 w-[3px] rounded-l bg-slate-700" />
+            <span aria-hidden className="absolute -right-[3px] top-36 h-20 w-[3px] rounded-r bg-slate-700" />
+
+            <div className="rounded-[3rem] bg-slate-900 dark:bg-slate-800 p-[9px] ring-1 ring-slate-900/10 dark:ring-slate-700 shadow-2xl shadow-slate-900/30 dark:shadow-black/60">
+              <div className="relative overflow-hidden rounded-[2.4rem]" style={{ background: COR_DO_TOPO }}>
+                <div aria-hidden className="relative flex items-center justify-between h-9 px-7 text-[11px] font-semibold text-white">
+                  <span>9:41</span>
+                  <span className="absolute left-1/2 top-2 -translate-x-1/2 h-[22px] w-[76px] rounded-full bg-black" />
+                  <span className="flex items-center gap-1">
+                    <Signal size={12} strokeWidth={2.5} />
+                    <Wifi size={12} strokeWidth={2.5} />
+                    <BatteryFull size={16} strokeWidth={2} />
+                  </span>
+                </div>
+
+                <div className="relative">
+                  <Image
+                    key={tela.chave}
+                    src={`/landing/mobile/${tela.chave}.webp`}
+                    alt={`Tela de ${tela.rotulo} do AutoConnect no celular: ${tela.titulo}.`}
+                    width={780}
+                    height={1688}
+                    sizes="(min-width: 640px) 282px, 252px"
+                    className="block w-full h-auto"
+                  />
+                  {tela.rodape && (
+                    <div
+                      aria-hidden
+                      className="absolute inset-x-0 bottom-0 h-14"
+                      style={{ background: `linear-gradient(to bottom, transparent, ${tela.rodape})` }}
+                    />
+                  )}
+                </div>
+
+                <div
+                  aria-hidden
+                  className="h-7 flex items-center justify-center"
+                  style={{ background: tela.rodape ?? COR_DO_TOPO }}
+                >
+                  <span className="h-1 w-24 rounded-full bg-white/70" />
+                </div>
+              </div>
+            </div>
           </div>
-          <figcaption className="text-center mt-4 max-w-[300px] mx-auto">
+          <figcaption className="text-center mt-6 max-w-[320px] mx-auto">
             <span className="lg:hidden block font-semibold mb-1">{tela.titulo}</span>
             <span className="lg:hidden block text-sm text-slate-500 dark:text-slate-400 mb-2">{tela.texto}</span>
             <span className="block text-xs text-slate-400">Tela real, com dados de demonstração</span>
