@@ -1065,12 +1065,22 @@ describe('Cobrança e bloqueio por vencimento (e2e)', () => {
     it('a ação fica na auditoria, com quem fez e o motivo', async () => {
       await cancelarAssinatura({ motivo: 'cobrança de teste em produção' });
 
-      // A escrita de auditoria é disparada sem await de propósito (nunca
-      // bloqueia a operação); aqui a leitura espera a linha aparecer.
+      // A escrita de auditoria é disparada sem await de propósito (nunca bloqueia
+      // a operação); aqui a leitura espera a linha aparecer.
+      //
+      // E procura pela **própria** linha, filtrando pelo motivo: o teste anterior
+      // deste mesmo bloco também cancela assinatura, e a linha dele pode chegar
+      // ao banco depois desta justamente porque a escrita não é aguardada. Com
+      // `orderBy: createdAt desc` o teste passava na máquina e falhava no CI,
+      // lendo a auditoria do vizinho (27/09/2026).
       const achar = async () => {
         for (let i = 0; i < 20; i++) {
           const linha = await dono.auditLog.findFirst({
-            where: { action: 'subscription_canceled_by_admin', entityId: f.a.id },
+            where: {
+              action: 'subscription_canceled_by_admin',
+              entityId: f.a.id,
+              diff: { path: ['motivo'], equals: 'cobrança de teste em produção' },
+            },
             orderBy: { createdAt: 'desc' },
           });
           if (linha) return linha;
