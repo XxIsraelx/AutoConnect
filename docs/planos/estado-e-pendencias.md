@@ -44,12 +44,14 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
   como ponto de partida.
 - ⚠ **Sem fornecedor de consulta veicular.** Depende de contrato comercial. A
   estrutura está pronta e a API recusa em voz alta enquanto não houver.
-- ⚠ **Sem conta na Asaas** (25/09/2026). A camada de cobrança inteira está de
-  pé e exercitada com o provedor simulado, mas o adaptador real **nunca falou
-  com a Asaas** — nem com o sandbox. Com `COBRANCA_FORNECEDOR` vazio a
-  contratação some da tela e o bloqueio por vencimento segue valendo,
-  desbloqueado à mão pelo super admin. A lista do que conferir com a conta em
-  mãos está no fim da
+- ~~**Sem conta na Asaas**~~ (25/09/2026) — **resolvido em 27/09/2026**: a conta existe,
+  `COBRANCA_FORNECEDOR`, `ASAAS_API_KEY`, `ASAAS_API_URL`, `COBRANCA_WEBHOOK_TOKEN` e
+  `ASAAS_SAQUE_TOKEN` estão no Railway, e o adaptador **já falou com a Asaas de verdade**: o
+  Israel contratou o Essencial na loja `autohaus` em produção, a assinatura e a fatura nasceram
+  no gateway e o super admin as cancelou pelo `/admin`. O boot de 27/09/2026 não traz nenhum
+  `cobrança desligada` nem `ASAAS_SAQUE_TOKEN ausente`. **Continua em aberto** saber se a chave
+  é de produção ou de sandbox — ver o item "O sandbox da cobrança é invisível", abaixo. A lista
+  do que conferir está no fim da
   [decisão](../decisoes/2026-09-25%20cobranca%20e%20bloqueio%20por%20vencimento.md).
 - **Assinatura eletrônica externa ligada em produção, em SANDBOX** (22/09/2026):
   webhook cadastrado com os 7 eventos, `ASSINATURA_FORNECEDOR=clicksign` no
@@ -166,14 +168,10 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
     com aviso "loja de demonstração" em `/c/demo`) ou tirar (`is_active = false`). Descobrir como
     ela foi criada.
   - Como testar: `/buscar` e o mapa de produção sem a Aurora; `/c/demo` com o aviso, se ficar.
-- **"Já tenho conta →" da home leva o lojista ao login de cliente.**
-  - Onde: `apps/web/src/app/page.tsx`, CTA final (`href="/entrar"`, perto da linha 307).
-  - O que é: `/entrar` é o login do cliente final e, depois de logar, manda para `/buscar`. O
-    painel da concessionária é `/login` — o rodapé da própria home já aponta certo.
-  - Impacto: dono de loja que já tem conta entra pela porta errada e não chega ao painel.
-  - Sugestão: `href="/login"`.
-  - Como testar: "Já tenho conta" na home abre `/login`; logar como `tenant_admin` leva a
-    `/dashboard`.
+- ~~**"Já tenho conta →" da home leva o lojista ao login de cliente.**~~ — resolvido em
+  27/09/2026 (`2835e34`, na fase 1 da nova landing): o CTA vive em
+  `components/landing/CtaFinal.tsx` e aponta para `/login`. Conferido no HTML servido em
+  produção em 27/09/2026 — `/entrar` só aparece no rodapé, como "Área do cliente".
 - **Exportação dos dados da loja incompleta.**
   - Onde: exportações que existem — `GET /leads/export/csv` e, em `relatorios.controller.ts`,
     `salespeople.csv`, `deals.csv` e `inventory.csv`.
@@ -210,10 +208,15 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
 - **CLAUDE.md com duas frases desatualizadas.**
   - Onde: `CLAUDE.md`, seção "Cadastro de loja e primeiro acesso" (linha do trial) e seção
     "Testes e CI" (contagem de testes).
-  - O que é: diz "⚠ Nada acontece quando o trial vence — bloqueio é a Onda 3", mas a Onda 3
-    está fechada e a seção "Cobrança e bloqueio por vencimento" do mesmo arquivo diz "Trial
-    vencido bloqueia na hora". E cita 1.036 testes (744 na API), quando o portão rodado depois
-    da PR #6 (e-mails de cobrança) deu 1.045 (753 na API, 292 no shared).
+  - O que é: diz "⚠ Nada acontece quando o trial vence — bloqueio é a Onda 3" (linha 451), mas
+    a Onda 3 está fechada e a seção "Cobrança e bloqueio por vencimento" do mesmo arquivo diz
+    "Trial vencido bloqueia na hora". ~~E cita 1.036 testes~~ — a contagem foi corrigida em
+    27/09/2026 (1.076: 773 na API, 303 no shared).
+  - **Mais três frases desatualizadas, achadas na auditoria de 27/09/2026**, todas sobre a
+    Asaas, agora que a conta existe e o adaptador já cobrou em produção: a tabela do Stack diz
+    "adaptador não exercitado" (linha 21), a seção de cobrança diz "⚠ **O adaptador da Asaas
+    nunca falou com a Asaas**" (linha 595) e "Estado do projeto" lista "**ausência de conta na
+    Asaas**" como bloqueio de uso real (linha 798).
   - Evidência: `grep -n "Nada acontece quando o trial" CLAUDE.md`; saída do
     `pnpm exec turbo run typecheck lint test` na branch `claude/emails-corporativos`.
   - Impacto: quem lê só a seção de cadastro conclui que o trial não bloqueia e pode escrever
@@ -235,6 +238,69 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
     script de tema; vale só para os atributos do próprio `<html>`, não para os filhos.
   - Como testar: recarregar a home em dev e o console não trazer mais o aviso.
   - Encontrado em: 27/09/2026 · Claude Code · ao verificar a moldura do celular na landing.
+
+**Encontradas em 27/09/2026** — Claude Code, na auditoria de pendências pedida depois do
+conserto do plano pendente de pagamento
+
+- **Três `NEXT_PUBLIC_*` da landing não existem no serviço web do Railway.**
+  - Onde: serviço `@autoconnect/web`, ambiente `production`. Faltam
+    `NEXT_PUBLIC_RAIO_X_TENANT_ID`, `NEXT_PUBLIC_CLARITY_ID` e `NEXT_PUBLIC_SITE_URL` —
+    as três estão documentadas em [CLAUDE.md](../../CLAUDE.md) e lidas por
+    `components/landing/RaioXForm.tsx:27`, `components/landing/Clarity.tsx:22` e
+    `app/(landing)/page.tsx:29`.
+  - O que é: sem o id da loja, o formulário do Raio-X **não aparece** — o pedido cai no
+    `wa.me`, que é o fallback deliberado do código. Sem o id do Clarity, nada é medido. O
+    `NEXT_PUBLIC_SITE_URL` tem fallback embutido (`https://autoconnectapp.com.br`) e não
+    quebra nada hoje.
+  - Evidência: a lista de variáveis do serviço web no Railway em 27/09/2026 não traz nenhuma
+    das três; o HTML servido em `https://autoconnectapp.com.br/` tem 8 ocorrências de `wa.me`
+    e zero de `clarity`.
+  - Impacto: a captação principal da nova landing está no caminho alternativo, e o funil que
+    justificaria o Raio-X não é medido. Como `NEXT_PUBLIC_*` é embutida no **build**, cadastrar
+    a variável só vale com um deploy novo depois dela.
+  - Sugestão: criar a loja "AutoConnect" em produção (cadastro normal) e cadastrar o
+    `tenant_id` dela; decidir se o Clarity entra agora. A loja precisa da **cortesia** do super
+    admin, senão o trial dela vence em 14 dias e o Raio-X para de gravar lead.
+  - Como testar: a home passa a mostrar o formulário em vez do botão de WhatsApp, e um pedido
+    de teste vira lead na loja "AutoConnect".
+  - Encontrado em: 27/09/2026 · Claude Code · na auditoria de pendências.
+
+- **`GET /fipe/variantes` não tem quem chame** — armadilha nº 1 do CLAUDE.md.
+  - Onde: `apps/api/src/modules/fipe/fipe.controller.ts:49`.
+  - O que é: a rota existe, é validada por Zod e ninguém a chama — nem tela, nem teste. A
+    tela de cadastro de veículo usa `/fipe/estimate`, que já devolve `alternativas` no mesmo
+    corpo; o `select` de variante é alimentado por ali.
+  - Evidência: cruzamento das 165 rotas dos controllers com todas as chamadas do `apps/web` em
+    27/09/2026 — sobraram 5, quatro delas legítimas (callback do Google e os três webhooks) e
+    esta. `grep -rn "fipe/variantes" apps/api/test apps/web/src` não retorna nada.
+  - Impacto: código morto numa rota autenticada — ou funcionalidade pensada e nunca ligada. As
+    duas merecem decisão, não silêncio.
+  - Sugestão: apagar a rota (o método do serviço continua sendo usado pelo `estimate`), ou
+    ligar a tela nela quando a lista precisar ser recarregada sem refazer a estimativa.
+  - Como testar: o cruzamento rota × chamada volta a ter só as 4 legítimas.
+  - Encontrado em: 27/09/2026 · Claude Code · na auditoria de pendências.
+
+- **O sandbox da cobrança é invisível** — e é por isso que ninguém sabe se a fatura da
+  `autohaus` foi dinheiro de verdade.
+  - Onde: `apps/api/src/modules/cobranca/provedor-asaas.ts:204` (`this.sandbox` sai da URL),
+    `cobranca.service.ts:143` (vai no `GET /cobranca`) e
+    `app/(dashboard)/configuracoes/plano/page.tsx:46` (`sandbox: boolean` **declarado e nunca
+    renderizado** — só `simulado` aparece na tela).
+  - O que é: a assinatura externa avisa duas vezes quando está em sandbox com
+    `NODE_ENV=production` (log de boot em `assinatura/provedor.ts:103` e selo na tela); a
+    cobrança não avisa em lugar nenhum. Uma chave de sandbox em produção cobraria ninguém, em
+    silêncio.
+  - Evidência: o boot de 27/09/2026 traz `Clicksign em SANDBOX com NODE_ENV=production` e
+    **nenhuma** linha equivalente para a Asaas; `grep -rn "\.sandbox" apps/web/src` não
+    retorna nada.
+  - Impacto: a diferença entre "a loja pagou" e "a loja fingiu pagar" não aparece em nenhum
+    log nem em nenhuma tela. Também impede conferir a pendência acima sem abrir o painel do
+    Railway.
+  - Sugestão: repetir o padrão da assinatura — `log.warn` no boot quando a URL tem `sandbox` e
+    `NODE_ENV=production`, e selo na tela do plano e na aba Sistema do `/admin`.
+  - Como testar: subir com `ASAAS_API_URL=https://api-sandbox.asaas.com` e
+    `NODE_ENV=production` e ver o aviso no boot; a tela do plano mostrar o selo.
+  - Encontrado em: 27/09/2026 · Claude Code · na auditoria de pendências.
 
 **Lacunas frente ao mercado** — Claude Cowork, 27/09/2026, na pesquisa de preços
 ([plano de preços](https://claude.ai/code/artifact/daf7ac7d-5114-4621-9028-3759dbb07be8)).
