@@ -90,6 +90,17 @@ diferença confiável — comparar só com ~100 visitas por versão.
 
 - Preço e programa de fundadores (pendências de 27/09/2026).
 - Loja "Aurora Seminovos" em produção: vitrine demo marcada ou fora.
-- No hero, o Raio-X fica como porta principal e o cadastro como secundária (proposta deste
-  plano) — ou o contrário.
-- Número de WhatsApp comercial e foto para "Quem está por trás".
+- Número de WhatsApp comercial (hoje o de `components/landing/config.ts`, com `TODO`).
+
+Fechadas em 27/09/2026: o Raio-X é a porta principal do hero e o cadastro a secundária;
+"Quem está por trás" fica fora da página (decisão do Israel).
+
+## Estado (27/09/2026)
+
+| Fase | Estado |
+|---|---|
+| 1. Correções e verdade | Feita. Planos mostram as faixas de `FAIXAS` **sem valor** até a decisão de preço |
+| 2. Raio-X | Feita no código (`RaioXForm`, `mensagemDoRaioX`, `raio-x.e2e-spec.ts`). **Falta em produção:** criar a loja "AutoConnect" pelo cadastro, estender o trial dela e preencher `NEXT_PUBLIC_RAIO_X_TENANT_ID` no web — sem a variável, o formulário vira botão de WhatsApp |
+| 3. Produto e calculadora | Calculadora feita (`valorEmRiscoEmCentavos`, com teste). Vitrine demo espera a decisão da "Aurora Seminovos"; a maquete do painel segue no lugar |
+| 4. Preço e fundadores | Bloqueada (decisão de preço e do programa) |
+| 5. Confiança e medição | FAQ, Clarity (só com `NEXT_PUBLIC_CLARITY_ID`), eventos e `/privacidade` feitos. "Quem está por trás" fora por decisão. ⚠ O Clarity grava cookies com base em legítimo interesse, sem banner de consentimento — confirmar na revisão jurídica |

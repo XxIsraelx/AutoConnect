@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 974 testes (708 na API, 266 no `shared`):
+são 990 testes (713 na API, 277 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
