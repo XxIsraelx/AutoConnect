@@ -72,6 +72,8 @@ export interface PublicBrand {
 
 export interface PublicDealer {
   id: string;
+  /** Para o caminho de volta à vitrine (`/c/[slug]`). */
+  slug?: string;
   tradeName: string;
   logoUrl: string | null;
   brandColor: string | null;

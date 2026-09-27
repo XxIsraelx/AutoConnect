@@ -16,6 +16,7 @@ import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import TradeInModal from '@/components/TradeInModal';
 import FormularioDeInteresse from '@/components/FormularioDeInteresse';
 import AvisoDeDemonstracao from '@/components/AvisoDeDemonstracao';
+import LogoDaLoja, { FaixaDaLoja } from '@/components/LogoDaLoja';
 import {
   escolherWhatsApp, formatarTelefoneBr, linkDoVeiculoNoCatalogo,
 } from '@autoconnect/shared';
@@ -157,29 +158,23 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
   /** Só um celular serve para WhatsApp — ver `escolherWhatsApp` no shared. */
   const whatsappDaLoja = escolherWhatsApp(branch?.phone, dealer.primaryPhone);
   const totalPages = Math.ceil(total / limit);
-  const brandColor = dealer.brandColor ?? '#2563eb';
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       {dealer.isDemo && <AvisoDeDemonstracao />}
-      {/* Faixa com a cor da marca */}
-      <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${brandColor}, ${brandColor}88, transparent)` }} />
+      <FaixaDaLoja cor={dealer.brandColor} />
 
       {/* Hero header */}
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-6xl mx-auto px-4 py-5">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div className="flex items-center gap-4">
-              {dealer.logoUrl ? (
-                <img src={dealer.logoUrl} alt={dealer.tradeName} className="w-12 h-12 object-contain rounded-xl" />
-              ) : (
-                <div
-                  className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-lg font-bold"
-                  style={{ background: brandColor }}
-                >
-                  {dealer.tradeName.charAt(0)}
-                </div>
-              )}
+              <LogoDaLoja
+                nome={dealer.tradeName}
+                logoUrl={dealer.logoUrl}
+                cor={dealer.brandColor}
+                className="w-12 h-12 rounded-xl text-lg"
+              />
               <div>
                 <h1 className="text-xl font-bold">{dealer.tradeName}</h1>
                 {branch && (
