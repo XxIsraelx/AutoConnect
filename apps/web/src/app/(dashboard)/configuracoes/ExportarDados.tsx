@@ -49,6 +49,13 @@ const EXPORTACOES: { chave: string; rotulo: string; descricao: string; rota: str
     arquivo: 'mensagens.csv',
   },
   {
+    chave: 'clientes',
+    rotulo: 'Clientes',
+    descricao: 'Quem já tem lead, visita ou conversa com a loja. Só gerência.',
+    rota: '/tenant/reports/customers.csv',
+    arquivo: 'clientes.csv',
+  },
+  {
     chave: 'negocios',
     rotulo: 'Negócios',
     descricao: 'Valores, desconto e margem dos últimos 12 meses.',

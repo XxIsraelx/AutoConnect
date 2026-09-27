@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@autoconnect/db';
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { ehGlobal, type Escopo } from '../../common/escopo';
@@ -7,6 +7,9 @@ import {
   MOTIVOS_DE_CANCELAMENTO_DE_NEGOCIO,
 } from '@autoconnect/shared';
 import { montarCsv, montarCsvComTeto, TETO_DE_LINHAS_CSV } from './csv';
+import {
+  consultaDeClientesRelacionados, type ClienteRelacionado,
+} from '../../common/clientes-relacionados';
 
 /** Quem enxerga custo, margem e comissão. Mesma lista do `deals.controller`. */
 const VE_DINHEIRO = ['manager', 'tenant_admin', 'super_admin'];
@@ -558,6 +561,48 @@ export class RelatoriosService {
       c._count.messages,
       c.createdAt.toISOString(),
       c.lastMessageAt?.toISOString() ?? '',
+    ]);
+
+    return montarCsvComTeto(cabecalho, linhas);
+  }
+
+  /**
+   * Clientes vinculados à loja.
+   *
+   * "Vinculado" é a mesma definição da policy `cliente_relacionado`, e a consulta
+   * é **a mesma** que alimenta a busca de cliente das telas
+   * (`common/clientes-relacionados.ts`): a loja não leva na exportação alguém que
+   * ela não conseguiria achar na tela, nem o contrário.
+   *
+   * Só gerência exporta: a lista de clientes da loja é o ativo que sai pela porta
+   * quando um vendedor troca de emprego, e a carteira já nasce fechada no resto
+   * do produto por essa razão.
+   */
+  async csvDeClientes(escopo: Escopo, quem: QuemPede): Promise<string> {
+    const tenantId = this.tenantDe(escopo);
+    if (!this.veDinheiro(quem)) {
+      throw new ForbiddenException(
+        'A lista de clientes da loja é exportada pela gerência. ' +
+          'Você continua exportando os leads e as conversas da sua carteira.',
+      );
+    }
+
+    const clientes = await this.prisma.withTenant(tenantId, (tx: ScopedClient) =>
+      tx.$queryRaw<ClienteRelacionado[]>(
+        consultaDeClientesRelacionados(tenantId, { limite: TETO_DE_LINHAS_CSV + 1 }),
+      ),
+    );
+
+    const cabecalho = [
+      'ID', 'Nome', 'E-mail', 'Telefone', 'Leads', 'Agendamentos', 'Conversas',
+      'Primeiro contato', 'Último contato',
+    ];
+
+    const linhas = clientes.map((c) => [
+      c.id, c.fullName, c.email, c.phone ?? '',
+      c.leads, c.agendamentos, c.conversas,
+      c.primeiroContato ? new Date(c.primeiroContato).toISOString() : '',
+      c.ultimoContato ? new Date(c.ultimoContato).toISOString() : '',
     ]);
 
     return montarCsvComTeto(cabecalho, linhas);

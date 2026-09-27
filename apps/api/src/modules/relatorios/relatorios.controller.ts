@@ -116,6 +116,13 @@ export class RelatoriosController {
     this.entregar(res, `mensagens_${Date.now()}.csv`, csv);
   }
 
+  /** GET /tenant/reports/customers.csv — clientes vinculados, só gerência. */
+  @Get('customers.csv')
+  async csvClientes(@Req() req: AuthRequest, @Res() res: Response): Promise<void> {
+    const csv = await this.relatorios.csvDeClientes(escopoDa(req.user), req.user);
+    this.entregar(res, `clientes_${Date.now()}.csv`, csv);
+  }
+
   private entregar(res: Response, arquivo: string, csv: string): void {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${arquivo}"`);
