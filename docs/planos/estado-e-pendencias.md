@@ -313,6 +313,80 @@ existe por causa delas, e a tabela só sobe quando as duas primeiras existirem.
   - Sugestão: registrar a decisão em `docs/decisoes/` (a recomendação é não virar ERP).
   - Como testar: não se aplica até a decisão.
 
+**Do plano de vendas, sem registro até aqui** — Claude Cowork, 27/09/2026, ao conferir o
+[plano de vendas](plano-implementacao-vendas.md) contra esta lista. NF-e, fornecedor de
+consulta, conta da Clicksign, revisão jurídica, feature flag e região da API já estão acima.
+
+- **RENAVE obrigatório no país inteiro — o prazo de adaptação termina em 28/09/2026.**
+  - Onde: nada no código (`git grep -i renave` vazio). O plano prevê na Fase 5 a integração
+    "por integradora credenciada, com certificado ICP-Brasil" e a tabela `renave_events` antes da
+    integração; a Onda 4 do [plano de paridade](plano-paridade-crm.md) (item 18) cobre só o
+    contrato de consignação.
+  - O que é: a Resolução Contran nº 1.026/2026 tornou o RENAVE obrigatório para toda revenda de
+    usados: entrada e saída do estoque, transferência entre revendas e consignação registradas por
+    integradora autorizada pela Senatran, com e-CNPJ, e consignação com contrato assinado
+    digitalmente. Os 90 dias de adaptação contados da publicação (fim de junho/início de julho de
+    2026) terminam em 28/09/2026.
+  - Evidência: [ANAUTOS](https://anautos.org.br/2026/07/02/contran-publica-resolucao-no-1-026-2026-e-torna-renave-obrigatorio-em-todo-o-brasil/)
+    e [Renavix](https://www.renavix.com.br/resolucao-1026), lidos em 27/09/2026. Conferir no DOU
+    antes de virar requisito — é o que o próprio plano pede no "Nível 5".
+  - Impacto: a obrigação é da loja, não do AutoConnect, mas o estoque do sistema passa a precisar
+    bater com o RENAVE e a NF-e (veículo, valor, data, tipo de operação). Revenda Mais e Autoconf
+    já publicam material sobre o assunto; o lojista vai perguntar na primeira conversa.
+  - Sugestão: agora, uma resposta honesta no FAQ e no roteiro ("o AutoConnect ainda não envia ao
+    RENAVE; você segue com a sua integradora"). Depois, na ordem do plano: `renave_events` com
+    protocolo e payload, campo para o protocolo da integradora na entrada e na saída do veículo,
+    e só então a integração.
+  - Como testar: veículo com entrada registrada guarda o protocolo; negócio faturado sem
+    protocolo de saída mostra o aviso; uma entrada e uma saída de ponta a ponta no ambiente de
+    homologação da integradora.
+- **Relatório COAF de pagamento em espécie.**
+  - Onde: Fase 5 do plano ("a de melhor relação custo-benefício... sem integração externa
+    nenhuma"). `DealPayment` já tem o método `cash` em `schema.prisma`.
+  - O que é: um job que soma pagamentos em espécie por CPF numa janela móvel de seis meses,
+    alerta ao cruzar o limite e gera relatório exportável para a loja comunicar ao COAF.
+  - Evidência: o plano de vendas; nenhuma linha de código com "coaf".
+  - Impacto: é obrigação da loja que recebe em espécie, e hoje ela precisa somar à mão. Barato de
+    entregar e argumento de venda para quem teme multa.
+  - Sugestão: implementar como o plano descreve, depois de conferir o limite e o prazo vigentes
+    nas normas do COAF (o plano pede essa verificação antes de virar requisito).
+  - Como testar: três pagamentos em espécie do mesmo CPF que somam acima do limite em seis meses
+    geram o alerta; o mesmo valor espalhado por sete meses não gera; o relatório exporta em CSV.
+- **Fase 4 — crédito e F&I, sem nada começado.**
+  - Onde: Fase 4 do plano; a tabela "Onde o plano de vendas está" marca ⬜.
+  - O que é: `FinanceProposal` com o protocolo da financeira, produtos de F&I com aceite individual
+    e data (venda casada é proibida; a evidência do aceite separado defende a loja), e fila com
+    BullMQ para envio e reconciliação.
+  - Evidência: o próprio plano. A mitigação escrita nele para "integração de crédito não fecha
+    comercialmente" é modelar `FinanceProposal` com **preenchimento manual** antes de qualquer API
+    — o vendedor já digita no portal do banco hoje.
+  - Impacto: financiamento está na maioria das vendas de loja; sem registro, o negócio não mostra
+    em que pé está o crédito nem a receita de F&I.
+  - Sugestão: começar pelo registro manual da proposta (banco, valor, status, protocolo) ligado ao
+    `Deal`, sem integração; a integração multibanco segue sendo o item 21 da Onda 5.
+  - Como testar: proposta manual criada, aprovada e recusada aparece na timeline do negócio; um
+    produto de F&I só entra no negócio com aceite próprio registrado.
+- **Validações que teste não cobre (Nível 5 do plano), além da revisão jurídica.**
+  - Onde: seção 6, "Nível 5 — O que teste não cobre".
+  - O que é: (a) conferência contábil, com o contador de uma loja real, do que o sistema registra
+    como custo, receita e margem; (b) teste de aceitação com um vendedor real fechando um negócio
+    de verdade — o [piloto](../produto/piloto-simulado-operacao.md) foi simulado; (c) verificação
+    das fontes regulatórias (RENAVE e COAF) antes de virarem requisito.
+  - Impacto: margem e comissão erradas são descobertas pelo cliente; fluxo que parece certo na
+    simulação trava no balcão.
+  - Sugestão: fazer (a) e (b) com a primeira loja fundadora, na semana de implantação; (c) antes de
+    começar RENAVE ou COAF.
+  - Como testar: ata de cada validação em `docs/produto/`, com o que mudou por causa dela.
+- **Portões do plano de vendas não foram marcados.**
+  - Onde: `plano-implementacao-vendas.md`, portões das Fases 0, 1 e 2 e a "Definição de pronto" —
+    todas as caixas seguem `[ ]`. A tabela "Onde o plano de vendas está", abaixo, diz "Estado em
+    03/09/2026".
+  - Impacto: quem lê o plano acha que as Fases 0 e 1 não fecharam; é o tipo de documento velho que
+    já fez um agente tomar decisão errada.
+  - Sugestão: marcar cada caixa cumprida com a data e o teste que prova, e atualizar a data da
+    tabela.
+  - Como testar: todo item marcado aponta para um teste ou commit que existe.
+
 ## Onde o plano de paridade de CRM está
 
 `docs/planos/plano-paridade-crm.md`. Estado em 25/09/2026:
