@@ -149,6 +149,25 @@ export class ProvedorSimuladoDeCobranca implements ProvedorDeCobranca {
     return Promise.resolve();
   }
 
+  /**
+   * Cancela uma cobrança, como a Asaas: a assinatura fica, aquela fatura sai de
+   * aberto. Fatura paga não se cancela — a Asaas recusa, e recusar aqui também
+   * é o que faz o e2e exercitar o caminho de erro de verdade.
+   */
+  cancelarFatura(idFaturaExterna: string): Promise<void> {
+    for (const a of this.assinaturas.values()) {
+      const f = a.faturas.find((x) => x.idExterno === idFaturaExterna);
+      if (!f) continue;
+      if (f.status === 'paga') {
+        return Promise.reject(new BadRequestException('Cobrança já paga não pode ser removida no gateway.'));
+      }
+      f.status = 'cancelada';
+      return Promise.resolve();
+    }
+    // Não encontrada: no-op, como o 404 da Asaas.
+    return Promise.resolve();
+  }
+
   interpretarWebhook(cabecalhos: CabecalhosDeCobranca, corpoCru: Uint8Array): EventoDeCobranca {
     if (!tokenConfere(cabecalhos, CABECALHO_TOKEN_ASAAS, this.token)) {
       throw new UnauthorizedException('Token do webhook de cobrança não confere.');

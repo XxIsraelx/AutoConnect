@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -19,12 +20,14 @@ import {
   type FornecedorDeConsulta,
   type SubscriptionPlanValue,
   type ProvedorDeAssinatura,
+  type ProvedorDeCobranca,
 } from '@autoconnect/shared';
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
 import { EmailService } from '../../common/email/email.service';
 import { DocumentosStorage } from '../../common/armazenamento/documentos.storage';
 import { PROVEDOR_DE_ASSINATURA } from '../contracts/assinatura/provedor';
 import { FORNECEDOR_DE_CONSULTA } from '../consultas/fornecedor';
+import { PROVEDOR_DE_COBRANCA } from '../cobranca/provedor';
 import { EstadoDaLojaService } from '../cobranca/estado-da-loja.service';
 
 const DIA_MS = 86_400_000;
@@ -79,8 +82,13 @@ function maisRecente(...datas: (Date | null | undefined)[]): Date | null {
   return max;
 }
 
+/** Faturas que ainda dá para cancelar: as que ninguém pagou. */
+const FATURAS_EM_ABERTO = ['pendente', 'vencida'] as const;
+
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
+
   /**
    * Usa a conexão privilegiada de propósito: o painel do super admin consulta
    * todas as concessionárias por natureza, e `withTenant` não faria sentido
@@ -97,6 +105,11 @@ export class AdminService {
     private readonly agendador: SchedulerRegistry,
     @Inject(PROVEDOR_DE_ASSINATURA) private readonly assinatura: ProvedorDeAssinatura,
     @Inject(FORNECEDOR_DE_CONSULTA) private readonly consulta: FornecedorDeConsulta,
+    /**
+     * O gateway de cobrança, para cancelar fatura e assinatura de uma loja pelo
+     * painel. Só o super admin chega aqui; quem confere o papel é o controller.
+     */
+    @Inject(PROVEDOR_DE_COBRANCA) private readonly cobranca: ProvedorDeCobranca,
   ) {}
 
   /* ── KPIs ──────────────────────────────────────────────────────────── */
@@ -372,8 +385,10 @@ export class AdminService {
   private cobrancaDaLoja(
     assinatura: {
       plan: string; status: string; trialEndsAt: Date | null;
+      pendingPlan?: string | null; pendingSince?: Date | null;
       currentPeriodEnd?: Date | null; graceUntil?: Date | null;
       courtesySince?: Date | null; courtesyReason?: string | null;
+      externalProvider?: string | null; externalId?: string | null;
     } | null,
     ultimaFatura?: { status: string; amount: Prisma.Decimal; dueDate: Date; paidAt: Date | null } | null,
   ) {
@@ -382,6 +397,14 @@ export class AdminService {
       plan: assinatura?.plan ?? null,
       status: assinatura?.status ?? null,
       trialEndsAt: assinatura?.trialEndsAt ?? null,
+      // Plano contratado e **não pago**: não vale ainda, e é o que o super
+      // admin precisa ver para distinguir "escolheu um plano" de "está pagando".
+      planoPendente: veredito.planoPendente,
+      pendenteDesde: assinatura?.pendingSince ?? null,
+      /** A assinatura no gateway, se houver — é o que o cancelamento alcança. */
+      gateway: assinatura?.externalId
+        ? { provedor: assinatura.externalProvider ?? null, assinaturaExterna: assinatura.externalId }
+        : null,
       situacao: veredito.situacao,
       somenteLeitura: veredito.somenteLeitura,
       diasRestantes: veredito.diasRestantes,
@@ -412,7 +435,9 @@ export class AdminService {
           subscription: {
             select: {
               plan: true, status: true, trialEndsAt: true,
+              pendingPlan: true, pendingSince: true,
               currentPeriodEnd: true, graceUntil: true,
+              externalProvider: true, externalId: true,
               courtesySince: true, courtesyReason: true,
               // Só a última: o painel mostra "a fatura mais recente", e trazer
               // o histórico inteiro de cada loja para uma lista seria pagar
@@ -458,11 +483,16 @@ export class AdminService {
       this.privilegiado.lead.count({ where: { tenantId } }),
       this.privilegiado.lead.count({ where: { tenantId, status: 'new' } }),
       this.metricasDasLojas(tenantId),
+      // O link de pagamento e o id no gateway entram aqui porque é por esta
+      // tela que se conserta uma fatura gerada por engano: sem o link não há
+      // como conferir o que o cliente está vendo, e sem o id no gateway não há
+      // como casar a linha com a cobrança de lá.
       this.privilegiado.tenantInvoice.findMany({
         where: { tenantId }, orderBy: { dueDate: 'desc' }, take: 12,
         select: {
           id: true, status: true, amount: true, dueDate: true,
-          paidAt: true, paymentMethod: true,
+          paidAt: true, paymentMethod: true, paymentUrl: true,
+          description: true, provider: true, externalId: true, createdAt: true,
         },
       }),
     ]);
@@ -483,7 +513,13 @@ export class AdminService {
       faturas: faturas.map((f) => ({
         id: f.id, status: f.status, valor: f.amount.toFixed(2),
         vencimento: f.dueDate, pagoEm: f.paidAt, meio: f.paymentMethod,
+        urlPagamento: f.paymentUrl, descricao: f.description,
+        provedor: f.provider, externalId: f.externalId, criadaEm: f.createdAt,
+        /** Só fatura em aberto se cancela; paga e estornada são história. */
+        cancelavel: (FATURAS_EM_ABERTO as readonly string[]).includes(f.status),
       })),
+      /** Qual gateway está montado agora — sem ele, o cancelamento não sai do banco. */
+      gatewayDeCobranca: { provedor: this.cobranca.nome, disponivel: this.cobranca.disponivel },
       metrics: metricas.get(tenantId) ?? METRICAS_VAZIAS,
     };
   }
@@ -605,6 +641,222 @@ export class AdminService {
     });
     this.estadoDaLoja.invalidar(tenantId);
     return atualizada;
+  }
+
+  /* ── Faturas e assinatura, pela mão do super admin ─────────────────── */
+
+  /**
+   * Faz no gateway o que só ele pode fazer, quando ele é alcançável.
+   *
+   * Duas razões para não ser alcançável, e as duas são normais: **nenhum**
+   * gateway configurado (instalação sem conta) e fatura de **outro** provedor
+   * (a loja foi cobrada pela Asaas e hoje o montado é o simulado, ou
+   * vice-versa). Nos dois casos a linha local ainda precisa ser corrigida —
+   * ela é o que a loja vê —, então o cancelamento segue e a resposta diz que o
+   * gateway não foi tocado.
+   *
+   * O que **não** é normal é o gateway recusar: aí o erro sobe e nada muda
+   * aqui. Dizer "cancelada" com a cobrança viva lá seria a pior das duas
+   * mentiras possíveis — a loja pagaria uma fatura que o painel diz que não
+   * existe.
+   */
+  private async noGateway(
+    provedorDaLinha: string | null,
+    acao: (p: ProvedorDeCobranca) => Promise<void>,
+  ): Promise<'cancelada' | 'nao_tentado'> {
+    if (!this.cobranca.disponivel || this.cobranca.nome !== provedorDaLinha) {
+      this.logger.warn(
+        `Cancelamento sem passar pelo gateway: a linha é de "${provedorDaLinha ?? 'nenhum'}" ` +
+          `e o provedor montado é "${this.cobranca.nome}" (disponível: ${this.cobranca.disponivel}).`,
+      );
+      return 'nao_tentado';
+    }
+    await acao(this.cobranca);
+    return 'cancelada';
+  }
+
+  /**
+   * Cancela **uma fatura em aberto** de uma loja.
+   *
+   * O caso que a criou: uma cobrança gerada por engano num teste em produção. A
+   * loja fica com um boleto que ninguém devia pagar, e até aqui não havia como
+   * desfazer isso sem SQL na mão.
+   *
+   * **A fatura é marcada `cancelada`, nunca apagada.** Três razões:
+   *
+   * 1. Histórico de dinheiro não se apaga. A linha é a única prova local de que
+   *    o gateway chegou a emitir a cobrança — é o que explica, meses depois,
+   *    um estorno ou uma reclamação.
+   * 2. `(provider, external_id)` é único, e o webhook reencontra a fatura por
+   *    ele. Apagada, uma entrega atrasada de `PAYMENT_OVERDUE` a **recriaria**
+   *    como vencida e reabriria a carência; existindo e cancelada, o webhook a
+   *    reconhece e ignora o evento.
+   * 3. A loja continua vendo o que aconteceu com ela, o que é o contrário de
+   *    "sumiu uma cobrança da minha tela".
+   *
+   * Fatura **paga** não passa por aqui: o caminho dela é o estorno, no painel
+   * do gateway, porque quem devolve dinheiro é quem o recebeu.
+   */
+  async cancelarFaturaDaLoja(
+    tenantId: string,
+    faturaId: string,
+    motivo: string,
+    atorId: string,
+  ): Promise<unknown> {
+    const fatura = await this.privilegiado.tenantInvoice.findFirst({
+      where: { id: faturaId, tenantId },
+    });
+    if (!fatura) throw new NotFoundException('Fatura não encontrada nesta concessionária');
+
+    if (!(FATURAS_EM_ABERTO as readonly string[]).includes(fatura.status)) {
+      if (fatura.status === 'cancelada') {
+        // Idempotente: dois cliques no mesmo botão não viram erro.
+        return { cancelada: true, jaEstava: true, gateway: 'nao_tentado' as const };
+      }
+      throw new BadRequestException(
+        `Esta fatura está "${fatura.status}" e não se cancela: histórico de dinheiro não é reescrito. ` +
+          'Para devolver um valor já pago, o caminho é o estorno no painel do gateway.',
+      );
+    }
+
+    const gateway = await this.noGateway(fatura.provider, (p) => p.cancelarFatura(fatura.externalId));
+
+    await this.privilegiado.tenantInvoice.update({
+      where: { id: fatura.id },
+      data: { status: 'cancelada' },
+    });
+
+    await this.writeAudit({
+      action: 'invoice_canceled',
+      entityType: 'tenant_invoice',
+      entityId: fatura.id,
+      actorUserId: atorId,
+      diff: {
+        tenantId, motivo, gateway,
+        statusAnterior: fatura.status,
+        valor: fatura.amount.toFixed(2),
+        vencimento: fatura.dueDate,
+        provedor: fatura.provider,
+        externalId: fatura.externalId,
+      },
+    });
+
+    return { cancelada: true, gateway };
+  }
+
+  /**
+   * Cancela a **assinatura** de uma loja no gateway e limpa o que ela deixou.
+   *
+   * É a saída para a loja que contratou por engano — o caso real: um teste em
+   * produção que criou assinatura e fatura pendente numa loja que não ia pagar.
+   *
+   * A ordem é gateway primeiro, banco depois, como em todo o módulo: se o
+   * gateway recusar, nada muda aqui e o pedido pode ser repetido (cancelar duas
+   * vezes na Asaas é no-op). Só depois de o gateway estar limpo o banco é
+   * atualizado, de uma vez.
+   *
+   * `voltarParaTrial` existe porque a loja pode estar com um **plano pago que
+   * nunca foi pago** — exatamente o que o defeito de 27/09/2026 gravava. Nesse
+   * estado, cancelar a assinatura sem mexer no plano deixaria a loja "em dia"
+   * para sempre, que é o defeito de novo. Voltar ao trial com prazo é o único
+   * destino honesto: a loja escolhe um plano e paga, ou vira somente leitura no
+   * fim do prazo. É explícito e auditado, nunca automático — só o super admin
+   * sabe se aquela loja pagou por fora.
+   */
+  async cancelarAssinaturaDaLoja(
+    tenantId: string,
+    opcoes: { motivo: string; cancelarFaturas: boolean; voltarParaTrial: boolean; diasDeTrial: number },
+    atorId: string,
+  ): Promise<unknown> {
+    const sub = await this.privilegiado.tenantSubscription.findUnique({ where: { tenantId } });
+    if (!sub) throw new NotFoundException('Assinatura não encontrada');
+
+    // ── 1. Gateway: a assinatura ──────────────────────────────────────
+    let gateway: 'cancelada' | 'nao_tentado' | 'sem_assinatura' = 'sem_assinatura';
+    if (sub.externalId) {
+      const id = sub.externalId;
+      gateway = await this.noGateway(sub.externalProvider, (p) => p.cancelarAssinatura(id));
+    }
+
+    // ── 2. Gateway: as faturas em aberto ──────────────────────────────
+    const abertas = opcoes.cancelarFaturas
+      ? await this.privilegiado.tenantInvoice.findMany({
+          where: { tenantId, status: { in: [...FATURAS_EM_ABERTO] } },
+          select: { id: true, provider: true, externalId: true, amount: true, status: true },
+        })
+      : [];
+
+    for (const f of abertas) {
+      await this.noGateway(f.provider, (p) => p.cancelarFatura(f.externalId));
+    }
+
+    // ── 3. Banco, de uma vez ──────────────────────────────────────────
+    const trialAte = opcoes.voltarParaTrial
+      ? new Date(Date.now() + opcoes.diasDeTrial * DIA_MS)
+      : null;
+
+    const atualizada = await this.privilegiado.$transaction(async (tx) => {
+      if (abertas.length > 0) {
+        await tx.tenantInvoice.updateMany({
+          where: { id: { in: abertas.map((f) => f.id) } },
+          data: { status: 'cancelada' },
+        });
+      }
+      return tx.tenantSubscription.update({
+        where: { tenantId },
+        data: {
+          // A intenção de contratar morre com a assinatura: sem cobrança no
+          // gateway não há fatura para pagar.
+          pendingPlan: null,
+          pendingSince: null,
+          // O id da assinatura sai; o do **cliente** fica, como manda o schema:
+          // a loja que voltar não vira um segundo cadastro no gateway.
+          externalId: null,
+          ...(trialAte
+            ? {
+                plan: 'trial' as const,
+                status: 'active' as const,
+                trialEndsAt: trialAte,
+                graceUntil: null,
+                lastNoticeAt: null,
+                canceledAt: null,
+              }
+            : {}),
+        },
+      });
+    });
+
+    await this.writeAudit({
+      action: 'subscription_canceled_by_admin',
+      entityType: 'tenant',
+      entityId: tenantId,
+      actorUserId: atorId,
+      diff: {
+        motivo: opcoes.motivo,
+        gateway,
+        assinaturaExterna: sub.externalId,
+        planoAnterior: sub.plan,
+        planoPendenteAnterior: sub.pendingPlan,
+        statusAnterior: sub.status,
+        faturasCanceladas: abertas.map((f) => ({ id: f.id, valor: f.amount.toFixed(2), status: f.status })),
+        voltouParaTrial: opcoes.voltarParaTrial,
+        trialEndsAt: trialAte,
+      },
+    });
+
+    // O veredito está em cache por 30 s no guard: sem isto a loja continuaria
+    // com o estado antigo por meio minuto depois do conserto.
+    this.estadoDaLoja.invalidar(tenantId);
+
+    return {
+      cancelada: true,
+      gateway,
+      faturasCanceladas: abertas.length,
+      plano: atualizada.plan,
+      planoPendente: atualizada.pendingPlan,
+      status: atualizada.status,
+      trialEndsAt: atualizada.trialEndsAt,
+    };
   }
 
   async toggleTenantActive(tenantId: string): Promise<unknown> {

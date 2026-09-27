@@ -6,7 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@autoconnect/db';
 import {
   aplicarEventoDeCobranca, avaliarCobranca, CATALOGO_DE_PLANOS, deCentavos, DIAS_DE_CARENCIA,
-  faixaParaEstoque, FAIXAS, somarDias, STATUS_QUE_CONTA_NO_LIMITE, usoDoEstoque,
+  ehPlanoPago, faixaParaEstoque, FAIXAS, somarDias, STATUS_QUE_CONTA_NO_LIMITE, usoDoEstoque,
   type CabecalhosDeCobranca, type EstadoDaCobranca, type EventoDeCobranca, type FaturaDoGateway,
   type MeioDePagamento, type PlanoPago, type ProvedorDeCobranca,
 } from '@autoconnect/shared';
@@ -51,7 +51,7 @@ function paraJson(evento: EventoDeCobranca): Prisma.InputJsonValue {
 export interface ResultadoDoWebhookDeCobranca {
   recebido: true;
   aplicado: boolean;
-  motivo?: 'ignorado' | 'assinatura-desconhecida' | 'duplicado' | 'sem-efeito';
+  motivo?: 'ignorado' | 'assinatura-desconhecida' | 'duplicado' | 'sem-efeito' | 'fatura-cancelada';
 }
 
 /**
@@ -149,7 +149,11 @@ export class CobrancaService {
       planos: this.planos(),
       assinatura: dados.assinatura
         ? {
+            /** O plano **efetivo** — o que a loja tem hoje. */
             plano: dados.assinatura.plan,
+            /** Contratado e aguardando pagamento. Não vale ainda. */
+            planoPendente: dados.assinatura.pendingPlan,
+            pendenteDesde: dados.assinatura.pendingSince,
             status: dados.assinatura.status,
             trialEndsAt: dados.assinatura.trialEndsAt,
             currentPeriodEnd: dados.assinatura.currentPeriodEnd,
@@ -167,6 +171,8 @@ export class CobrancaService {
       diasRestantes: veredito.diasRestantes,
       prazoAte: veredito.prazoAte,
       aviso: veredito.aviso,
+      // O veredito é a fonte: a tela não decide por si se há plano pendente.
+      planoPendente: veredito.planoPendente,
       uso: { ...uso, faixaSugerida: faixaParaEstoque(dados.veiculos)?.plano ?? null },
       faturas: dados.faturas.map((f) => ({
         id: f.id,
@@ -185,6 +191,45 @@ export class CobrancaService {
 
   /* ── 2. Contratar ──────────────────────────────────────────── */
 
+  /**
+   * Contratar um plano — ou trocar de plano.
+   *
+   * ## Contratar registra a intenção; **o pagamento é que muda o plano**
+   *
+   * Até 27/09/2026 esta função gravava `plan: plano` antes de qualquer
+   * pagamento, mantendo o `status`. Como `avaliarCobranca` lê "plano pago +
+   * `active`" como loja em dia sem mais perguntas, o resultado era uma loja que
+   * contratava, nunca pagava e ficava com o plano — e com o teto de estoque
+   * dele — **para sempre**. Aconteceu em produção.
+   *
+   * Agora o plano contratado vai para `pendingPlan`, e quem o promove é o
+   * `pagamento_confirmado` do webhook. Enquanto pendente:
+   *
+   * - a loja continua no que tinha (trial vigente, plano pago anterior, ou
+   *   somente leitura se já estava);
+   * - o **teto de estoque continua sendo o do plano efetivo** — ninguém publica
+   *   acima da faixa que ainda não pagou;
+   * - a tela mostra "plano X contratado, aguardando pagamento" com o link da
+   *   fatura.
+   *
+   * ## O que continua igual: contratar destrava quem estava vencido
+   *
+   * A carência vai até o primeiro vencimento + `DIAS_DE_CARENCIA`, como na
+   * decisão original — quem se comprometeu volta a escrever antes de o boleto
+   * vencer. A diferença é que agora isso é um prazo (10 dias), e não um plano
+   * vitalício: passada a carência sem pagamento, a loja volta a somente
+   * leitura. Loja **pagante e em dia** não recebe carência nenhuma aqui: ela
+   * não está vencida, e gravar um prazo para ela só criaria data errada para o
+   * dia em que uma fatura vencer.
+   *
+   * ## Troca de plano de quem já paga
+   *
+   * O `plan` antigo fica de pé (e o teto dele também) até a primeira fatura do
+   * novo ser paga. No gateway existe **uma** assinatura viva: a nova é criada e
+   * a anterior é cancelada logo depois — nessa ordem, porque falhar na criação
+   * não pode deixar a loja sem assinatura nenhuma. Se a loja nunca pagar o
+   * plano novo, o `PAYMENT_OVERDUE` da fatura dele abre a carência normal.
+   */
   async contratar(escopo: Escopo, plano: PlanoPago, meio: MeioDePagamento) {
     const tenantId = this.tenantDe(escopo);
     this.exigirProvedor();
@@ -212,9 +257,21 @@ export class CobrancaService {
         'Esta loja está em cortesia e não paga assinatura. Fale com a AutoConnect para mudar de plano.',
       );
     }
-    if (atual.assinatura.externalId && atual.assinatura.status !== 'canceled') {
+
+    // Assinatura viva no gateway = tem id e não foi cancelada. É o que decide
+    // se este pedido é uma contratação nova ou uma troca de plano.
+    const anterior = atual.assinatura.status === 'canceled' ? null : atual.assinatura.externalId;
+
+    if (anterior && atual.assinatura.pendingPlan === plano) {
       throw new ConflictException(
-        'Esta loja já tem uma assinatura ativa no gateway. Cancele a atual antes de contratar outra.',
+        `O plano ${faixa.nome} já está contratado e aguardando o pagamento da primeira fatura. ` +
+          'Use o link da fatura em aberto para pagar — contratar de novo só geraria uma segunda cobrança.',
+      );
+    }
+    if (anterior && !atual.assinatura.pendingPlan && atual.assinatura.plan === plano) {
+      throw new ConflictException(
+        `Esta loja já está no plano ${faixa.nome}. ` +
+          'Se houver fatura em aberto, pague-a pelo link; para sair do plano, cancele a assinatura.',
       );
     }
     if (!atual.loja.taxId) {
@@ -250,17 +307,37 @@ export class CobrancaService {
       referencia: atual.assinatura.id,
     });
 
+    // Troca de plano: a assinatura anterior sai do gateway agora que a nova
+    // existe. Nunca duas vivas — seriam duas cobranças mensais. Falhar aqui não
+    // desfaz nada (o cliente já tem a fatura nova para pagar), então é aviso no
+    // log e não erro: o super admin cancela a sobra em `/admin › Concessionárias`.
+    if (anterior && anterior !== assinatura.idExterno) {
+      try {
+        await this.provedor.cancelarAssinatura(anterior);
+      } catch (err) {
+        this.logger.error(
+          `Loja ${tenantId}: a assinatura ${anterior} não pôde ser cancelada ao trocar de plano ` +
+            `(nova: ${assinatura.idExterno}). Pode haver cobrança dupla no gateway: ${err}`,
+        );
+      }
+    }
+
     // ── Gravação ──────────────────────────────────────────────────────
     //
-    // O plano muda **aqui**, antes do pagamento, e o status continua o que
-    // era: contratar não é pagar. Quem libera é o webhook. O que a troca de
-    // plano faz na hora é aplicar o limite de estoque da faixa contratada — a
-    // loja que escolheu o Pro já pode publicar acima de 80.
+    // `plan` **não** muda aqui: contratar não é pagar. A intenção fica em
+    // `pendingPlan` e o `pagamento_confirmado` do webhook a promove.
+    //
+    // Loja pagante e em dia não ganha carência: ela não está vencida, e um
+    // `graceUntil` gravado agora seria a data errada no dia em que uma fatura
+    // vencesse de verdade.
+    const emDiaPagando = ehPlanoPago(atual.assinatura.plan) && atual.assinatura.status === 'active';
+
     await this.prisma.withTenant(tenantId, (tx) =>
       tx.tenantSubscription.update({
         where: { tenantId },
         data: {
-          plan: plano,
+          pendingPlan: plano,
+          pendingSince: new Date(),
           externalProvider: this.provedor.nome,
           externalId: assinatura.idExterno,
           externalCustomerId: cliente.idExterno,
@@ -268,7 +345,8 @@ export class CobrancaService {
           canceledAt: null,
           // Carência até o primeiro vencimento + a carência normal: a loja que
           // contratou no último dia do trial não pode virar somente leitura
-          // enquanto o boleto dela nem venceu.
+          // enquanto o boleto dela nem venceu. E é um **prazo**: passado ele
+          // sem pagamento, a loja volta a somente leitura.
           //
           // ⚠ É o `primeiroVencimento` que pedimos, **não** o
           // `assinatura.proximoVencimento`: validado no sandbox da Asaas em
@@ -276,7 +354,7 @@ export class CobrancaService {
           // (pedimos 28/09, a cobrança nasceu para 28/09 e a resposta veio
           // 28/10). Usá-lo daria 37 dias de carência em vez de 10 — um mês
           // de produto de graça para quem contratou e nunca pagou.
-          graceUntil: somarDias(primeiroVencimento, DIAS_DE_CARENCIA),
+          ...(emDiaPagando ? {} : { graceUntil: somarDias(primeiroVencimento, DIAS_DE_CARENCIA) }),
           status: atual.assinatura.status === 'canceled' ? 'past_due' : atual.assinatura.status,
         },
       }),
@@ -284,8 +362,16 @@ export class CobrancaService {
 
     this.estadoDaLoja.invalidar(tenantId);
 
-    const fatura = await this.sincronizarFatura(tenantId, assinatura.idExterno);
-    return { contratada: true, plano, fatura };
+    const fatura = await this.sincronizarFatura(tenantId, assinatura.idExterno, `AutoConnect — plano ${faixa.nome}`);
+    return {
+      contratada: true,
+      /** O plano contratado. Ele **ainda não vale**: falta o pagamento. */
+      plano,
+      pendente: true,
+      /** O que a loja tem enquanto a fatura não é paga. */
+      planoEfetivo: atual.assinatura.plan,
+      fatura,
+    };
   }
 
   /**
@@ -295,7 +381,7 @@ export class CobrancaService {
    * existe dos dois lados, e o link de pagamento é recuperável a qualquer
    * momento pela própria tela. O aviso no log é o que torna o caso visível.
    */
-  private async sincronizarFatura(tenantId: string, idAssinaturaExterna: string) {
+  private async sincronizarFatura(tenantId: string, idAssinaturaExterna: string, descricao?: string) {
     let doGateway: FaturaDoGateway | null = null;
     try {
       doGateway = await this.provedor.faturaAtual(idAssinaturaExterna);
@@ -305,7 +391,7 @@ export class CobrancaService {
     }
     if (!doGateway) return null;
 
-    return this.gravarFatura(tenantId, doGateway);
+    return this.gravarFatura(tenantId, doGateway, descricao);
   }
 
   private async gravarFatura(tenantId: string, f: FaturaDoGateway, descricao?: string) {
@@ -380,7 +466,13 @@ export class CobrancaService {
     await this.prisma.withTenant(tenantId, (tx) =>
       tx.tenantSubscription.update({
         where: { tenantId },
-        data: { status: 'canceled', canceledAt: new Date(), graceUntil: null },
+        data: {
+          status: 'canceled', canceledAt: new Date(), graceUntil: null,
+          // A intenção morre com a assinatura: sem cobrança no gateway não há
+          // fatura para pagar, e "aguardando pagamento" na tela de quem
+          // cancelou seria mentira.
+          pendingPlan: null, pendingSince: null,
+        },
       }),
     );
     this.estadoDaLoja.invalidar(tenantId);
@@ -433,6 +525,22 @@ export class CobrancaService {
         throw err;
       }
 
+      // Fatura que o super admin cancelou à mão não volta pela porta dos
+      // fundos. A Asaas pode ter um `PAYMENT_OVERDUE` na fila no instante em
+      // que a cobrança é removida; aplicá-lo reabriria a carência (e o
+      // bloqueio depois dela) por causa de uma cobrança que já não existe.
+      // Pagamento confirmado **passa**: dinheiro que entrou é dinheiro que
+      // entrou, mesmo que o cancelamento tenha corrido junto.
+      if (evento.tipo === 'pagamento_vencido' && evento.fatura) {
+        const local = await tx.tenantInvoice.findFirst({
+          where: { provider: this.provedor.nome, externalId: evento.fatura.idExterno },
+          select: { status: true },
+        });
+        if (local?.status === 'cancelada') {
+          return { aplicado: false, motivo: 'fatura-cancelada' as const };
+        }
+      }
+
       // Os webhooks da mesma assinatura são serializados aqui: sem a trava,
       // um `PAYMENT_CONFIRMED` e um `PAYMENT_RECEIVED` chegando no mesmo
       // instante leriam o mesmo estado e o segundo sobrescreveria o primeiro.
@@ -442,6 +550,8 @@ export class CobrancaService {
       if (!linha) return { aplicado: false, motivo: 'assinatura-desconhecida' as const };
 
       const atual: EstadoDaCobranca = {
+        plan: linha.plan,
+        pendingPlan: linha.pendingPlan,
         status: linha.status,
         currentPeriodEnd: linha.currentPeriodEnd,
         graceUntil: linha.graceUntil,
@@ -456,6 +566,12 @@ export class CobrancaService {
         await tx.tenantSubscription.update({
           where: { id: alvo.id },
           data: {
+            // **É aqui que o plano contratado passa a valer.** A máquina de
+            // estados decide: `pagamento_confirmado` promove o pendente,
+            // cancelamento e reembolso o descartam, vencimento o mantém.
+            plan: estado.plan as typeof linha.plan,
+            pendingPlan: estado.pendingPlan as typeof linha.pendingPlan,
+            pendingSince: estado.pendingPlan === null ? null : linha.pendingSince,
             status: estado.status,
             currentPeriodEnd: estado.currentPeriodEnd,
             currentPeriodStart: estado.status === 'active' ? new Date() : linha.currentPeriodStart,
@@ -476,7 +592,8 @@ export class CobrancaService {
 
     // A fatura é espelhada fora da transação do evento: ela é histórico, e um
     // erro ao gravá-la não pode desfazer o desbloqueio que acabou de acontecer.
-    if (evento.fatura) {
+    // A cancelada à mão fica de fora: o espelho a devolveria a `vencida`.
+    if (evento.fatura && resultado.motivo !== 'fatura-cancelada') {
       try {
         await this.gravarFatura(alvo.tenantId, evento.fatura);
       } catch (err) {

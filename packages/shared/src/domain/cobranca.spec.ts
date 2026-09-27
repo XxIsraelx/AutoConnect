@@ -163,13 +163,94 @@ describe('avaliarCobranca', () => {
   });
 });
 
+/**
+ * O defeito de 27/09/2026, fixado nos dois lados: a contratação não muda o
+ * plano efetivo, e nada no estado pendente é lido como "em dia".
+ */
+describe('avaliarCobranca — plano contratado e não pago', () => {
+  it('contratar durante o trial não antecipa nada: a loja segue em trial', () => {
+    const v = avaliarCobranca(
+      { plan: 'trial', status: 'active', trialEndsAt: dias(10), pendingPlan: 'profissional' },
+      AGORA,
+    );
+    expect(v.situacao).toBe('trial');
+    expect(v.somenteLeitura).toBe(false);
+    expect(v.planoPendente).toBe('profissional');
+    // O aviso é o que leva ao link da fatura — e diz que o plano não vale ainda.
+    expect(v.aviso).toContain('Profissional');
+    expect(v.aviso).toContain('aguardando o pagamento');
+  });
+
+  it('o limite de estoque continua sendo o do plano efetivo, não o do contratado', () => {
+    // "não pode ganhar o limite do Pro antes de pagar o Pro".
+    expect(limiteDeVeiculos('trial')).toBe(30);
+    expect(usoDoEstoque('trial', 31).excedido).toBe(true);
+  });
+
+  it('contratar e nunca pagar NÃO deixa a loja em dia: a carência vence e bloqueia', () => {
+    // O caso que motivou o conserto. Antes, `contratar` gravava `plan` e a
+    // regra "plano pago + active" dava loja em dia para sempre.
+    const contratou = {
+      plan: 'trial', status: 'active', pendingPlan: 'essencial',
+      trialEndsAt: dias(-1), graceUntil: dias(9),
+    };
+    // Dentro da carência da contratação, escreve.
+    expect(avaliarCobranca(contratou, AGORA)).toMatchObject({
+      situacao: 'em_carencia', somenteLeitura: false, planoPendente: 'essencial',
+    });
+
+    // Passada a carência sem pagamento, somente leitura — com plano pendente e tudo.
+    const passou = avaliarCobranca({ ...contratou, graceUntil: dias(-1) }, AGORA);
+    expect(passou.situacao).toBe('somente_leitura');
+    expect(passou.somenteLeitura).toBe(true);
+    expect(passou.planoPendente).toBe('essencial');
+    // O urgente vem primeiro; a pendência complementa.
+    expect(passou.aviso).toContain('somente leitura');
+    expect(passou.aviso).toContain('Essencial');
+  });
+
+  it('troca de plano de quem paga: a loja continua no plano antigo, em dia', () => {
+    const v = avaliarCobranca(
+      {
+        plan: 'essencial', status: 'active', currentPeriodEnd: dias(20),
+        pendingPlan: 'profissional',
+      },
+      AGORA,
+    );
+    expect(v.situacao).toBe('ativa');
+    expect(v.somenteLeitura).toBe(false);
+    expect(v.planoPendente).toBe('profissional');
+    expect(v.aviso).toContain('continua no plano Essencial');
+  });
+
+  it('pendência que não é plano pago é ignorada', () => {
+    // `trial` (que a constraint do banco recusa) e lixo não são contratação.
+    for (const lixo of ['trial', 'ouro', '']) {
+      const v = avaliarCobranca(
+        { plan: 'trial', status: 'active', trialEndsAt: dias(10), pendingPlan: lixo }, AGORA,
+      );
+      expect(v.planoPendente).toBeNull();
+      expect(v.aviso).toBeNull();
+    }
+  });
+});
+
 describe('cortesia', () => {
   const cortesia = { plan: PLANO_DA_CORTESIA, status: 'active', courtesySince: dias(-400) };
 
   it('loja em cortesia nunca bloqueia nem recebe aviso', () => {
     expect(avaliarCobranca(cortesia, AGORA)).toEqual({
-      situacao: 'cortesia', somenteLeitura: false, diasRestantes: null, prazoAte: null, aviso: null,
+      situacao: 'cortesia', somenteLeitura: false, diasRestantes: null, prazoAte: null,
+      aviso: null, planoPendente: null,
     });
+  });
+
+  it('resíduo de plano pendente não vira aviso em loja de cortesia', () => {
+    // Cortesia não paga nada, então não deve nada. Um `pendingPlan` antigo no
+    // banco não pode fazer a tela pedir pagamento a quem é isento.
+    const v = avaliarCobranca({ ...cortesia, pendingPlan: 'profissional' }, AGORA);
+    expect(v.planoPendente).toBeNull();
+    expect(v.aviso).toBeNull();
   });
 
   it('vale acima de qualquer prazo: trial vencido, fatura em atraso, carência passada', () => {
@@ -196,6 +277,7 @@ describe('cortesia', () => {
 
 describe('aplicarEventoDeCobranca', () => {
   const vencida: EstadoDaCobranca = {
+    plan: 'essencial', pendingPlan: null,
     status: 'past_due', currentPeriodEnd: dias(-10), graceUntil: dias(-3),
   };
 
@@ -217,7 +299,10 @@ describe('aplicarEventoDeCobranca', () => {
   });
 
   it('o vencimento abre a carência uma vez só', () => {
-    const emDia: EstadoDaCobranca = { status: 'active', currentPeriodEnd: dias(-1), graceUntil: null };
+    const emDia: EstadoDaCobranca = {
+      plan: 'essencial', pendingPlan: null,
+      status: 'active', currentPeriodEnd: dias(-1), graceUntil: null,
+    };
 
     const primeiro = aplicarEventoDeCobranca(emDia, { tipo: 'pagamento_vencido', ocorridoEm: AGORA });
     expect(primeiro.mudou).toBe(true);
@@ -234,7 +319,10 @@ describe('aplicarEventoDeCobranca', () => {
   });
 
   it('a carência conta do vencimento da fatura, não de quando o webhook chegou', () => {
-    const emDia: EstadoDaCobranca = { status: 'active', currentPeriodEnd: null, graceUntil: null };
+    const emDia: EstadoDaCobranca = {
+      plan: 'essencial', pendingPlan: null,
+      status: 'active', currentPeriodEnd: null, graceUntil: null,
+    };
     const { estado } = aplicarEventoDeCobranca(emDia, {
       tipo: 'pagamento_vencido',
       ocorridoEm: dias(2), // entrega atrasada
@@ -247,7 +335,10 @@ describe('aplicarEventoDeCobranca', () => {
   });
 
   it('reembolso e cancelamento levam a cancelada, e repetir é no-op', () => {
-    const ativa: EstadoDaCobranca = { status: 'active', currentPeriodEnd: dias(20), graceUntil: null };
+    const ativa: EstadoDaCobranca = {
+      plan: 'essencial', pendingPlan: null,
+      status: 'active', currentPeriodEnd: dias(20), graceUntil: null,
+    };
     for (const tipo of ['reembolso', 'assinatura_cancelada'] as const) {
       const { estado, mudou } = aplicarEventoDeCobranca(ativa, { tipo, ocorridoEm: AGORA });
       expect(mudou).toBe(true);
@@ -262,10 +353,85 @@ describe('aplicarEventoDeCobranca', () => {
     expect(r.estado).toBe(vencida);
   });
 
+  /* ── Promoção do plano contratado ─────────────────────────── */
+
+  it('o pagamento confirmado é o que promove o plano contratado', () => {
+    const contratou: EstadoDaCobranca = {
+      plan: 'trial', pendingPlan: 'crescimento',
+      status: 'active', currentPeriodEnd: null, graceUntil: dias(9),
+    };
+    const { estado, mudou } = aplicarEventoDeCobranca(contratou, {
+      tipo: 'pagamento_confirmado', ocorridoEm: AGORA,
+    });
+    expect(mudou).toBe(true);
+    expect(estado.plan).toBe('crescimento');
+    expect(estado.pendingPlan).toBeNull();
+    expect(estado.status).toBe('active');
+    expect(estado.graceUntil).toBeNull();
+  });
+
+  it('promover duas vezes dá o mesmo estado — a entrega repetida não rebaixa nada', () => {
+    // `PAYMENT_CONFIRMED` e `PAYMENT_RECEIVED` chegam os dois para a mesma
+    // fatura. O segundo já encontra `pendingPlan` vazio e não pode zerar o
+    // plano que o primeiro promoveu.
+    const contratou: EstadoDaCobranca = {
+      plan: 'essencial', pendingPlan: 'profissional',
+      status: 'past_due', currentPeriodEnd: null, graceUntil: dias(-1),
+    };
+    const uma = aplicarEventoDeCobranca(contratou, { tipo: 'pagamento_confirmado', ocorridoEm: AGORA });
+    const duas = aplicarEventoDeCobranca(uma.estado, { tipo: 'pagamento_confirmado', ocorridoEm: AGORA });
+    expect(uma.estado.plan).toBe('profissional');
+    expect(duas.mudou).toBe(false);
+    expect(duas.estado).toEqual(uma.estado);
+  });
+
+  it('a fatura vencida mantém a pendência: pagá-la depois ainda promove o plano', () => {
+    const contratou: EstadoDaCobranca = {
+      plan: 'trial', pendingPlan: 'essencial',
+      status: 'active', currentPeriodEnd: null, graceUntil: null,
+    };
+    const venceu = aplicarEventoDeCobranca(contratou, { tipo: 'pagamento_vencido', ocorridoEm: AGORA });
+    expect(venceu.estado.pendingPlan).toBe('essencial');
+    expect(venceu.estado.plan).toBe('trial');
+
+    const pagou = aplicarEventoDeCobranca(venceu.estado, { tipo: 'pagamento_confirmado', ocorridoEm: dias(2) });
+    expect(pagou.estado.plan).toBe('essencial');
+    expect(pagou.estado.pendingPlan).toBeNull();
+  });
+
+  it('cancelamento e reembolso descartam a pendência — não há mais fatura para pagar', () => {
+    const contratou: EstadoDaCobranca = {
+      plan: 'trial', pendingPlan: 'essencial',
+      status: 'active', currentPeriodEnd: null, graceUntil: dias(9),
+    };
+    for (const tipo of ['reembolso', 'assinatura_cancelada'] as const) {
+      const { estado, mudou } = aplicarEventoDeCobranca(contratou, { tipo, ocorridoEm: AGORA });
+      expect(mudou).toBe(true);
+      expect(estado.pendingPlan).toBeNull();
+      expect(estado.plan).toBe('trial');
+      expect(estado.status).toBe('canceled');
+      // Repetir continua no-op.
+      expect(aplicarEventoDeCobranca(estado, { tipo, ocorridoEm: AGORA }).mudou).toBe(false);
+    }
+  });
+
+  it('pendência inválida não promove nada — o plano efetivo fica', () => {
+    const lixo: EstadoDaCobranca = {
+      plan: 'essencial', pendingPlan: 'trial',
+      status: 'past_due', currentPeriodEnd: null, graceUntil: dias(-1),
+    };
+    const { estado } = aplicarEventoDeCobranca(lixo, { tipo: 'pagamento_confirmado', ocorridoEm: AGORA });
+    expect(estado.plan).toBe('essencial');
+    expect(estado.pendingPlan).toBeNull();
+  });
+
   it('pagamento depois do cancelamento reativa — quem pagou tem de voltar', () => {
     // O cliente cancelou, se arrependeu e pagou o boleto que já estava
     // emitido. Recusar a volta aqui seria cobrar sem entregar.
-    const cancelada: EstadoDaCobranca = { status: 'canceled', currentPeriodEnd: null, graceUntil: null };
+    const cancelada: EstadoDaCobranca = {
+      plan: 'essencial', pendingPlan: null,
+      status: 'canceled', currentPeriodEnd: null, graceUntil: null,
+    };
     const { estado, mudou } = aplicarEventoDeCobranca(cancelada, {
       tipo: 'pagamento_confirmado', ocorridoEm: AGORA,
     });

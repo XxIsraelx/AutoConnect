@@ -273,8 +273,24 @@ model Tenant {
 model TenantSubscription {
   id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String             @unique @map("tenant_id") @db.Uuid
+  /// Plano **efetivo**: o que a loja tem hoje. Manda no limite de estoque e no
+  /// veredito de `avaliarCobranca`. Só muda com pagamento confirmado (ou pela
+  /// mão do super admin, que é o desbloqueio manual).
   plan               SubscriptionPlan   @default(trial)
   status             SubscriptionStatus @default(active)
+  /// Plano **contratado e ainda não pago** — intenção, não direito.
+  ///
+  /// Existe porque `contratar` gravava o plano novo antes de qualquer
+  /// pagamento: como `avaliarCobranca` lê "plano pago + `active`" como loja em
+  /// dia, bastava contratar e nunca pagar para ficar com o plano — e com o teto
+  /// de estoque dele — para sempre (defeito de 27/09/2026). Agora a
+  /// contratação grava aqui, e só o `pagamento_confirmado` do webhook promove
+  /// para `plan`. Constraint no banco recusa `trial` aqui: `trial` não é algo
+  /// que se contrate.
+  pendingPlan        SubscriptionPlan?  @map("pending_plan")
+  /// Quando a contratação pendente foi feita. A tela mostra "contratado em"; a
+  /// auditoria mostra quanto tempo ficou sem pagar.
+  pendingSince       DateTime?          @map("pending_since") @db.Timestamptz()
   trialEndsAt        DateTime?          @map("trial_ends_at") @db.Timestamptz()
   currentPeriodStart DateTime?          @map("current_period_start") @db.Timestamptz()
   currentPeriodEnd   DateTime?          @map("current_period_end") @db.Timestamptz()

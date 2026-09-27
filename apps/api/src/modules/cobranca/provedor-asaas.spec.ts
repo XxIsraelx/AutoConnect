@@ -371,6 +371,34 @@ describe('ProvedorAsaas — erros', () => {
     const { p } = provedor(() => ({ status: 404, texto: '' }));
     await expect(p.cancelarAssinatura('sub_nunca_existiu')).resolves.toBeUndefined();
   });
+
+  /**
+   * ⚠ Único método do adaptador que **não** passou pelo sandbox de 25/09/2026:
+   * ele nasceu depois, para a gestão de faturas do super admin. O contrato
+   * conferido aqui é o da documentação (`DELETE /v3/payments/:id` →
+   * `{ deleted: true, id }`).
+   */
+  it('cancelar uma cobrança é DELETE em /payments/:id, sem tocar na assinatura', async () => {
+    const { p, chamadas } = provedor(() => ({ corpo: { deleted: true, id: 'pay_9v8wvj3u2a0ibkx7' } }));
+    await expect(p.cancelarFatura('pay_9v8wvj3u2a0ibkx7')).resolves.toBeUndefined();
+
+    expect(chamadas).toHaveLength(1);
+    expect(chamadas[0]!.init.method).toBe('DELETE');
+    expect(chamadas[0]!.url).toBe('https://api-sandbox.asaas.com/v3/payments/pay_9v8wvj3u2a0ibkx7');
+  });
+
+  it('cobrança que já não existe é no-op; cobrança que a Asaas recusa remover sobe o erro', async () => {
+    const semCorpo = provedor(() => ({ status: 404, texto: '' }));
+    await expect(semCorpo.p.cancelarFatura('pay_nunca_existiu')).resolves.toBeUndefined();
+
+    // Cobrança já recebida: a Asaas recusa, e o painel precisa ver a recusa em
+    // vez de gravar "cancelada" sobre uma cobrança viva.
+    const recusa = provedor(() => ({
+      status: 400,
+      corpo: { errors: [{ code: 'invalid_action', description: 'Não é possível excluir uma cobrança recebida.' }] },
+    }));
+    await expect(recusa.p.cancelarFatura('pay_paga')).rejects.toMatchObject({ status: 422 });
+  });
 });
 
 describe('ProvedorAsaas — webhook', () => {

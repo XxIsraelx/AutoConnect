@@ -53,6 +53,14 @@ export interface Tenant {
     plan: string | null;
     status: string | null;
     trialEndsAt: string | null;
+    /**
+     * Plano contratado e **não pago**. Enquanto está aqui, a loja segue no
+     * `plan` — é o que distingue "escolheu um plano" de "está pagando".
+     */
+    planoPendente: string | null;
+    pendenteDesde: string | null;
+    /** A assinatura no gateway, quando há. É o que o cancelamento alcança. */
+    gateway: { provedor: string | null; assinaturaExterna: string } | null;
     situacao: string;
     somenteLeitura: boolean;
     diasRestantes: number | null;
@@ -67,11 +75,30 @@ export interface Tenant {
   metrics: MetricasDaLoja;
 }
 
+/**
+ * Uma fatura da loja, como o painel do super admin a vê.
+ *
+ * Traz o link de pagamento e o id no gateway de propósito: é por esta tela que
+ * se conserta uma cobrança gerada por engano, e sem os dois não há como
+ * conferir o que o cliente vê nem casar a linha com a cobrança de lá.
+ */
+export interface FaturaDaLoja {
+  id: string; status: string; valor: string;
+  vencimento: string; pagoEm: string | null; meio: string | null;
+  urlPagamento: string | null; descricao: string | null;
+  provedor: string; externalId: string; criadaEm: string;
+  /** Só fatura em aberto se cancela; paga e estornada são história. */
+  cancelavel: boolean;
+}
+
 export interface TenantDetail extends Omit<Tenant, 'legalRep'> {
   stateRegistration: string | null; primaryPhone: string | null;
   users: { id: string; fullName: string; email: string; role: string; status: string; lastLoginAt: string | null; createdAt: string }[];
   vehicleCount: number; leadCount: number; leadNewCount: number;
   legalRep: { configured: boolean; hasEmail: boolean; name: string | null; role: string | null };
+  faturas: FaturaDaLoja[];
+  /** Qual gateway está montado agora — sem ele o cancelamento não sai do banco. */
+  gatewayDeCobranca: { provedor: string; disponivel: boolean };
 }
 
 export interface UserRow {

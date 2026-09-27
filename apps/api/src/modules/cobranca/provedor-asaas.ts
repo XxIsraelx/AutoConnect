@@ -386,6 +386,34 @@ export class ProvedorAsaas implements ProvedorDeCobranca {
     }
   }
 
+  /**
+   * Cancela **uma cobrança**, deixando a assinatura de pé.
+   *
+   * `DELETE /v3/payments/:id` responde `{ deleted: true, id }`
+   * ([doc](https://docs.asaas.com/reference/remover-cobranca)). A Asaas só
+   * remove cobrança que ainda não foi paga; uma recusa dela vem como 400/422 e
+   * sobe traduzida — quem pagou não se "descobra", se estorna.
+   *
+   * 404 é no-op pelo mesmo motivo do cancelamento de assinatura: o pedido é
+   * "não cobre isto", e algo que não está mais lá já não cobra.
+   *
+   * ⚠ Este método é o único do adaptador que **não** passou pelo sandbox real
+   * de 25/09/2026 — ele nasceu depois, com a gestão de faturas do super admin.
+   * O contrato conferido foi a documentação, e o teste dublado usa o corpo que
+   * ela descreve.
+   */
+  async cancelarFatura(idFaturaExterna: string): Promise<void> {
+    try {
+      await this.chamar('DELETE', `/payments/${idFaturaExterna}`);
+    } catch (err) {
+      if (err instanceof ErroAsaas && err.statusAsaas === 404) {
+        this.logger.warn(`Cobrança ${idFaturaExterna} já não existe na Asaas — cancelamento é no-op.`);
+        return;
+      }
+      throw err;
+    }
+  }
+
   /* ── Webhook ──────────────────────────────────────────────── */
 
   interpretarWebhook(cabecalhos: CabecalhosDeCobranca, corpoCru: Uint8Array): EventoDeCobranca {

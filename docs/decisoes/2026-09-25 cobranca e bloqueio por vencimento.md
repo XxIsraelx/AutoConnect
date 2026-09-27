@@ -118,6 +118,93 @@ cópias da regra seriam três chances de a tela dizer "tudo certo" enquanto a AP
 responde 402 — e o painel do super admin é exatamente onde se olha quando
 alguém liga reclamando.
 
+### Contratar registra a intenção; **o pagamento é que muda o plano**
+
+> Acrescentado em 27/09/2026, consertando um defeito desta decisão.
+
+A primeira versão de `contratar` gravava `plan: <plano novo>` **antes de
+qualquer pagamento** e mantinha o `status`. Como a regra 1 de `avaliarCobranca`
+lê "plano pago + `active`" como loja em dia sem mais perguntas, o resultado era:
+**a loja contratava, nunca pagava e ficava com o plano para sempre** — com o
+teto de estoque do plano novo, inclusive. A carência nem chegava a ser o ponto:
+o estado ficava "ativa". Aconteceu em produção, na loja `autohaus`.
+
+O conserto é uma coluna: `tenant_subscriptions.pending_plan` (+ `pending_since`).
+
+| | Antes | Agora |
+|---|---|---|
+| `contratar` | `plan` = plano novo | `pending_plan` = plano novo; `plan` intacto |
+| Teto de estoque | do plano contratado, na hora | do plano **efetivo**, até o pagamento |
+| Quem promove | ninguém | `pagamento_confirmado`, em `aplicarEventoDeCobranca` |
+| Nunca pagar | plano vitalício de graça | carência vence → somente leitura |
+
+**Por que uma coluna de intenção, e não uma checagem esperta em
+`avaliarCobranca`.** A alternativa era manter a gravação e ensinar o veredito a
+desconfiar — por exemplo, tratar "plano pago sem `current_period_end`" como não
+pago. Ela foi descartada: esse mesmo estado é o **desbloqueio manual do super
+admin** (`changePlan`), que precisa continuar funcionando numa instalação sem
+gateway nenhum. Um veredito que adivinha acabaria bloqueando a loja que o super
+admin acabou de liberar. Fecha-se o caminho de escrita; não se adivinha o
+estado gravado.
+
+**`avaliarCobranca` ganhou uma camada, não uma regra.** As regras 0 a 4
+continuam as mesmas e decidem por `plan`. Por cima delas, o veredito passa a
+carregar `planoPendente` e, quando há um, a compor o `aviso` ("Plano X
+contratado, aguardando o pagamento da primeira fatura…"). A pendência **nunca**
+muda `situacao` nem `somenteLeitura`: intenção não destrava nada. Em loja de
+cortesia ela é ignorada — quem não paga não deve.
+
+**Contratar continua destravando quem estava vencido**, e continua sendo um
+prazo: `graceUntil` = primeiro vencimento + carência, os mesmos 10 dias. A
+diferença é que agora o prazo acaba. Loja **pagante e em dia** não recebe
+carência ao trocar de plano: ela não está vencida, e a data gravada só seria
+data errada no dia em que uma fatura vencesse.
+
+**Troca de plano de quem já paga.** O `plan` antigo e o teto dele ficam de pé
+até a primeira fatura do novo ser paga. No gateway há **uma** assinatura viva: a
+nova é criada e a anterior é cancelada em seguida — nessa ordem, porque falhar
+na criação não pode deixar a loja sem assinatura. Se o plano novo nunca for
+pago, o `PAYMENT_OVERDUE` dele abre a carência de sempre.
+
+### Faturas no painel do super admin
+
+Não havia como lidar com uma fatura pendente gerada por engano — aconteceu num
+teste em produção. Em `/admin › Concessionárias`, a gaveta da loja agora lista
+as faturas (situação, valor, vencimento, link e id no gateway) e tem duas ações,
+ambas só de super admin, ambas com **motivo obrigatório** e linha de auditoria:
+
+- `POST /admin/tenants/:id/faturas/:faturaId/cancelar` — cancela **uma** fatura
+  em aberto, no gateway e no espelho local.
+- `POST /admin/tenants/:id/assinatura/cancelar` — cancela a assinatura no
+  gateway, opcionalmente as faturas em aberto junto, limpa `pending_plan` e
+  `external_id` e, com `voltarParaTrial`, devolve a loja ao trial por N dias.
+
+**A fatura é marcada `cancelada`, nunca apagada.** Três razões, em ordem de
+peso:
+
+1. `(provider, external_id)` é único e é por ele que o webhook reencontra a
+   fatura. Apagada, um `PAYMENT_OVERDUE` atrasado a **recriaria** como vencida e
+   reabriria a carência. Existindo e cancelada, o webhook a reconhece e descarta
+   o evento (`motivo: fatura-cancelada`).
+2. Histórico de dinheiro não se apaga: a linha é a única prova local de que o
+   gateway emitiu a cobrança, e é o que explica um estorno meses depois.
+3. A loja vê "cancelada", que é o contrário de uma cobrança que sumiu da tela.
+
+Fatura **paga** não passa por lá: o caminho dela é o estorno, no painel do
+gateway, porque quem devolve dinheiro é quem o recebeu.
+
+`voltarParaTrial` é explícito e nunca automático. Ele existe para a loja que
+está num **plano pago que nunca foi pago** — o estado que o defeito gravava:
+cancelar a assinatura sem mexer no plano a deixaria "em dia" para sempre. Só o
+super admin sabe se aquela loja pagou por fora, então a decisão é dele, com
+motivo e auditoria.
+
+Quando o gateway montado não é o da linha (ou não há gateway nenhum), o
+cancelamento **segue só no banco** e a resposta diz `gateway: nao_tentado` — a
+linha local é o que a loja vê e precisa ser corrigida de qualquer forma. Já um
+gateway que **recusa** aborta tudo: gravar "cancelada" sobre uma cobrança viva
+lá faria a loja pagar uma fatura que o painel diz que não existe.
+
 ### Trial vencido bloqueia na hora; **fatura** vencida tem 7 dias de carência
 
 O teste grátis já são 14 dias de graça; dar mais sete no fim dele seria um
@@ -128,7 +215,9 @@ cliente que ia pagar custa muito mais que uma semana de uso.
 
 **Contratar não é pagar, mas destrava.** Quem escolhe o plano volta a escrever
 antes de o boleto vencer (`graceUntil` = primeiro vencimento + carência). Se
-nunca pagar, o `PAYMENT_OVERDUE` reabre a carência e o bloqueio volta.
+nunca pagar, a carência vence e a loja volta a somente leitura — no plano que
+ela tinha, porque o contratado só passa a valer com o pagamento (ver
+*Contratar registra a intenção*, acima).
 
 ### A vitrine pública **continua no ar**
 
@@ -212,6 +301,15 @@ cai em `trial`, que é o estado que não cobra ninguém por engano.
 - **Bloquear no cron, gravando um `status = 'blocked'`.** O estado derivado de
   uma data não precisa ser materializado, e materializá-lo criaria a janela em
   que o banco diz "ativa" e o calendário diz o contrário.
+- **Adivinhar o plano não pago em `avaliarCobranca`** (por exemplo, "plano pago
+  sem `current_period_end` nunca foi pago"). Esse é justamente o estado do
+  desbloqueio manual do super admin, que precisa continuar funcionando sem
+  gateway. Ver *Contratar registra a intenção*.
+- **Apagar a fatura gerada por engano.** Ela vira `cancelada`. Apagar quebraria
+  a idempotência do webhook e o histórico de dinheiro — ver *Faturas no painel
+  do super admin*.
+- **Duas assinaturas vivas no gateway durante a troca de plano.** Seriam duas
+  cobranças mensais na mesma loja.
 
 ## Onde está no código
 
@@ -227,7 +325,10 @@ cai em `trial`, que é o estado que não cobra ninguém por engano.
   `external_customer_id`, `payment_method`, `grace_until`, `canceled_at`,
   `last_notice_at` em `tenant_subscriptions`, cria `tenant_invoices` e
   `billing_webhook_events` com RLS
-- `apps/api/test/cobranca.e2e-spec.ts` — 37 casos
+- Migration `20260927150000_plano_pendente_de_pagamento` — `pending_plan` e
+  `pending_since` em `tenant_subscriptions`, com CHECK recusando `trial`
+- `apps/api/src/modules/admin/` — as duas ações de cobrança do super admin
+- `apps/api/test/cobranca.e2e-spec.ts` — 62 casos
 - Web: `(dashboard)/configuracoes/plano/page.tsx`,
   `components/AvisoDeCobranca.tsx`, `admin/AbaConcessionarias.tsx`
 

@@ -47,6 +47,10 @@ export class CobrancaIndisponivel implements ProvedorDeCobranca {
     return Promise.reject(new ServiceUnavailableException(INDISPONIVEL));
   }
 
+  cancelarFatura(): Promise<void> {
+    return Promise.reject(new ServiceUnavailableException(INDISPONIVEL));
+  }
+
   interpretarWebhook(): EventoDeCobranca {
     throw new ServiceUnavailableException(INDISPONIVEL);
   }

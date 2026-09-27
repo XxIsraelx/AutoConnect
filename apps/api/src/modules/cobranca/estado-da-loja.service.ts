@@ -66,6 +66,10 @@ export class EstadoDaLojaService {
         select: {
           plan: true, status: true, trialEndsAt: true, currentPeriodEnd: true, graceUntil: true,
           courtesySince: true,
+          // Entra no veredito para o 402 poder dizer "você contratou o X, pague
+          // a fatura" em vez de só "escolha um plano" a quem já escolheu.
+          // **Não** muda o bloqueio: quem decide é o plano efetivo.
+          pendingPlan: true,
         },
       }),
       this.privilegiado.vehicle.count({

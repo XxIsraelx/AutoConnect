@@ -3,7 +3,7 @@ import {
   Get, Param, ParseUUIDPipe, Patch, Post, Query, Req,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { MOTIVOS_DE_CORTESIA, SUBSCRIPTION_PLANS } from '@autoconnect/shared';
+import { DURACAO_DO_TRIAL_DIAS, MOTIVOS_DE_CORTESIA, SUBSCRIPTION_PLANS } from '@autoconnect/shared';
 import { AdminService, PAPEIS_FILTRAVEIS } from './admin.service';
 import { Public } from '../../common/decorators/public.decorator';
 import type { AuthenticatedRequest } from '../../common/middleware/tenant.middleware';
@@ -25,6 +25,29 @@ const planoSchema = z.object({ plan: z.enum(SUBSCRIPTION_PLANS) });
 const estenderTrialSchema = z.object({ days: z.number().int().min(1).max(365) });
 
 export const cortesiaSchema = z.object({ motivo: z.enum(MOTIVOS_DE_CORTESIA) });
+
+/**
+ * O motivo é obrigatório nas duas ações de cobrança do painel — é dinheiro de
+ * cliente, e a linha de auditoria sem o "por quê" só diz que alguém mexeu.
+ */
+const motivo = z.string().trim().min(3, 'Diga por que está cancelando.').max(300);
+
+export const cancelarFaturaSchema = z.object({ motivo }).strict();
+
+export const cancelarAssinaturaSchema = z
+  .object({
+    motivo,
+    /** As faturas em aberto saem junto — é o que "descartar a cobrança de teste" quer. */
+    cancelarFaturas: z.boolean().default(true),
+    /**
+     * Devolve a loja ao trial. Necessário quando o plano pago nunca foi pago
+     * (o defeito de 27/09/2026): sem isto, cancelar a assinatura deixaria a
+     * loja "em dia" para sempre num plano que ninguém pagou.
+     */
+    voltarParaTrial: z.boolean().default(false),
+    diasDeTrial: z.number().int().min(1).max(365).default(DURACAO_DO_TRIAL_DIAS),
+  })
+  .strict();
 
 const avisoSchema = z.object({
   message: z.string().trim().min(1, 'Escreva a mensagem.').max(500),
@@ -146,6 +169,39 @@ export class AdminController {
   ): Promise<unknown> {
     this.guard(req);
     return this.admin.revogarCortesia(id, req.user!.id);
+  }
+
+  /* ── Faturas e assinatura da loja ──────────────────────────── */
+
+  /**
+   * Cancela uma fatura em aberto da loja, no gateway e no espelho local.
+   *
+   * A fatura fica `cancelada`, nunca apagada — ver `cancelarFaturaDaLoja`.
+   */
+  @Post('tenants/:id/faturas/:faturaId/cancelar')
+  cancelarFatura(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('faturaId', ParseUUIDPipe) faturaId: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    this.guard(req);
+    return this.admin.cancelarFaturaDaLoja(
+      id, faturaId, cancelarFaturaSchema.parse(body).motivo, req.user!.id,
+    );
+  }
+
+  /** Cancela a assinatura da loja no gateway e, opcionalmente, devolve-a ao trial. */
+  @Post('tenants/:id/assinatura/cancelar')
+  cancelarAssinatura(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    this.guard(req);
+    return this.admin.cancelarAssinaturaDaLoja(
+      id, cancelarAssinaturaSchema.parse(body ?? {}), req.user!.id,
+    );
   }
 
   @Patch('tenants/:id/toggle')

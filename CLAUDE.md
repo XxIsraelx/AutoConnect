@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.011 testes (730 na API, 281 no `shared`):
+são 1.042 testes (750 na API, 292 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -585,9 +585,22 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 cobranca e bloqueio por venci
   da Asaas nunca falou com a Asaas** — ver "o que falta" na decisão.
 - **`avaliarCobranca` (shared) decide tudo**: o guard, a faixa no painel, a tela
   de plano, o painel do super admin e o cron de avisos. Não duplique a regra.
+- **Contratar não muda o plano; o pagamento muda.** `contratar` grava
+  `tenant_subscriptions.pending_plan` (+ `pending_since`) e deixa `plan` como
+  estava; quem promove é `pagamento_confirmado` em `aplicarEventoDeCobranca`.
+  Até lá a loja segue no plano efetivo — **inclusive no teto de estoque dele**.
+  Gravar o plano na contratação foi o defeito que deixava a loja contratar,
+  nunca pagar e ficar com o plano para sempre. `avaliarCobranca` só **relata** a
+  pendência (`planoPendente` + frase no `aviso`): ela nunca muda `situacao` nem
+  `somenteLeitura`.
 - **Trial vencido bloqueia na hora; fatura vencida tem 7 dias de carência.** O
   teste grátis já são 14 dias; a carência é do boleto, que compensa em até 3
   dias úteis.
+- **Fatura e assinatura se consertam em `/admin › Concessionárias`**, não por
+  SQL: cancelar uma fatura em aberto, cancelar a assinatura no gateway e
+  devolver a loja ao trial. Motivo obrigatório, auditoria em toda ação, só super
+  admin. **Fatura vira `cancelada`, nunca some** — o `(provider, external_id)`
+  único é o que faz o webhook atrasado reconhecê-la em vez de recriá-la.
 - **Modo somente leitura, nunca apagar.** `SomenteLeituraGuard` é **global**:
   toda escrita passa por ele, e rota nova nasce bloqueada. `GET` passa sempre;
   a exceção pede `@LiberadoNoBloqueio()` (cobrança, `/auth`, despublicar,
@@ -672,7 +685,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
   foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
   migrations (ver *Testes e CI*).
-- Migrations atuais (23): `init`, `trade_in_and_dealer_setting`,
+- Migrations atuais (24): `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
   `add_announcements_invites_alerts_searches_goals`,
   `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`,
@@ -683,7 +696,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   `rodizio_sla_carteira_motivo_perda`, `carteira_fechada_por_padrao`,
   `cobranca_asaas`, `validacao_de_saque`,
   `filial_do_veiculo_geocodificacao_e_chat_sem_conta`, `loja_de_demonstracao`,
-  `cortesia_de_cobranca`.
+  `cortesia_de_cobranca`, `plano_pendente_de_pagamento`.
 
 ---
 

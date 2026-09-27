@@ -115,6 +115,7 @@ describe('Cobrança e bloqueio por vencimento (e2e)', () => {
     for (const loja of [f.a, f.b]) {
       await ajustarAssinatura(loja.id, {
         plan: 'trial', status: 'active', trialEndsAt: somarDias(new Date(), 14),
+        pendingPlan: null, pendingSince: null,
         graceUntil: null, canceledAt: null, lastNoticeAt: null,
         courtesySince: null, courtesyReason: null, courtesyGrantedBy: null,
         externalId: null, externalCustomerId: null, externalProvider: null,
@@ -238,14 +239,128 @@ describe('Cobrança e bloqueio por vencimento (e2e)', () => {
     it('contratar cria cliente e assinatura no gateway e devolve o link de pagamento', async () => {
       const res = await contratar();
       expect(res.status).toBe(201);
-      expect(res.body).toMatchObject({ contratada: true, plano: 'essencial' });
+      expect(res.body).toMatchObject({
+        contratada: true, plano: 'essencial', pendente: true, planoEfetivo: 'trial',
+      });
       expect(res.body.fatura.urlPagamento).toMatch(/^https:\/\//);
       expect(res.body.fatura.valor).toBe(PRECO_ESSENCIAL);
 
       const sub = await assinaturaDe(f.a.id);
-      expect(sub).toMatchObject({ plan: 'essencial', externalProvider: 'simulado', paymentMethod: 'pix' });
+      expect(sub).toMatchObject({ externalProvider: 'simulado', paymentMethod: 'pix' });
       expect(sub!.externalId).toMatch(/^sub_sim_/);
       expect(sub!.externalCustomerId).toMatch(/^cus_sim_/);
+    });
+
+    /* ── O defeito de 27/09/2026 ─────────────────────────── */
+
+    it('contratar NÃO muda o plano efetivo: a intenção fica pendente', async () => {
+      await contratar();
+
+      const sub = await assinaturaDe(f.a.id);
+      // O plano efetivo continua o que era; a escolha ficou registrada.
+      expect(sub!.plan).toBe('trial');
+      expect(sub!.pendingPlan).toBe('essencial');
+      expect(sub!.pendingSince).not.toBeNull();
+
+      const tela = await get('/cobranca', comoAdmin);
+      expect(tela.body.assinatura).toMatchObject({ plano: 'trial', planoPendente: 'essencial' });
+      expect(tela.body.planoPendente).toBe('essencial');
+      expect(tela.body.aviso).toContain('aguardando o pagamento');
+      // E o teto de estoque é o do plano efetivo, não o do contratado.
+      expect(tela.body.uso.limite).toBe(CATALOGO_DE_PLANOS.essencial.limiteVeiculos);
+    });
+
+    it('contratar e nunca pagar NÃO deixa a loja em dia — passada a carência, bloqueia', async () => {
+      // O caso do usuário: antes, `contratar` gravava `plan: 'essencial'` e
+      // `avaliarCobranca` lia "plano pago + active" como loja em dia. A loja
+      // ficava com o plano, e com o teto dele, para sempre.
+      await ajustarAssinatura(f.a.id, { trialEndsAt: somarDias(new Date(), -1) });
+      await contratar();
+
+      // Durante a carência da contratação, escreve — isso é de propósito.
+      expect((await escreverAlgo(comoAdmin)).status).toBe(200);
+
+      // Passada a carência sem nenhum pagamento: somente leitura.
+      await ajustarAssinatura(f.a.id, { graceUntil: somarDias(new Date(), -1) });
+      const bloqueada = await escreverAlgo(comoAdmin);
+      expect(bloqueada.status).toBe(402);
+
+      const sub = await assinaturaDe(f.a.id);
+      expect(sub!.plan).toBe('trial');
+      expect(sub!.pendingPlan).toBe('essencial');
+      expect((await get('/cobranca', comoAdmin)).body.situacao).toBe('somente_leitura');
+    });
+
+    it('o pagamento confirmado é o que promove o plano contratado', async () => {
+      await contratar();
+      const sub = await assinaturaDe(f.a.id);
+
+      for (const e of provedor.simular(sub!.externalId!, 'pagar')) {
+        await webhook(e.corpo, String(e.cabecalhos[CABECALHO_TOKEN_ASAAS]));
+      }
+
+      const depois = await assinaturaDe(f.a.id);
+      expect(depois!.plan).toBe('essencial');
+      expect(depois!.pendingPlan).toBeNull();
+      expect(depois!.pendingSince).toBeNull();
+      expect(depois!.status).toBe('active');
+
+      const tela = await get('/cobranca', comoAdmin);
+      expect(tela.body).toMatchObject({ situacao: 'ativa', planoPendente: null });
+    });
+
+    it('contratar o mesmo plano que já está pendente é 409, não uma segunda cobrança', async () => {
+      await contratar();
+      const antes = await dono.tenantInvoice.count({ where: { tenantId: f.a.id } });
+
+      const segunda = await contratar();
+      expect(segunda.status).toBe(409);
+      expect(segunda.body.message).toContain('aguardando o pagamento');
+      expect(await dono.tenantInvoice.count({ where: { tenantId: f.a.id } })).toBe(antes);
+    });
+
+    it('trocar de plano preserva o plano pago antigo até a primeira fatura do novo ser paga', async () => {
+      // Quem está no Essencial e contrata o Profissional não pode perder o
+      // Essencial nem ganhar o teto do Profissional antes de pagar.
+      await contratar();
+      const primeira = await assinaturaDe(f.a.id);
+      for (const e of provedor.simular(primeira!.externalId!, 'pagar')) {
+        await webhook(e.corpo, String(e.cabecalhos[CABECALHO_TOKEN_ASAAS]));
+      }
+      expect((await assinaturaDe(f.a.id))!.plan).toBe('essencial');
+
+      const troca = await contratar('profissional');
+      expect(troca.status).toBe(201);
+      expect(troca.body).toMatchObject({ plano: 'profissional', planoEfetivo: 'essencial' });
+
+      const pendente = await assinaturaDe(f.a.id);
+      expect(pendente!.plan).toBe('essencial');
+      expect(pendente!.pendingPlan).toBe('profissional');
+      // Loja pagante e em dia não ganha carência ao trocar de plano: ela não
+      // está vencida, e um prazo gravado aqui seria data errada mais tarde.
+      expect(pendente!.graceUntil).toBeNull();
+
+      const tela = await get('/cobranca', comoAdmin);
+      expect(tela.body.situacao).toBe('ativa');
+      expect(tela.body.uso.limite).toBe(CATALOGO_DE_PLANOS.essencial.limiteVeiculos);
+
+      // Pagando a fatura do plano novo, aí sim.
+      for (const e of provedor.simular(pendente!.externalId!, 'pagar')) {
+        await webhook(e.corpo, String(e.cabecalhos[CABECALHO_TOKEN_ASAAS]));
+      }
+      const promovida = await assinaturaDe(f.a.id);
+      expect(promovida!.plan).toBe('profissional');
+      expect(promovida!.pendingPlan).toBeNull();
+      expect((await get('/cobranca', comoAdmin)).body.uso.limite).toBeNull();
+    });
+
+    it('cancelar apaga a intenção pendente: sem assinatura não há fatura para pagar', async () => {
+      await contratar();
+      expect((await post('/cobranca/cancelar', comoAdmin)).status).toBe(201);
+
+      const sub = await assinaturaDe(f.a.id);
+      expect(sub!.pendingPlan).toBeNull();
+      expect(sub!.pendingSince).toBeNull();
     });
 
     it('a carência da contratação é o PRIMEIRO vencimento + 7, não o ciclo seguinte', async () => {
@@ -487,12 +602,21 @@ describe('Cobrança e bloqueio por vencimento (e2e)', () => {
       expect((await post(`/vehicles/${id}/publish`, comoAdmin)).status).toBe(201);
     });
 
-    it('subir de plano libera a publicação na hora', async () => {
+    it('subir de plano libera a publicação quando o pagamento entra, não ao contratar', async () => {
+      // Antes de 27/09/2026 contratar já dava o teto novo — e a loja que nunca
+      // pagava ficava com ele. O teto é do plano **efetivo**; o pagamento é que
+      // o muda, e por Pix isso leva minutos.
       await encher(LIMITE + 1);
       const id = await publicavel();
       expect((await post(`/vehicles/${id}/publish`, comoAdmin)).status).toBe(422);
 
       await post('/cobranca/contratar', comoAdmin, { plano: 'crescimento', meio: 'pix' });
+      expect((await post(`/vehicles/${id}/publish`, comoAdmin)).status).toBe(422);
+
+      const sub = await assinaturaDe(f.a.id);
+      for (const e of provedor.simular(sub!.externalId!, 'pagar')) {
+        await webhook(e.corpo, String(e.cabecalhos[CABECALHO_TOKEN_ASAAS]));
+      }
       expect((await post(`/vehicles/${id}/publish`, comoAdmin)).status).toBe(201);
     });
 
@@ -556,6 +680,20 @@ describe('Cobrança e bloqueio por vencimento (e2e)', () => {
       expect(loja.cobranca.ultimaFatura).toMatchObject({ status: 'paga', valor: PRECO_ESSENCIAL });
     });
 
+    it('o painel mostra o plano contratado e não pago, separado do plano efetivo', async () => {
+      await post('/cobranca/contratar', comoAdmin, { plano: 'profissional', meio: 'pix' });
+
+      const res = await get('/admin/tenants', comoSuperAdmin);
+      const loja = (res.body as { id: string; cobranca: Record<string, unknown> }[])
+        .find((t) => t.id === f.a.id)!;
+
+      expect(loja.cobranca).toMatchObject({
+        plan: 'trial', planoPendente: 'profissional', situacao: 'trial',
+      });
+      expect(loja.cobranca.pendenteDesde).not.toBeNull();
+      expect(loja.cobranca.gateway).toMatchObject({ provedor: 'simulado' });
+    });
+
     it('o painel marca a loja bloqueada como inadimplente', async () => {
       await ajustarAssinatura(f.a.id, {
         plan: 'essencial', status: 'past_due', graceUntil: somarDias(new Date(), -1),
@@ -565,6 +703,191 @@ describe('Cobrança e bloqueio por vencimento (e2e)', () => {
         .find((t) => t.id === f.a.id)!;
 
       expect(loja.cobranca).toMatchObject({ situacao: 'somente_leitura', inadimplente: true });
+    });
+  });
+
+  /* ── Gestão de faturas pelo super admin ─────────────────── */
+
+  describe('faturas e assinatura pelo painel do super admin', () => {
+    const detalhe = async () => (await get(`/admin/tenants/${f.a.id}`, comoSuperAdmin)).body as {
+      cobranca: Record<string, unknown>;
+      faturas: { id: string; status: string; valor: string; urlPagamento: string | null; cancelavel: boolean }[];
+      gatewayDeCobranca: { provedor: string; disponivel: boolean };
+    };
+
+    const cancelarFatura = (faturaId: string, corpo: object = { motivo: 'cobrança de teste' }, t = comoSuperAdmin) =>
+      post(`/admin/tenants/${f.a.id}/faturas/${faturaId}/cancelar`, t, corpo);
+
+    const cancelarAssinatura = (corpo: object, t = comoSuperAdmin) =>
+      post(`/admin/tenants/${f.a.id}/assinatura/cancelar`, t, corpo);
+
+    beforeEach(async () => {
+      await post('/cobranca/contratar', comoAdmin, { plano: 'essencial', meio: 'pix' });
+    });
+
+    it('lista as faturas da loja com situação, valor, vencimento e link', async () => {
+      const d = await detalhe();
+      expect(d.gatewayDeCobranca).toMatchObject({ provedor: 'simulado', disponivel: true });
+      expect(d.faturas).toHaveLength(1);
+      expect(d.faturas[0]).toMatchObject({
+        status: 'pendente', valor: PRECO_ESSENCIAL, cancelavel: true,
+      });
+      expect(d.faturas[0]!.urlPagamento).toMatch(/^https:\/\//);
+    });
+
+    it('cancelar uma fatura em aberto a marca cancelada — no gateway e aqui — sem apagar a linha', async () => {
+      const d = await detalhe();
+      const fatura = d.faturas[0]!;
+
+      const res = await cancelarFatura(fatura.id);
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ cancelada: true, gateway: 'cancelada' });
+
+      // A linha continua lá: histórico de dinheiro não se apaga.
+      const linha = await dono.tenantInvoice.findUnique({ where: { id: fatura.id } });
+      expect(linha!.status).toBe('cancelada');
+
+      // E a loja vê a fatura como cancelada, não vê a fatura desaparecer.
+      const tela = await get('/cobranca', comoAdmin);
+      expect(tela.body.faturas[0]).toMatchObject({ status: 'cancelada' });
+    });
+
+    it('um PAYMENT_OVERDUE atrasado não ressuscita a fatura cancelada nem reabre a carência', async () => {
+      const d = await detalhe();
+      await cancelarFatura(d.faturas[0]!.id);
+
+      const sub = await assinaturaDe(f.a.id);
+      const antes = sub!.graceUntil;
+      const [e] = provedor.simular(sub!.externalId!, 'vencer');
+      const res = await webhook(e!.corpo, String(e!.cabecalhos[CABECALHO_TOKEN_ASAAS]));
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ aplicado: false, motivo: 'fatura-cancelada' });
+
+      const depois = await assinaturaDe(f.a.id);
+      expect(depois!.status).toBe('active');
+      expect(depois!.graceUntil!.getTime()).toBe(antes!.getTime());
+      // O espelho também não voltou a "vencida".
+      const linha = await dono.tenantInvoice.findFirst({ where: { tenantId: f.a.id } });
+      expect(linha!.status).toBe('cancelada');
+    });
+
+    it('fatura paga não se cancela: o caminho é o estorno no gateway', async () => {
+      const sub = await assinaturaDe(f.a.id);
+      for (const e of provedor.simular(sub!.externalId!, 'pagar')) {
+        await webhook(e.corpo, String(e.cabecalhos[CABECALHO_TOKEN_ASAAS]));
+      }
+      const paga = (await detalhe()).faturas.find((x) => x.status === 'paga')!;
+      expect(paga.cancelavel).toBe(false);
+
+      const res = await cancelarFatura(paga.id);
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('estorno');
+      expect((await dono.tenantInvoice.findUnique({ where: { id: paga.id } }))!.status).toBe('paga');
+    });
+
+    it('cancelar a mesma fatura duas vezes é idempotente, não erro', async () => {
+      const id = (await detalhe()).faturas[0]!.id;
+      expect((await cancelarFatura(id)).status).toBe(201);
+      const segunda = await cancelarFatura(id);
+      expect(segunda.status).toBe(201);
+      expect(segunda.body).toMatchObject({ jaEstava: true });
+    });
+
+    it('o motivo é obrigatório — auditoria sem o porquê só diz que alguém mexeu', async () => {
+      const id = (await detalhe()).faturas[0]!.id;
+      expect((await cancelarFatura(id, {})).status).toBe(400);
+      expect((await cancelarFatura(id, { motivo: 'x' })).status).toBe(400);
+      expect((await cancelarAssinatura({})).status).toBe(400);
+      // Campo a mais é recusado, não ignorado em silêncio.
+      expect((await cancelarAssinatura({ motivo: 'teste', plan: 'profissional' })).status).toBe(400);
+      expect((await dono.tenantInvoice.findUnique({ where: { id } }))!.status).toBe('pendente');
+    });
+
+    it('cancelar a assinatura limpa o pendente, as faturas em aberto e a assinatura no gateway', async () => {
+      const res = await cancelarAssinatura({ motivo: 'contratação por engano' });
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ cancelada: true, gateway: 'cancelada', faturasCanceladas: 1 });
+
+      const sub = await assinaturaDe(f.a.id);
+      expect(sub!.pendingPlan).toBeNull();
+      expect(sub!.externalId).toBeNull();
+      // O cliente no gateway fica: a loja que voltar não vira um segundo cadastro.
+      expect(sub!.externalCustomerId).toMatch(/^cus_sim_/);
+      expect(await dono.tenantInvoice.count({ where: { tenantId: f.a.id, status: 'cancelada' } })).toBe(1);
+    });
+
+    it('conserta a loja que ficou com plano pago sem nenhum pagamento (o caso real)', async () => {
+      // Reproduz exatamente o que o defeito gravava: plano pago, status active,
+      // sem período pago nenhum e com fatura pendente.
+      await ajustarAssinatura(f.a.id, {
+        plan: 'essencial', pendingPlan: null, status: 'active',
+        graceUntil: null, currentPeriodEnd: null, trialEndsAt: somarDias(new Date(), -40),
+      });
+      // O estado ruim: a loja aparece "em dia" sem ter pagado nada.
+      expect((await get('/cobranca', comoAdmin)).body.situacao).toBe('ativa');
+
+      const res = await cancelarAssinatura({
+        motivo: 'teste em produção: nunca houve pagamento',
+        voltarParaTrial: true,
+        diasDeTrial: 14,
+      });
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ plano: 'trial', planoPendente: null, status: 'active' });
+
+      const sub = await assinaturaDe(f.a.id);
+      expect(sub!.plan).toBe('trial');
+      expect(Math.round((sub!.trialEndsAt!.getTime() - Date.now()) / 86_400_000)).toBe(14);
+      expect(sub!.externalId).toBeNull();
+      expect(await dono.tenantInvoice.count({ where: { tenantId: f.a.id, status: 'pendente' } })).toBe(0);
+
+      // E a loja não fica trancada por causa do conserto: o trial vale de novo.
+      expect((await escreverAlgo(comoAdmin)).status).toBe(200);
+      expect((await get('/cobranca', comoAdmin)).body.situacao).toBe('trial');
+    });
+
+    it('a ação fica na auditoria, com quem fez e o motivo', async () => {
+      await cancelarAssinatura({ motivo: 'cobrança de teste em produção' });
+
+      // A escrita de auditoria é disparada sem await de propósito (nunca
+      // bloqueia a operação); aqui a leitura espera a linha aparecer.
+      const achar = async () => {
+        for (let i = 0; i < 20; i++) {
+          const linha = await dono.auditLog.findFirst({
+            where: { action: 'subscription_canceled_by_admin', entityId: f.a.id },
+            orderBy: { createdAt: 'desc' },
+          });
+          if (linha) return linha;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        return null;
+      };
+
+      const linha = await achar();
+      expect(linha).not.toBeNull();
+      expect(linha!.actorUserId).toBe(f.a.usuarioId);
+      expect(linha!.diff).toMatchObject({ motivo: 'cobrança de teste em produção' });
+    });
+
+    it('só o super admin mexe em fatura e assinatura de loja', async () => {
+      const id = (await detalhe()).faturas[0]!.id;
+
+      for (const papel of [comoAdmin, comoVendedor, comoOutraLoja]) {
+        expect((await cancelarFatura(id, { motivo: 'quero não pagar' }, papel)).status).toBe(403);
+        expect((await cancelarAssinatura({ motivo: 'quero não pagar' }, papel)).status).toBe(403);
+      }
+      expect((await dono.tenantInvoice.findUnique({ where: { id } }))!.status).toBe('pendente');
+    });
+
+    it('a fatura de uma loja não é cancelável pela rota de outra', async () => {
+      const id = (await detalhe()).faturas[0]!.id;
+      // Mesmo o super admin não alcança a fatura pela loja errada: o `tenantId`
+      // entra no WHERE, e não só no caminho da URL.
+      const res = await post(`/admin/tenants/${f.b.id}/faturas/${id}/cancelar`, comoSuperAdmin, {
+        motivo: 'engano',
+      });
+      expect(res.status).toBe(404);
+      expect((await dono.tenantInvoice.findUnique({ where: { id } }))!.status).toBe('pendente');
     });
   });
 

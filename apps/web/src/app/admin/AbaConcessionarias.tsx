@@ -2,11 +2,13 @@
 
 import { useMemo, useState } from 'react';
 import {
-  Ban, CheckCircle2, ChevronRight, ExternalLink, X, Search, UserCheck, UserX, MailWarning, Loader2,
+  Ban, CheckCircle2, ChevronRight, ExternalLink, Hourglass, X, Search, UserCheck, UserX,
+  MailWarning, Loader2,
 } from 'lucide-react';
 import {
-  MOTIVOS_DE_CORTESIA, ROTULO_MOTIVO_DE_CORTESIA, SUBSCRIPTION_PLANS, deCentavos, formatarBRL,
-  type MotivoDeCortesia,
+  DURACAO_DO_TRIAL_DIAS, MOTIVOS_DE_CORTESIA, ROTULO_FATURA, ROTULO_MOTIVO_DE_CORTESIA,
+  SUBSCRIPTION_PLANS, deCentavos, formatarBRL,
+  type MotivoDeCortesia, type StatusDeFatura,
 } from '@autoconnect/shared';
 import { ErroAoCarregar } from '@/components/ErroAoCarregar';
 import {
@@ -15,7 +17,15 @@ import {
   inputCls, mensagemDaAcao, useCarga, type PropsDaAba,
 } from './comum';
 import { urlDoSite } from './AbaConvites';
-import type { MetricasDaLoja, Tenant, TenantDetail } from './tipos';
+import type { FaturaDaLoja, MetricasDaLoja, Tenant, TenantDetail } from './tipos';
+
+/** O que o super admin pede ao cancelar uma assinatura de loja. */
+export interface CancelamentoDeAssinatura {
+  motivo: string;
+  cancelarFaturas: boolean;
+  voltarParaTrial: boolean;
+  diasDeTrial: number;
+}
 
 const brlDeCentavos = (c: number) => formatarBRL(deCentavos(BigInt(c)));
 
@@ -60,6 +70,27 @@ function SeloDeCobranca({ c }: { c: Tenant['cobranca'] }) {
     >
       {COBRANCA_LABEL[c.situacao] ?? c.situacao}
       {c.diasRestantes !== null && c.diasRestantes > 0 ? ` · ${c.diasRestantes}d` : ''}
+    </span>
+  );
+}
+
+/**
+ * Plano contratado e ainda não pago.
+ *
+ * É a distinção que o painel não fazia e custou uma loja com plano vitalício de
+ * graça: `plan` é o que a loja tem, `planoPendente` é o que ela escolheu e não
+ * pagou. Ver os dois lado a lado é o que impede alguém de ler "essencial" como
+ * "está pagando".
+ */
+function SeloPendente({ c }: { c: Tenant['cobranca'] }) {
+  if (!c.planoPendente) return null;
+  return (
+    <span
+      title={c.pendenteDesde ? `Contratado em ${fmtDate(c.pendenteDesde)}` : undefined}
+      className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full
+                 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400"
+    >
+      <Hourglass size={10} /> {c.planoPendente} aguardando pagamento
     </span>
   );
 }
@@ -156,6 +187,43 @@ export function AbaConcessionarias({ chamar, avisar, sinal }: PropsDaAba) {
     }
   }
 
+  /**
+   * Cancela uma fatura em aberto da loja. Recarrega a loja e a lista: a fatura,
+   * o selo de situação e o "última fatura" mudam juntos.
+   */
+  async function cancelarFatura(tenantId: string, faturaId: string, motivo: string) {
+    try {
+      const r = await chamar<{ gateway: string }>(
+        `/admin/tenants/${tenantId}/faturas/${faturaId}/cancelar`,
+        { method: 'POST', body: { motivo } },
+      );
+      setAberta(await chamar<TenantDetail>(`/admin/tenants/${tenantId}`));
+      recarregar();
+      avisar(r.gateway === 'cancelada'
+        ? 'Fatura cancelada no gateway e aqui.'
+        : 'Fatura marcada como cancelada aqui. O gateway não foi tocado — confira no painel dele.');
+    } catch (e) {
+      avisar(mensagemDaAcao(e, 'Erro ao cancelar a fatura'), 'error');
+    }
+  }
+
+  async function cancelarAssinatura(tenantId: string, opcoes: CancelamentoDeAssinatura) {
+    try {
+      const r = await chamar<{ gateway: string; faturasCanceladas: number; plano: string }>(
+        `/admin/tenants/${tenantId}/assinatura/cancelar`,
+        { method: 'POST', body: opcoes },
+      );
+      setAberta(await chamar<TenantDetail>(`/admin/tenants/${tenantId}`));
+      recarregar();
+      avisar(
+        `Assinatura cancelada (gateway: ${r.gateway}). ` +
+        `${r.faturasCanceladas} fatura(s) em aberto cancelada(s). Plano da loja: ${r.plano}.`,
+      );
+    } catch (e) {
+      avisar(mensagemDaAcao(e, 'Erro ao cancelar a assinatura'), 'error');
+    }
+  }
+
   async function impersonar(tenantId: string) {
     try {
       const data = await chamar<{ token: string; user: unknown }>(`/admin/impersonate/${tenantId}`, { method: 'POST' });
@@ -205,6 +273,7 @@ export function AbaConcessionarias({ chamar, avisar, sinal }: PropsDaAba) {
                 {!t.isActive && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400">Inativa</span>}
                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full capitalize ${PLAN_COLOR[t.subscription?.plan ?? 'trial'] ?? PLAN_COLOR.trial}`}>{t.subscription?.plan ?? 'trial'}</span>
                 <SeloDeCobranca c={t.cobranca} />
+                <SeloPendente c={t.cobranca} />
                 <SeloRepresentante rep={t.legalRep} />
               </div>
               <div className="flex flex-wrap gap-x-3 mt-0.5 text-xs text-slate-400">
@@ -235,6 +304,8 @@ export function AbaConcessionarias({ chamar, avisar, sinal }: PropsDaAba) {
           onPlano={(p) => mudarPlano(aberta.id, p)}
           onTrial={(d) => estenderTrial(aberta.id, d)}
           onCortesia={(m) => cortesia(aberta.id, m)}
+          onCancelarFatura={(id, motivo) => cancelarFatura(aberta.id, id, motivo)}
+          onCancelarAssinatura={(o) => cancelarAssinatura(aberta.id, o)}
           onImpersonar={() => impersonar(aberta.id)}
         />
       )}
@@ -242,12 +313,169 @@ export function AbaConcessionarias({ chamar, avisar, sinal }: PropsDaAba) {
   );
 }
 
-function GavetaDaLoja({ loja, onFechar, onPlano, onTrial, onCortesia, onImpersonar }: {
+/**
+ * Faturas da loja e o conserto de uma cobrança feita por engano.
+ *
+ * Existe porque não havia caminho nenhum: uma fatura pendente criada num teste
+ * ficava lá, e desfazer exigia SQL na mão em produção. Aqui a fatura é marcada
+ * **cancelada**, nunca apagada — histórico de dinheiro não se apaga, e a linha é
+ * o que faz o webhook atrasado reconhecer a cobrança em vez de recriá-la.
+ *
+ * O motivo é obrigatório: as duas ações viram linha de auditoria, e auditoria
+ * sem o "por quê" só diz que alguém mexeu.
+ */
+function SecaoDeFaturas({ loja, onCancelarFatura, onCancelarAssinatura }: {
+  loja: TenantDetail;
+  onCancelarFatura: (faturaId: string, motivo: string) => void;
+  onCancelarAssinatura: (opcoes: CancelamentoDeAssinatura) => void;
+}) {
+  const [motivo, setMotivo] = useState('');
+  const [cancelarFaturas, setCancelarFaturas] = useState(true);
+  const [voltarParaTrial, setVoltarParaTrial] = useState(false);
+  const [dias, setDias] = useState(String(DURACAO_DO_TRIAL_DIAS));
+
+  const diasNum = Number(dias);
+  const motivoOk = motivo.trim().length >= 3;
+  const diasOk = Number.isInteger(diasNum) && diasNum >= 1 && diasNum <= 365;
+  const temAssinatura = Boolean(loja.cobranca.gateway) || Boolean(loja.cobranca.planoPendente);
+
+  const cor = (s: string) =>
+    s === 'paga' ? 'text-emerald-600 dark:text-emerald-400'
+      : s === 'pendente' ? 'text-amber-600 dark:text-amber-400'
+        : s === 'vencida' ? 'text-rose-600 dark:text-rose-400'
+          : 'text-slate-500';
+
+  return (
+    <div>
+      <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
+        Faturas ({loja.faturas.length})
+      </h4>
+
+      {loja.cobranca.gateway ? (
+        <p className="text-xs text-slate-400 mb-3 break-all">
+          Assinatura no gateway: {loja.cobranca.gateway.provedor ?? '—'} ·{' '}
+          {loja.cobranca.gateway.assinaturaExterna}
+        </p>
+      ) : (
+        <p className="text-xs text-slate-400 mb-3">Sem assinatura no gateway.</p>
+      )}
+
+      {loja.faturas.length === 0 ? (
+        <p className="text-sm text-slate-500">Nenhuma fatura emitida para esta loja.</p>
+      ) : (
+        <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+          {loja.faturas.map((f: FaturaDaLoja) => (
+            <li key={f.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+              <div className="min-w-0">
+                <p className="text-sm font-medium tabular-nums">{formatarBRL(f.valor)}</p>
+                <p className="text-xs text-slate-400">
+                  Venc. {fmtDate(f.vencimento)}
+                  {f.pagoEm ? ` · pago em ${fmtDate(f.pagoEm)}` : ''}
+                  {f.meio ? ` · ${f.meio}` : ''}
+                </p>
+              </div>
+              <div className="flex items-center gap-2.5 shrink-0">
+                <span className={`text-xs font-semibold ${cor(f.status)}`}>
+                  {ROTULO_FATURA[f.status as StatusDeFatura] ?? f.status}
+                </span>
+                {f.urlPagamento && (
+                  <a
+                    href={f.urlPagamento} target="_blank" rel="noopener noreferrer"
+                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    abrir
+                  </a>
+                )}
+                {f.cancelavel && (
+                  <button
+                    onClick={() => {
+                      if (!motivoOk) return;
+                      if (confirm(`Cancelar a fatura de ${formatarBRL(f.valor)}? Ela fica marcada como cancelada, não é apagada.`)) {
+                        onCancelarFatura(f.id, motivo.trim());
+                      }
+                    }}
+                    disabled={!motivoOk}
+                    title={motivoOk ? 'Cancelar esta fatura' : 'Escreva o motivo abaixo primeiro'}
+                    className="px-2.5 py-1 rounded-lg text-xs font-medium border border-rose-200
+                               dark:border-rose-500/30 text-rose-600 dark:text-rose-400
+                               hover:bg-rose-50 dark:hover:bg-rose-500/10 disabled:opacity-40 transition"
+                  >
+                    Cancelar
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
+        <div>
+          <label htmlFor="motivo-cobranca" className="block text-xs font-medium text-slate-500 mb-1.5">
+            Motivo (obrigatório — vira linha de auditoria)
+          </label>
+          <input
+            id="motivo-cobranca" type="text" maxLength={300} value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            placeholder="Cobrança criada por engano num teste"
+            className={inputCls}
+          />
+        </div>
+
+        <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+          <input type="checkbox" checked={cancelarFaturas} onChange={(e) => setCancelarFaturas(e.target.checked)} />
+          Cancelar também as faturas em aberto
+        </label>
+
+        <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+          <input type="checkbox" checked={voltarParaTrial} onChange={(e) => setVoltarParaTrial(e.target.checked)} />
+          Devolver a loja ao trial por
+          <input
+            type="number" min={1} max={365} value={dias} onChange={(e) => setDias(e.target.value)}
+            disabled={!voltarParaTrial}
+            className="w-16 rounded-lg border border-slate-200 dark:border-slate-700 bg-white
+                       dark:bg-slate-800 px-2 py-1 text-xs tabular-nums disabled:opacity-50"
+          />
+          dias
+        </label>
+        <p className="text-[11px] text-slate-400">
+          Marque <strong>devolver ao trial</strong> quando a loja está num plano pago que nunca foi
+          pago: sem isso, cancelar a assinatura a deixaria &ldquo;em dia&rdquo; para sempre num plano
+          que ninguém pagou.
+        </p>
+
+        <button
+          onClick={() => {
+            if (!motivoOk || !diasOk) return;
+            const resumo = voltarParaTrial ? ` A loja volta ao trial por ${diasNum} dias.` : '';
+            if (confirm(`Cancelar a assinatura desta loja no gateway?${resumo}`)) {
+              onCancelarAssinatura({
+                motivo: motivo.trim(), cancelarFaturas, voltarParaTrial, diasDeTrial: diasNum,
+              });
+            }
+          }}
+          disabled={!motivoOk || !diasOk}
+          className="w-full px-3 py-2 rounded-xl text-xs font-semibold border border-rose-200
+                     dark:border-rose-500/30 text-rose-600 dark:text-rose-400
+                     hover:bg-rose-50 dark:hover:bg-rose-500/10 disabled:opacity-40 transition"
+        >
+          {temAssinatura ? 'Cancelar assinatura no gateway' : 'Limpar cobrança desta loja'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function GavetaDaLoja({
+  loja, onFechar, onPlano, onTrial, onCortesia, onCancelarFatura, onCancelarAssinatura, onImpersonar,
+}: {
   loja: TenantDetail;
   onFechar: () => void;
   onPlano: (plan: string) => void;
   onTrial: (days: number) => void;
   onCortesia: (motivo: MotivoDeCortesia | null) => void;
+  onCancelarFatura: (faturaId: string, motivo: string) => void;
+  onCancelarAssinatura: (opcoes: CancelamentoDeAssinatura) => void;
   onImpersonar: () => void;
 }) {
   const m = loja.metrics;
@@ -343,6 +571,7 @@ function GavetaDaLoja({ loja, onFechar, onPlano, onTrial, onCortesia, onImperson
             </h4>
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <SeloDeCobranca c={loja.cobranca} />
+              <SeloPendente c={loja.cobranca} />
               {loja.cobranca.somenteLeitura && (
                 <span className="text-xs text-rose-600 dark:text-rose-400">
                   Escrita bloqueada. Trocar o plano ou estender o trial aqui destrava na hora.
@@ -407,6 +636,12 @@ function GavetaDaLoja({ loja, onFechar, onPlano, onTrial, onCortesia, onImperson
               )}
             </div>
           </div>
+
+          <SecaoDeFaturas
+            loja={loja}
+            onCancelarFatura={onCancelarFatura}
+            onCancelarAssinatura={onCancelarAssinatura}
+          />
 
           <div>
             <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">

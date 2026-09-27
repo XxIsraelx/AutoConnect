@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  AlertCircle, ArrowLeft, Check, CreditCard, ExternalLink, Loader2,
+  AlertCircle, ArrowLeft, Check, CreditCard, ExternalLink, Hourglass, Loader2,
   Lock, QrCode, ReceiptText, RefreshCw, ShieldCheck, TriangleAlert,
 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -42,7 +42,11 @@ interface Resumo {
   sandbox: boolean;
   planos: PlanoDaApi[];
   assinatura: {
+    /** O plano **efetivo** — o que a loja tem hoje. */
     plano: string;
+    /** Contratado e ainda não pago: não vale nada até o pagamento entrar. */
+    planoPendente: PlanoPago | null;
+    pendenteDesde: string | null;
     status: string;
     trialEndsAt: string | null;
     currentPeriodEnd: string | null;
@@ -58,6 +62,8 @@ interface Resumo {
   diasRestantes: number | null;
   prazoAte: string | null;
   aviso: string | null;
+  /** Vem do veredito da API (`avaliarCobranca`), não de dedução da tela. */
+  planoPendente: PlanoPago | null;
   uso: {
     usados: number;
     limite: number | null;
@@ -166,7 +172,13 @@ export default function PlanoECobrancaPage() {
         await api('/cobranca/contratar', {
           token, method: 'POST', body: JSON.stringify({ plano: escolhido, meio }),
         });
-        setOk('Plano contratado. Use o link abaixo para pagar por Pix, boleto ou cartão.');
+        // A frase diz o que é verdade: contratar registra a escolha, e é o
+        // pagamento que troca o plano. Dizer "plano contratado" e pronto é o
+        // que fazia a loja publicar contando com um limite que não tinha.
+        setOk(
+          'Contratação registrada. O plano passa a valer quando o pagamento for confirmado — ' +
+          'use o link abaixo para pagar por Pix, boleto ou cartão.',
+        );
       } else if (qual === 'atualizar') {
         await api('/cobranca/fatura/atualizar', { token, method: 'POST' });
         setOk('Link de pagamento atualizado.');
@@ -216,6 +228,8 @@ export default function PlanoECobrancaPage() {
 
   const faturaEmAberto = resumo.faturas.find((f) => f.status === 'pendente' || f.status === 'vencida');
   const planoAtual = resumo.planos.find((p) => p.plano === resumo.assinatura?.plano);
+  const pendente = resumo.planoPendente;
+  const planoPendente = resumo.planos.find((p) => p.plano === pendente);
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-5">
@@ -255,6 +269,41 @@ export default function PlanoECobrancaPage() {
           <p className="text-xs mt-1 opacity-80">Prazo: {data(resumo.prazoAte)}</p>
         )}
       </div>
+
+      {/* ── Contratado, aguardando pagamento ─────────────── */}
+      {/* A loja precisa ver três coisas de uma vez: que a contratação foi
+          registrada (senão contrata de novo), que o plano **ainda não vale**
+          (senão publica contando com um limite que não tem) e onde pagar. */}
+      {planoPendente && (
+        <div className="rounded-2xl border border-blue-200 dark:border-blue-500/30
+                        bg-blue-50 dark:bg-blue-500/10 p-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Hourglass size={15} className="text-blue-600 dark:text-blue-400" />
+            <span className="text-sm font-bold text-blue-900 dark:text-blue-100">
+              Plano {planoPendente.nome} contratado, aguardando pagamento
+            </span>
+          </div>
+          <p className="text-sm text-blue-900/90 dark:text-blue-100/90 mt-2">
+            {planoAtual
+              ? <>Até o pagamento ser confirmado, sua loja continua no plano <strong>{planoAtual.nome}</strong>, com o limite de estoque dele.</>
+              : <>O plano passa a valer, com o limite de estoque dele, assim que o pagamento for confirmado.</>}
+            {resumo.assinatura?.pendenteDesde
+              ? ` Contratado em ${data(resumo.assinatura.pendenteDesde)}.`
+              : ''}
+          </p>
+          {faturaEmAberto?.urlPagamento && (
+            <a
+              href={faturaEmAberto.urlPagamento}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm
+                         font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition"
+            >
+              <ExternalLink size={14} /> Pagar {formatarBRL(faturaEmAberto.valor)} e ativar o plano
+            </a>
+          )}
+        </div>
+      )}
 
       {/* ── Uso do estoque ───────────────────────────────── */}
       <Section title="Estoque da sua faixa" icon={ReceiptText}>
@@ -296,6 +345,7 @@ export default function PlanoECobrancaPage() {
             {resumo.planos.map((p) => {
               const ativo = escolhido === p.plano;
               const eOAtual = resumo.assinatura?.plano === p.plano;
+              const eOPendente = pendente === p.plano;
               return (
                 <button
                   key={p.plano}
@@ -312,6 +362,11 @@ export default function PlanoECobrancaPage() {
                     {eOAtual && (
                       <span className="text-[10px] font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">
                         atual
+                      </span>
+                    )}
+                    {eOPendente && (
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                        aguardando pagamento
                       </span>
                     )}
                   </div>
@@ -349,15 +404,24 @@ export default function PlanoECobrancaPage() {
 
           <button
             onClick={() => void executar('contratar')}
-            disabled={acao !== null || !escolhido}
+            disabled={acao !== null || !escolhido || escolhido === pendente}
             className="mt-4 w-full sm:w-auto inline-flex items-center justify-center gap-2
                        px-5 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white
                        hover:bg-blue-700 disabled:opacity-50 transition"
           >
             {acao === 'contratar'
               ? <><Loader2 size={14} className="animate-spin" /> Contratando…</>
-              : <><CreditCard size={14} /> {resumo.assinatura?.contratada ? 'Mudar para este plano' : 'Contratar'}</>}
+              : escolhido === pendente
+                // Contratar de novo o que já está pendente só geraria uma
+                // segunda cobrança — a API recusa com 409, e o botão diz por quê
+                // antes de a pessoa clicar.
+                ? <><Hourglass size={14} /> Aguardando o pagamento deste plano</>
+                : <><CreditCard size={14} /> {resumo.assinatura?.contratada ? 'Mudar para este plano' : 'Contratar'}</>}
           </button>
+          <p className="text-xs text-slate-500 mt-2">
+            O plano passa a valer — e o limite de estoque com ele — quando o pagamento for
+            confirmado. Por Pix, isso acontece em minutos.
+          </p>
         </Section>
       ) : (
         <Section title="Contratação" icon={CreditCard}>

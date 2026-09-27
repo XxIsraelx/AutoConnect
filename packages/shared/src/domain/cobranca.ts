@@ -179,8 +179,19 @@ export const SITUACOES_DE_COBRANCA = [
 export type SituacaoDeCobranca = (typeof SITUACOES_DE_COBRANCA)[number];
 
 export interface AssinaturaParaAvaliar {
+  /**
+   * O plano **efetivo**: o que a loja paga hoje, e o que vale para o limite de
+   * estoque e para o bloqueio. Só um pagamento confirmado (ou o super admin, à
+   * mão) o muda.
+   */
   plan: string;
   status: string;
+  /**
+   * Plano **contratado e ainda não pago**. Intenção, não direito: enquanto ele
+   * está aqui a loja segue no `plan`, com o limite de estoque do `plan`. É o
+   * `aplicarEventoDeCobranca` que o promove, no `pagamento_confirmado`.
+   */
+  pendingPlan?: string | null;
   /** Desde quando a loja é isenta de cobrança. `null` = paga como qualquer outra. */
   courtesySince?: Date | string | null;
   trialEndsAt?: Date | string | null;
@@ -199,6 +210,35 @@ export interface Veredito {
   prazoAte: Date | null;
   /** Frase pronta para a faixa no painel. `null` quando não há nada a avisar. */
   aviso: string | null;
+  /**
+   * Plano contratado e aguardando pagamento, quando há. **Nunca** muda
+   * `situacao` nem `somenteLeitura`: contratar não é pagar, e o estado da loja
+   * continua sendo o do plano efetivo. Serve para a tela dizer o que está
+   * pendente e mostrar o link da fatura.
+   */
+  planoPendente: PlanoPago | null;
+}
+
+/** Só plano pago é intenção válida; `trial` e lixo não são. */
+function pendenteValido(plano: string | null | undefined): PlanoPago | null {
+  return plano && ehPlanoPago(plano) ? plano : null;
+}
+
+/**
+ * A frase que a loja lê enquanto o plano contratado não foi pago.
+ *
+ * Diz as duas coisas que a pessoa precisa saber: que a contratação foi
+ * registrada (senão ela contrata de novo) e que o plano novo **ainda não
+ * vale** (senão ela publica 60 carros contando com um limite que não tem).
+ */
+export function avisoDePlanoPendente(pendente: PlanoPago, planoEfetivo: string): string {
+  const nome = CATALOGO_DE_PLANOS[pendente].nome;
+  const inicio = `Plano ${nome} contratado, aguardando o pagamento da primeira fatura.`;
+  if (ehPlanoPago(planoEfetivo)) {
+    return `${inicio} Até o pagamento ser confirmado, sua loja continua no plano ` +
+      `${CATALOGO_DE_PLANOS[planoEfetivo].nome} — com o limite de estoque dele.`;
+  }
+  return `${inicio} O plano passa a valer, com o limite de estoque dele, quando o pagamento for confirmado.`;
 }
 
 function paraData(v: Date | string | null | undefined): Date | null {
@@ -233,11 +273,47 @@ function diasAte(alvo: Date, agora: Date): number {
  *    em **carência** até `graceUntil`. Passou disso, `somente_leitura`.
  * 4. **Cancelada** é somente leitura na hora: o cancelamento é do cliente, e
  *    ele sabe o que escolheu. Os dados continuam todos lá.
+ *
+ * ## O plano pendente não entra nas regras acima, de propósito
+ *
+ * `pendingPlan` é intenção de pagar, e intenção nenhuma destrava nada aqui: a
+ * situação sai sempre do plano **efetivo**. Isto é o conserto do defeito de
+ * 27/09/2026 — `contratar` gravava o plano novo antes de qualquer pagamento e
+ * a regra 1 lia "plano pago + `active`" como loja em dia, de modo que uma loja
+ * contratava, nunca pagava e ficava com o plano (e com o limite de estoque
+ * dele) para sempre. O plano só muda no `pagamento_confirmado`.
+ *
+ * O que o pendente faz é aparecer no veredito (`planoPendente`) e, quando não
+ * há nada mais grave a dizer, virar o `aviso` — que é o que leva a pessoa ao
+ * link da fatura.
  */
 export function avaliarCobranca(
   assinatura: AssinaturaParaAvaliar | null | undefined,
   agora: Date = new Date(),
 ): Veredito {
+  const base = situacaoDeCobranca(assinatura, agora);
+  // Cortesia não paga nada, então nenhuma contratação fica pendente para ela
+  // (a API recusa contratar em cortesia). Se houver resíduo no banco, ele não
+  // vira aviso: a loja não deve nada.
+  const pendente = base.situacao === 'cortesia' ? null : pendenteValido(assinatura?.pendingPlan);
+  if (!pendente) return { ...base, planoPendente: null };
+
+  const doPendente = avisoDePlanoPendente(pendente, assinatura?.plan ?? 'trial');
+  return {
+    ...base,
+    planoPendente: pendente,
+    // Com a loja já vencida ou em carência, o aviso dela é o urgente e vem
+    // primeiro; a pendência entra como complemento. Sem nada urgente, a
+    // pendência é o único aviso que existe.
+    aviso: base.aviso ? `${base.aviso} ${doPendente}` : doPendente,
+  };
+}
+
+/** O veredito sem a camada do plano pendente — as regras 0 a 4 acima. */
+function situacaoDeCobranca(
+  assinatura: AssinaturaParaAvaliar | null | undefined,
+  agora: Date,
+): Omit<Veredito, 'planoPendente'> {
   // Loja sem linha de assinatura: dado antigo, anterior ao autosserviço. Não
   // bloqueia — inventar um bloqueio para quem nunca teve trial trancaria um
   // cliente por causa de uma migração.
@@ -493,12 +569,25 @@ export interface ProvedorDeCobranca {
   /** A fatura em aberto (ou a última), com o link de pagamento. */
   faturaAtual(idAssinaturaExterna: string): Promise<FaturaDoGateway | null>;
   cancelarAssinatura(idAssinaturaExterna: string): Promise<void>;
+  /**
+   * Cancela **uma cobrança** em aberto, sem mexer na assinatura.
+   *
+   * É o que resolve a fatura gerada por engano (um teste em produção, uma
+   * contratação desfeita) sem apagar histórico: o gateway para de cobrar
+   * aquela, as demais seguem. No-op quando a cobrança já não existe lá —
+   * "cancele isto" sobre algo que não está mais lá já está cumprido.
+   */
+  cancelarFatura(idFaturaExterna: string): Promise<void>;
   interpretarWebhook(cabecalhos: CabecalhosDeCobranca, corpoCru: Uint8Array): EventoDeCobranca;
 }
 
 /* ── Aplicação do evento ──────────────────────────────────────── */
 
 export interface EstadoDaCobranca {
+  /** Plano efetivo — o que a loja tem hoje. */
+  plan: string;
+  /** Plano contratado e não pago. Some quando o pagamento entra. */
+  pendingPlan: string | null;
   status: SubscriptionStatusValue;
   currentPeriodEnd: Date | null;
   graceUntil: Date | null;
@@ -518,12 +607,18 @@ export interface ResultadoDoEventoDeCobranca {
  *
  * - `pagamento_confirmado` **sempre** volta a `active` e limpa a carência, sem
  *   olhar o estado anterior: é o caminho da volta imediata, e é o que faz uma
- *   loja bloqueada voltar no instante em que o Pix cai.
+ *   loja bloqueada voltar no instante em que o Pix cai. **É também o único
+ *   lugar onde o plano contratado passa a valer**: `pendingPlan` vira `plan` e
+ *   sai. Antes de 27/09/2026 quem trocava o plano era a contratação, e a loja
+ *   que nunca pagava ficava com o plano para sempre.
  * - `pagamento_vencido` só marca `past_due` e abre a carência **uma vez** — um
  *   segundo vencido não estende o prazo (senão a loja que nunca paga ganharia
- *   sete dias por mês, para sempre).
- * - `reembolso` e `assinatura_cancelada` levam a `canceled`. Somente leitura
- *   imediata: o dinheiro voltou.
+ *   sete dias por mês, para sempre). O `pendingPlan` **fica**: a fatura vencida
+ *   continua pagável, e pagá-la ainda promove o plano.
+ * - `reembolso` e `assinatura_cancelada` levam a `canceled` e **descartam** o
+ *   plano pendente: sem assinatura no gateway não há fatura para pagar, e uma
+ *   intenção que ninguém mais pode cumprir só confundiria a tela. Somente
+ *   leitura imediata: o dinheiro voltou.
  */
 export function aplicarEventoDeCobranca(
   atual: EstadoDaCobranca,
@@ -538,12 +633,16 @@ export function aplicarEventoDeCobranca(
       // fatura no evento, um mês a partir de agora.
       const base = evento.fatura?.vencimento ?? evento.ocorridoEm;
       const fim = somarDias(base, 30);
+      // O pagamento é o que promove o plano contratado. Pendência que não é
+      // plano pago (lixo, ou `trial`) não promove nada — o plano efetivo fica.
+      const plano = pendenteValido(atual.pendingPlan) ?? atual.plan;
       if (atual.status === 'active' && atual.graceUntil === null &&
+          atual.pendingPlan === null && atual.plan === plano &&
           atual.currentPeriodEnd?.getTime() === fim.getTime()) {
         return igual;
       }
       return {
-        estado: { status: 'active', currentPeriodEnd: fim, graceUntil: null },
+        estado: { plan: plano, pendingPlan: null, status: 'active', currentPeriodEnd: fim, graceUntil: null },
         mudou: true,
       };
     }
@@ -562,8 +661,11 @@ export function aplicarEventoDeCobranca(
 
     case 'reembolso':
     case 'assinatura_cancelada': {
-      if (atual.status === 'canceled') return igual;
-      return { estado: { ...atual, status: 'canceled', graceUntil: null }, mudou: true };
+      if (atual.status === 'canceled' && atual.pendingPlan === null) return igual;
+      return {
+        estado: { ...atual, status: 'canceled', pendingPlan: null, graceUntil: null },
+        mudou: true,
+      };
     }
 
     case 'ignorado':
