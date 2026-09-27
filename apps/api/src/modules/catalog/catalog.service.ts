@@ -6,6 +6,7 @@ import { EmailService } from '../../common/email/email.service';
 import { FipeService } from '../fipe/fipe.service';
 import { normalizarTelefoneBr } from '@autoconnect/shared';
 import { AtribuicaoDeLead } from '../crm/atribuicao.service';
+import { PushService } from '../users/push/push.service';
 import type { TradeInInput } from './trade-in.schema';
 
 /**
@@ -47,6 +48,8 @@ export class CatalogService {
      * o cadastro manual usam. É o que tira o lead de troca da segunda classe.
      */
     private readonly atribuicao: AtribuicaoDeLead,
+    /** O aviso no celular do vendedor da vez, como nos outros leads. */
+    private readonly push: PushService,
   ) {}
 
   findBrands() {
@@ -635,7 +638,7 @@ export class CatalogService {
      * formulário de interesse, onde o segundo envio é a mesma intenção
      * repetida.
      */
-    await this.prisma.withTenant(input.tenantId, async (tx) => {
+    const leadDeTroca = await this.prisma.withTenant(input.tenantId, async (tx) => {
       const criadoEm = new Date();
       const distribuicao = await this.atribuicao.distribuirEAgendar(tx, input.tenantId, {
         criadoEm,
@@ -668,9 +671,17 @@ export class CatalogService {
         criadoEm,
         distribuicao,
       });
+      return { id: lead.id, assignedTo: lead.assignedTo };
     });
 
     const offered = `${input.vehicle.brandName} ${input.vehicle.modelName} ${input.vehicle.versionName ?? ''} ${input.vehicle.yearModel}`.replace(/\s+/g, ' ').trim();
+    this.push.avisarLeadNovo(input.tenantId, {
+      leadId: leadDeTroca.id,
+      assignedTo: leadDeTroca.assignedTo,
+      nome: input.contactName,
+      veiculo: `troca: ${offered}`,
+      origem: 'Troca',
+    });
     const dealerEmail = tenant.branches[0]?.email;
     if (dealerEmail) {
       this.email.sendTradeInReceived({

@@ -41,6 +41,7 @@ import { sha256Hex } from '../contracts/assinatura/hmac';
 import { PROVEDOR_DE_WHATSAPP } from './provedor';
 import { ProvedorSimuladoDeWhatsApp } from './provedor-simulado';
 import { RecusaDoWhatsApp } from './recusa';
+import { PushService } from '../users/push/push.service';
 
 /** O mesmo `include` do gateway: a tela recebe a mensagem num formato só. */
 const COM_REMETENTE = {
@@ -120,6 +121,7 @@ export class WhatsappService {
     private readonly leads: LeadsService,
     private readonly ajustes: CrmSettingsService,
     private readonly sla: SlaService,
+    private readonly push: PushService,
   ) {}
 
   get simulado(): boolean {
@@ -682,7 +684,7 @@ export class WhatsappService {
           contactPhoneNormalized: contato,
           status: { not: 'closed' },
         },
-        select: { id: true, leadId: true, contactName: true },
+        select: { id: true, leadId: true, contactName: true, salespersonId: true },
       });
 
       let aviso: AvisoDeLeadNovo | null = null;
@@ -717,7 +719,7 @@ export class WhatsappService {
             contactPhone: dadosDoLead.contactPhone,
             contactEmail: dadosDoLead.contactEmail,
           },
-          select: { id: true, leadId: true, contactName: true },
+          select: { id: true, leadId: true, contactName: true, salespersonId: true },
         });
       }
 
@@ -751,7 +753,13 @@ export class WhatsappService {
       }
       await tx.whatsappWebhookEvent.update({ where: { id: eventoId }, data: { applied: true } });
 
-      return { conversationId: conversa.id, mensagem, aviso };
+      return {
+        conversationId: conversa.id,
+        mensagem,
+        aviso,
+        salespersonId: conversa.salespersonId,
+        nome: conversa.contactName ?? evento.nome,
+      };
     });
 
     let r: Awaited<ReturnType<typeof executar>>;
@@ -765,7 +773,19 @@ export class WhatsappService {
     }
     if (!r) return false;
 
+    // Lead novo: o aviso de lead já leva a mensagem — dois avisos para o mesmo
+    // contato seriam ruído. Conversa que já existia (ou lead que a deduplicação
+    // achou): o aviso é da mensagem, para quem cuida da conversa.
     this.leads.avisarDeLeadDeCanal(r.aviso);
+    if (!r.aviso) {
+      this.push.avisarMensagem(tenantId, {
+        conversationId: r.conversationId,
+        salespersonId: r.salespersonId,
+        nome: r.nome,
+        canal: 'WhatsApp',
+        texto: corpo,
+      });
+    }
     this.eventos.emitir(r.conversationId, 'conversation:message', {
       ...r.mensagem,
       conversationId: r.conversationId,

@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import Portais from './Portais';
+import { NotificacoesDoAparelho } from '@/components/notificacoes/NotificacoesDoAparelho';
 
 interface Capacidade {
   disponivel: boolean;
@@ -75,6 +76,9 @@ export default function CanaisPage() {
         <h1 className="text-2xl font-bold txt-forte">Canais</h1>
         <p className="text-sm txt-fraco mt-1">Por onde os clientes chegam, e por onde a loja responde.</p>
       </div>
+
+      {/* Primeiro: é o que vale para todo mundo, inclusive o vendedor. */}
+      {token && <NotificacoesDoAparelho token={token} />}
 
       <section className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
         <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-100 dark:border-slate-800">

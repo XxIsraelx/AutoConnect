@@ -28,6 +28,7 @@
 | **Assinatura externa** | ✅ estrutura | ✅ completo | camada neutra, webhook com HMAC, provedor simulado e adaptador Clicksign (API 3.0, testado no sandbox); **ligado em sandbox; falta assinatura de ponta a ponta e conta de produção** ([decisão](../decisoes/2026-09-22%20assinatura%20externa.md)) |
 | **WhatsApp oficial** | ✅ estrutura | ✅ completo | desde 27/09/2026 (sessão 2, item C1): camada neutra com provedor simulado, webhook com HMAC do corpo cru e idempotente, cliente que escreve vira lead pelo caminho do formulário (dedupe, rodízio, prazo), resposta pelo chat com a janela de 24 h conferida na API, modelos aprovados, status de entrega, uso do mês em **Canais**. **Adaptador da Meta escrito e NÃO exercitado — falta a conta** ([decisão](../decisoes/2026-09-27%20whatsapp%20oficial.md)) |
 | **Leads dos portais** | ✅ estrutura | ✅ completo | desde 27/09/2026 (sessão 2, item C2): endereço de entrada por loja e portal (URL de webhook e e-mail de encaminhamento, token só em hash), entregas guardadas cruas e reprocessáveis, formato AutoConnect no webhook e leitor genérico de e-mail com rótulos, código de confirmação do Gmail na tela, lead pelo caminho do formulário com origem `portal`. **Falta a conta do e-mail de entrada (Postmark) e uma notificação real da OLX** ([decisão](../decisoes/2026-09-27%20leads%20dos%20portais.md)) |
+| **Push do vendedor** | ✅ completo | ✅ completo | desde 27/09/2026 (sessão 2, item C3): Web Push com VAPID pelo service worker (sem app de loja), lead novo para o vendedor da vez (ou a gerência, sem responsável), mensagem do cliente para quem cuida da conversa, aparelho que muda de dono, logout que desinscreve. Verificado de ponta a ponta com o serviço de push real. **Falta só cadastrar as chaves VAPID no Railway** ([decisão](../decisoes/2026-09-27%20push%20do%20vendedor.md)) |
 
 ## Pendências conhecidas
 
@@ -353,6 +354,22 @@ conserto do plano pendente de pagamento
   - Como testar: cliente manda foto → a conversa mostra a imagem por URL assinada.
   - Encontrado em: 27/09/2026 · Claude Code (sessão 2) · no item C1.
 
+**Encontrada em 27/09/2026** — Claude Code (sessão 2), ao fazer o push do vendedor (C3)
+
+- **O agendamento pedido pelo cliente não gera push.**
+  - Onde: `apps/api/src/modules/appointments/` (sessão 1) e `app/(dashboard)/layout.tsx`
+    (`useLeadsBadge`, que ainda avisa "Novo agendamento" com a aba aberta).
+  - O que é: o push cobre lead novo e mensagem do cliente; o agendamento feito pelo cliente
+    no site só aparece no contador do menu e no aviso da aba aberta.
+  - Impacto: o test drive pedido pelo site fica sem confirmação até alguém abrir o painel —
+    menor que o lead (o cliente já está engajado), mas é o mesmo "vendedor no pátio".
+  - Sugestão: no ponto em que o agendamento do cliente é criado, chamar
+    `PushService.avisarLeadNovo`-como (um `avisarAgendamento` novo no `PushService`) para o
+    vendedor do agendamento ou a gerência. Não feito aqui para não escrever no módulo de
+    agendamentos, que é da sessão 1 (item D1).
+  - Como testar: e2e — cliente agenda pelo site, o vendedor com aparelho inscrito recebe o aviso.
+  - Encontrado em: 27/09/2026 · Claude Code (sessão 2) · no item C3.
+
 **Lacunas frente ao mercado** — Claude Cowork, 27/09/2026, na pesquisa de preços
 ([plano de preços](https://claude.ai/code/artifact/daf7ac7d-5114-4621-9028-3759dbb07be8)).
 O que os concorrentes com preço público entregam e o AutoConnect não. Várias já estão num
@@ -410,7 +427,9 @@ existe por causa delas, e a tabela só sobe quando as duas primeiras existirem.
   - **Situação em 27/09/2026:** a estrutura inteira está pronta e testada com o provedor
     simulado (o "como testar" acima passa em `test/whatsapp.e2e-spec.ts`); falta a conta na
     Meta e a decisão 2. Ver a [decisão](../decisoes/2026-09-27%20whatsapp%20oficial.md).
-- **App do vendedor com notificação.**
+- **App do vendedor com notificação.** — ◐ push pronto em 27/09/2026 (item C3, sessão 2);
+  falta cadastrar as chaves VAPID no Railway. Ver a
+  [decisão](../decisoes/2026-09-27%20push%20do%20vendedor.md).
   - Onde: item 14 da Onda 2; hoje site responsivo e PWA, sem push de verdade.
   - Evidência: 11 de 15 produtos no levantamento; MobiGestor e Autoconf têm app nas lojas.
   - Impacto: vendedor fora do computador não vê o lead novo a tempo, e o rodízio perde a razão.

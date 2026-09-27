@@ -43,6 +43,8 @@ const MODELOS_DE_TENANT = [
   // Leads dos portais: o endereço de entrada da loja e as entregas cruas, com
   // o contato de quem se interessou.
   'portalConnection', 'portalDelivery',
+  // Push do vendedor: as chaves com que o aparelho de cada vendedor recebe o aviso.
+  'pushSubscription',
 ];
 
 /**
@@ -194,6 +196,9 @@ describe('isolamento por tenant — regra de arquitetura', () => {
     // A entrega do portal chega sem loja: acha a conexão pelo hash do token
     // (só id, tenantId e portal) e segue em withTenant.
     'modules/portais/portais.service.ts',
+    // O aparelho que muda de dono: apaga a inscrição pelo endpoint (a URL
+    // secreta que só o navegador tem), mesmo que seja de outra loja.
+    'modules/users/push/push.service.ts',
   ])('%s atravessa concessionárias pela conexão privilegiada, e isso é visível', (arquivo) => {
     const fonte = readFileSync(join(RAIZ, arquivo), 'utf8');
 

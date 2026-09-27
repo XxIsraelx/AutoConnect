@@ -171,6 +171,9 @@ em 25/09/2026. Sobram os três que o mercado cobra, na ordem do
 - **C3 — Push do vendedor (item 14).** Service worker + web-push; hoje só
   funciona com a aba aberta, e o rodízio perde a razão se o vendedor não vê o
   lead a tempo.
+  ✅ **Feito em 27/09/2026** (sessão 2), verificado com o serviço de push real —
+  **falta só cadastrar as chaves VAPID no Railway**. Ver a
+  [decisão](../decisoes/2026-09-27%20push%20do%20vendedor.md).
 
 **Pronto quando:** o lead do portal entra sozinho, cai no vendedor de plantão e
 é respondido pelo WhatsApp sem ninguém copiar e colar.

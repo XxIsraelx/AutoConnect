@@ -15,6 +15,7 @@ import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import ThemeToggle from '@/components/ThemeToggle';
+import { desinscreverEsteAparelho, temPushNesteAparelho, usePush } from '@/lib/push';
 import AvisoDeEmailNaoVerificado from '@/components/AvisoDeEmailNaoVerificado';
 import AvisoDeCobranca from '@/components/AvisoDeCobranca';
 
@@ -22,8 +23,11 @@ import AvisoDeCobranca from '@/components/AvisoDeCobranca';
 
 const POLL_INTERVAL = 30_000; // 30 segundos
 
-function notify(title: string, body: string, href: string) {
+async function notify(title: string, body: string, href: string) {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  // Com o push ativo, o aviso de verdade (com o nome e a origem) já chegou por
+  // ele — este, genérico, só repetiria.
+  if (await temPushNesteAparelho()) return;
   const n = new Notification(title, { body, icon: '/icon-192.png', tag: href });
   n.onclick = () => { window.focus(); window.location.href = href; n.close(); };
 }
@@ -81,34 +85,45 @@ function useLeadsBadge(token: string | null) {
   return { badge, apptBadge, chatBadge };
 }
 
-/* ── Pedido de permissão de notificação ──────────────────── */
-function NotificationPrompt() {
-  const [show, setShow] = useState(false);
+/* ── Pedido de notificação ────────────────────────────────── */
+/**
+ * Ativa o push deste aparelho (permissão + inscrição), não só a permissão:
+ * antes o "Ativar" daqui liberava apenas o aviso da aba aberta, e com o
+ * navegador fechado nada chegava. O "Agora não" continua valendo.
+ */
+function NotificationPrompt({ token }: { token: string | null }) {
+  const { estado, ativar, ocupado } = usePush(token);
+  const [dispensado, setDispensado] = useState(true);
 
   useEffect(() => {
-    if (typeof Notification === 'undefined') return;
-    if (Notification.permission === 'default'
-        && localStorage.getItem('autoconnect:notif-dismissed') !== '1') {
-      setShow(true);
+    try {
+      setDispensado(localStorage.getItem('autoconnect:notif-dismissed') === '1');
+    } catch {
+      // Silencioso com motivo: sem localStorage, o convite aparece — é o padrão.
+      setDispensado(false);
     }
   }, []);
 
-  if (!show) return null;
+  if (dispensado || estado !== 'desativado') return null;
 
   return (
     <div className="mx-3 mb-2 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50">
       <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug mb-2">
-        Receba avisos de novos leads e agendamentos mesmo com a aba em segundo plano.
+        Receba o lead novo e a mensagem do cliente neste aparelho, mesmo com o AutoConnect fechado.
       </p>
       <div className="flex gap-1.5">
         <button
-          onClick={() => Notification.requestPermission().finally(() => setShow(false))}
-          className="flex-1 text-[11px] font-bold py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition-colors"
+          onClick={() => void ativar()}
+          disabled={ocupado}
+          className="flex-1 text-[11px] font-bold py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50"
         >
           Ativar
         </button>
         <button
-          onClick={() => { localStorage.setItem('autoconnect:notif-dismissed', '1'); setShow(false); }}
+          onClick={() => {
+            try { localStorage.setItem('autoconnect:notif-dismissed', '1'); } catch { /* sem localStorage: só esconde agora */ }
+            setDispensado(true);
+          }}
           className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
         >
           Agora não
@@ -202,8 +217,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!hydrated || !token || user?.role === 'customer') return null;
 
   function handleLogout() {
-    clear();
-    router.replace('/login');
+    // O aparelho para de receber os avisos desta pessoa antes de a sessão
+    // acabar — sem isto, quem entrasse depois no mesmo celular veria os leads
+    // da anterior. Nunca impede o logout (ver `desinscreverEsteAparelho`).
+    void desinscreverEsteAparelho(token).finally(() => {
+      clear();
+      router.replace('/login');
+    });
   }
 
   return (
@@ -299,7 +319,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         {/* Notificações do navegador */}
-        <NotificationPrompt />
+        <NotificationPrompt token={token} />
 
         {/* User */}
         <div className="px-3 py-4 border-t border-slate-200 dark:border-slate-800">

@@ -9,6 +9,7 @@ import { ehGlobal, type Escopo } from '../../common/escopo';
 import { EmailService } from '../../common/email/email.service';
 import {
   LEAD_SOURCES,
+  ROTULO_DA_ORIGEM_DE_LEAD,
   limiteDeAlertaSegundos,
   normalizarTelefoneBr,
   rotuloDoMotivo,
@@ -28,6 +29,7 @@ import { RodizioService } from '../crm/rodizio.service';
 import { SlaService } from '../crm/sla.service';
 import { AtribuicaoDeLead, type LeadDistribuido } from '../crm/atribuicao.service';
 import { carteiraDe, type Ator } from './carteira';
+import { PushService } from '../users/push/push.service';
 
 /** Dados do e-mail de "lead novo", montados dentro da transação e enviados fora. */
 export interface AvisoDeLeadNovo {
@@ -36,6 +38,8 @@ export interface AvisoDeLeadNovo {
   customerName: string;
   vehicleInfo: string;
   message: string | null;
+  /** O push para o vendedor da vez (ou para a gerência, se ficou sem responsável). */
+  push?: { tenantId: string; leadId: string; assignedTo: string | null; origem: string };
 }
 
 /** Um contato que chegou por canal externo — WhatsApp oficial hoje, portais depois. */
@@ -77,6 +81,8 @@ export class LeadsService {
     private readonly rodizio: RodizioService,
     private readonly sla: SlaService,
     private readonly atribuicao: AtribuicaoDeLead,
+    /** O aviso no celular do vendedor da vez — ver `PushService`. */
+    private readonly push: PushService,
   ) {}
 
   /* ── Rodízio e prazo, na criação do lead ───────────────── */
@@ -190,6 +196,7 @@ export class LeadsService {
         customerName: customer.fullName,
         vehicleInfo,
         message: input.message ?? null,
+        push: { tenantId, leadId: lead.id, assignedTo, origem: ROTULO_DA_ORIGEM_DE_LEAD[input.source] },
       } satisfies AvisoDeLeadNovo,
     };
       },
@@ -323,6 +330,7 @@ export class LeadsService {
           customerName: input.contactName,
           vehicleInfo,
           message: input.message ?? null,
+          push: { tenantId, leadId: lead.id, assignedTo, origem: 'Site' },
         } satisfies AvisoDeLeadNovo,
       };
     });
@@ -477,6 +485,18 @@ export class LeadsService {
       return { lead, deduplicado: false };
     });
 
+    // Quem cadastra para si mesmo não precisa ser avisado; o lead que foi para
+    // o rodízio (ou para outro vendedor) precisa.
+    if (!deduplicado && lead.assignedTo !== criadorId) {
+      this.push.avisarLeadNovo(tenantId, {
+        leadId: lead.id,
+        assignedTo: lead.assignedTo,
+        nome: lead.contactName,
+        veiculo: null,
+        origem: ROTULO_DA_ORIGEM_DE_LEAD[input.source],
+      });
+    }
+
     return { ...lead, deduplicado };
   }
 
@@ -582,6 +602,7 @@ export class LeadsService {
         customerName: entrada.contactName ?? entrada.contactPhone ?? 'Cliente',
         vehicleInfo,
         message: entrada.message ?? null,
+        push: { tenantId, leadId: lead.id, assignedTo, origem: entrada.comoChegou },
       },
     };
   }
@@ -635,9 +656,23 @@ export class LeadsService {
       .trim();
   }
 
-  /** E-mail de "lead novo" para a loja. Fora da transação e não bloqueante. */
+  /**
+   * O aviso de "lead novo": o push no celular do vendedor da vez e o e-mail da
+   * loja. Fora da transação e não bloqueante. O push sai mesmo sem e-mail
+   * cadastrado — é ele que chega ao vendedor no pátio.
+   */
   private avisarLojaDeLeadNovo(aviso: AvisoDeLeadNovo | null): void {
-    if (!aviso?.dealerEmail) return;
+    if (!aviso) return;
+    if (aviso.push) {
+      this.push.avisarLeadNovo(aviso.push.tenantId, {
+        leadId: aviso.push.leadId,
+        assignedTo: aviso.push.assignedTo,
+        nome: aviso.customerName,
+        veiculo: aviso.vehicleInfo,
+        origem: aviso.push.origem,
+      });
+    }
+    if (!aviso.dealerEmail) return;
 
     this.email
       .sendLeadNotification({
