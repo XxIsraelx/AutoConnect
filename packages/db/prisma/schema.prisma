@@ -276,6 +276,10 @@ model Tenant {
   portalConnections         PortalConnection[]
   portalDeliveries          PortalDelivery[]
   pushSubscriptions         PushSubscription[]
+  financialAccounts         FinancialAccount[]
+  financialCategories       FinancialCategory[]
+  financialEntries          FinancialEntry[]
+  financialPeriods          FinancialPeriod[]
 
   @@map("tenants")
 }
@@ -417,23 +421,23 @@ model BillingWebhookEvent {
 ///
 /// Uso único: `used_at` é gravado na mesma transação que registra a decisão.
 model WithdrawalAuthorization {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  provider      String    @default("asaas")
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  provider       String    @default("asaas")
   /// `TRANSFER | BILL | PIX_QR_CODE | MOBILE_PHONE_RECHARGE | PIX_REFUND`.
-  operationType String    @map("operation_type")
+  operationType  String    @map("operation_type")
   /// `exato` (valor idêntico) ou `teto` (até o valor) — `MODOS_DE_VALOR`.
-  amountMode    String    @map("amount_mode")
-  amount        Decimal   @db.Decimal(14, 2)
+  amountMode     String    @map("amount_mode")
+  amount         Decimal   @db.Decimal(14, 2)
   /// Para que serve este saque, escrito por quem autorizou. Vira trilha.
-  note          String?
-  expiresAt     DateTime  @map("expires_at") @db.Timestamptz()
-  usedAt        DateTime? @map("used_at") @db.Timestamptz()
-  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz()
+  note           String?
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz()
+  usedAt         DateTime? @map("used_at") @db.Timestamptz()
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz()
   /// Quem autorizou. Sem FK e com o e-mail copiado: a trilha de auditoria de
   /// dinheiro tem de sobreviver à remoção da conta que a criou.
-  createdBy      String?  @map("created_by") @db.Uuid
-  createdByEmail String?  @map("created_by_email")
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdByEmail String?   @map("created_by_email")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
 
   decisions WithdrawalDecision[]
 
@@ -490,9 +494,9 @@ model TenantCrmSettings {
   tenantId String @id @map("tenant_id") @db.Uuid
 
   /// Distribui sozinho o lead que chega sem responsável.
-  rodizioAtivo           Boolean @default(true) @map("rodizio_ativo")
+  rodizioAtivo          Boolean @default(true) @map("rodizio_ativo")
   /// Gerentes entram na fila junto dos vendedores.
-  rodizioIncluiGerentes  Boolean @default(false) @map("rodizio_inclui_gerentes")
+  rodizioIncluiGerentes Boolean @default(false) @map("rodizio_inclui_gerentes")
 
   /// Minutos de **expediente** até o primeiro contato (padrão: 15).
   slaPrimeiroContatoMinutos Int     @default(15) @map("sla_primeiro_contato_minutos")
@@ -511,47 +515,48 @@ model TenantCrmSettings {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
-  tenant             Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  rodizioUltimoUsuario User? @relation("RodizioUltimoUsuario", fields: [rodizioUltimoUsuarioId], references: [id], onDelete: SetNull)
+  tenant               Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rodizioUltimoUsuario User?  @relation("RodizioUltimoUsuario", fields: [rodizioUltimoUsuarioId], references: [id], onDelete: SetNull)
 
   @@map("tenant_crm_settings")
 }
 
 model DealershipBranch {
-  id             String                                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId       String                                 @map("tenant_id") @db.Uuid
-  name           String
-  isHeadquarters Boolean                                @default(false) @map("is_headquarters")
-  phone          String?
-  email          String?                                @db.Citext
-  addressLine    String?                                @map("address_line")
-  addressNumber  String?                                @map("address_number")
-  complement     String?
-  neighborhood   String?
-  city           String?
-  state          String?
-  postalCode     String?                                @map("postal_code")
-  country        String                                 @default("BR")
-  location       Unsupported("geography(Point, 4326)")?
-  latitude       Float?
-  longitude      Float?
+  id               String                                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String                                 @map("tenant_id") @db.Uuid
+  name             String
+  isHeadquarters   Boolean                                @default(false) @map("is_headquarters")
+  phone            String?
+  email            String?                                @db.Citext
+  addressLine      String?                                @map("address_line")
+  addressNumber    String?                                @map("address_number")
+  complement       String?
+  neighborhood     String?
+  city             String?
+  state            String?
+  postalCode       String?                                @map("postal_code")
+  country          String                                 @default("BR")
+  location         Unsupported("geography(Point, 4326)")?
+  latitude         Float?
+  longitude        Float?
   /// Como as coordenadas acima foram obtidas. Ver `GeocodePrecision`.
-  geocodePrecision GeocodePrecision?                    @map("geocode_precision")
+  geocodePrecision GeocodePrecision?                      @map("geocode_precision")
   /// Quando a última tentativa de geocodificação aconteceu — inclusive a que
   /// falhou. É o que impede uma filial sem endereço de bater na Nominatim a
   /// cada abertura do mapa.
-  geocodedAt     DateTime?                              @map("geocoded_at") @db.Timestamptz()
-  businessHours  Json                                   @default("{}") @map("business_hours")
-  isActive       Boolean                                @default(true) @map("is_active")
-  createdAt      DateTime                               @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt      DateTime                               @updatedAt @map("updated_at") @db.Timestamptz()
+  geocodedAt       DateTime?                              @map("geocoded_at") @db.Timestamptz()
+  businessHours    Json                                   @default("{}") @map("business_hours")
+  isActive         Boolean                                @default(true) @map("is_active")
+  createdAt        DateTime                               @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime                               @updatedAt @map("updated_at") @db.Timestamptz()
 
-  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vehicles     Vehicle[]
-  salespeople  SalespersonProfile[]
-  leads        Lead[]
-  appointments Appointment[]
-  deals        Deal[]
+  tenant           Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicles         Vehicle[]
+  salespeople      SalespersonProfile[]
+  leads            Lead[]
+  appointments     Appointment[]
+  deals            Deal[]
+  financialEntries FinancialEntry[]
 
   @@index([tenantId])
   @@map("dealership_branches")
@@ -608,6 +613,9 @@ model User {
   rodizioDeLeads             TenantCrmSettings[]       @relation("RodizioUltimoUsuario")
   /// Os aparelhos em que o usuário ativou notificação push — ver o fim do arquivo.
   pushSubscriptions          PushSubscription[]
+  /// Lançamentos que este usuário criou e meses que ele fechou.
+  financialEntries           FinancialEntry[]
+  financialPeriods           FinancialPeriod[]
 
   @@index([tenantId])
   @@index([role])
@@ -677,26 +685,26 @@ model TenantInvite {
 }
 
 model SalespersonProfile {
-  userId           String                                 @id @map("user_id") @db.Uuid
-  tenantId         String                                 @map("tenant_id") @db.Uuid
-  branchId         String?                                @map("branch_id") @db.Uuid
-  bio              String?
-  hireDate         DateTime?                              @map("hire_date") @db.Date
-  commissionPct    Decimal?                               @map("commission_pct") @db.Decimal(5, 2)
-  presence         PresenceStatus                         @default(offline)
-  lastSeenAt       DateTime?                              @map("last_seen_at") @db.Timestamptz()
-  currentLocation  Unsupported("geography(Point, 4326)")? @map("current_location")
+  userId            String                                 @id @map("user_id") @db.Uuid
+  tenantId          String                                 @map("tenant_id") @db.Uuid
+  branchId          String?                                @map("branch_id") @db.Uuid
+  bio               String?
+  hireDate          DateTime?                              @map("hire_date") @db.Date
+  commissionPct     Decimal?                               @map("commission_pct") @db.Decimal(5, 2)
+  presence          PresenceStatus                         @default(offline)
+  lastSeenAt        DateTime?                              @map("last_seen_at") @db.Timestamptz()
+  currentLocation   Unsupported("geography(Point, 4326)")? @map("current_location")
   /// O interruptor do plantão: participa do rodízio de leads.
   ///
   /// A coluna existia desde o início e nenhuma tela a lia nem a escrevia. É ela
   /// que a tela de `/equipe` passou a ligar e desligar.
-  isAcceptingLeads Boolean                                @default(true) @map("is_accepting_leads")
+  isAcceptingLeads  Boolean                                @default(true) @map("is_accepting_leads")
   /// Pausa temporária do plantão ("ausente até"). Enquanto estiver no futuro, o
   /// membro sai do rodízio sem que ninguém precise lembrar de religar o
   /// interruptor na volta — que é como um vendedor de férias continuaria
   /// recebendo lead.
-  onDutyPausedUntil DateTime?                             @map("on_duty_paused_until") @db.Timestamptz()
-  updatedAt        DateTime                               @updatedAt @map("updated_at") @db.Timestamptz()
+  onDutyPausedUntil DateTime?                              @map("on_duty_paused_until") @db.Timestamptz()
+  updatedAt         DateTime                               @updatedAt @map("updated_at") @db.Timestamptz()
 
   user   User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   branch DealershipBranch? @relation(fields: [branchId], references: [id])
@@ -807,6 +815,9 @@ model Vehicle {
   costs         VehicleCost[]
   queries       VehicleQuery[]
 
+  /// Lançamentos financeiros ligados a este veículo (compra, preparação).
+  financialEntries FinancialEntry[]
+
   @@index([tenantId])
   @@index([branchId])
   @@index([status])
@@ -901,31 +912,31 @@ model VehicleView {
 // ============ LEADS ============
 
 model Lead {
-  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId       String     @map("tenant_id") @db.Uuid
-  customerUserId String?    @map("customer_user_id") @db.Uuid
-  branchId       String?    @map("branch_id") @db.Uuid
-  assignedTo     String?    @map("assigned_to") @db.Uuid
-  vehicleId      String?    @map("vehicle_id") @db.Uuid
-  contactName    String?    @map("contact_name")
-  contactEmail   String?    @map("contact_email") @db.Citext
-  contactPhone   String?    @map("contact_phone")
+  id                     String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId               String     @map("tenant_id") @db.Uuid
+  customerUserId         String?    @map("customer_user_id") @db.Uuid
+  branchId               String?    @map("branch_id") @db.Uuid
+  assignedTo             String?    @map("assigned_to") @db.Uuid
+  vehicleId              String?    @map("vehicle_id") @db.Uuid
+  contactName            String?    @map("contact_name")
+  contactEmail           String?    @map("contact_email") @db.Citext
+  contactPhone           String?    @map("contact_phone")
   /// Forma canônica do telefone (DDD + número, sem DDI nem pontuação, com o
   /// nono dígito). É por ela que a deduplicação compara — ver
   /// `normalizarTelefoneBr` no shared, que é quem a produz.
-  contactPhoneNormalized String? @map("contact_phone_normalized")
-  source         LeadSource @default(website)
-  status         LeadStatus @default(new)
-  message        String?
-  score          Int?       @db.SmallInt
-  lastActivityAt DateTime   @default(now()) @map("last_activity_at") @db.Timestamptz()
-  wonAt          DateTime?  @map("won_at") @db.Timestamptz()
+  contactPhoneNormalized String?    @map("contact_phone_normalized")
+  source                 LeadSource @default(website)
+  status                 LeadStatus @default(new)
+  message                String?
+  score                  Int?       @db.SmallInt
+  lastActivityAt         DateTime   @default(now()) @map("last_activity_at") @db.Timestamptz()
+  wonAt                  DateTime?  @map("won_at") @db.Timestamptz()
   /// Complemento em texto livre do motivo da perda. Obrigatório quando o
   /// código é `outro` — ver `domain/motivo-perda.ts` no shared.
-  lostReason     String?    @map("lost_reason")
+  lostReason             String?    @map("lost_reason")
   /// Motivo estruturado da perda, da lista fechada do shared. É o que o
   /// relatório agrupa; o texto acima é leitura humana.
-  lostReasonCode String?    @map("lost_reason_code")
+  lostReasonCode         String?    @map("lost_reason_code")
 
   /// Prazo de primeiro contato: até quando alguém tem que ter falado com esta
   /// pessoa. Calculado na criação, em minutos de **expediente** da loja — ver
@@ -941,11 +952,11 @@ model Lead {
   /// Consentimento LGPD do formulário público: quando foi aceito e o texto
   /// exibido no momento do aceite. O texto é copiado, não referenciado — a
   /// prova tem que ser do termo que a pessoa leu, não do termo de hoje.
-  consentedAt    DateTime?  @map("consented_at") @db.Timestamptz()
-  consentText    String?    @map("consent_text")
-  metadata       Json       @default("{}")
-  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz()
+  consentedAt        DateTime? @map("consented_at") @db.Timestamptz()
+  consentText        String?   @map("consent_text")
+  metadata           Json      @default("{}")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
 
   tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer      User?             @relation("LeadsAsCustomer", fields: [customerUserId], references: [id])
@@ -1054,44 +1065,44 @@ model SalespersonAvailability {
 // ============ CHAT ============
 
 model Conversation {
-  id                     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId               String             @map("tenant_id") @db.Uuid
+  id                     String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId               String              @map("tenant_id") @db.Uuid
   /// Nulo quando a conversa é de um lead **sem conta** — o caso que a Onda 0
   /// criou e o chat não atendia. Ver `contactName` e `guestTokenHash`.
-  customerUserId         String?            @map("customer_user_id") @db.Uuid
+  customerUserId         String?             @map("customer_user_id") @db.Uuid
   /// Contato **copiado** do lead, como no agendamento sem conta: a conversa
   /// precisa dizer com quem é mesmo que o lead seja apagado depois.
-  contactName            String?            @map("contact_name")
-  contactPhone           String?            @map("contact_phone")
-  contactEmail           String?            @map("contact_email") @db.Citext
+  contactName            String?             @map("contact_name")
+  contactPhone           String?             @map("contact_phone")
+  contactEmail           String?             @map("contact_email") @db.Citext
   /// sha256 do link de acesso do visitante sem conta (o mesmo esquema de
   /// `UserInvitation.tokenHash`). É a única porta de entrada dele — sem isso a
   /// loja escreveria para ninguém.
-  guestTokenHash         String?            @unique @map("guest_token_hash")
-  salespersonId          String?            @map("salesperson_id") @db.Uuid
-  vehicleId              String?            @map("vehicle_id") @db.Uuid
-  leadId                 String?            @map("lead_id") @db.Uuid
-  status                 ConversationStatus @default(open)
-  lastMessageAt          DateTime?          @map("last_message_at") @db.Timestamptz()
-  unreadCountCustomer    Int                @default(0) @map("unread_count_customer")
-  unreadCountSalesperson Int                @default(0) @map("unread_count_salesperson")
+  guestTokenHash         String?             @unique @map("guest_token_hash")
+  salespersonId          String?             @map("salesperson_id") @db.Uuid
+  vehicleId              String?             @map("vehicle_id") @db.Uuid
+  leadId                 String?             @map("lead_id") @db.Uuid
+  status                 ConversationStatus  @default(open)
+  lastMessageAt          DateTime?           @map("last_message_at") @db.Timestamptz()
+  unreadCountCustomer    Int                 @default(0) @map("unread_count_customer")
+  unreadCountSalesperson Int                 @default(0) @map("unread_count_salesperson")
   /// Por onde a conversa acontece. `chat` é o do próprio sistema (cliente com
   /// conta, ou visitante pelo link); `whatsapp` entra e sai pelo número oficial
   /// da loja — ver `modules/whatsapp`.
   channel                ConversationChannel @default(chat)
   /// Número da loja por onde a conversa de WhatsApp passa.
-  whatsappAccountId      String?            @map("whatsapp_account_id") @db.Uuid
+  whatsappAccountId      String?             @map("whatsapp_account_id") @db.Uuid
   /// Telefone do cliente na forma canônica (`contatoDoWhatsApp` no shared). É a
   /// chave que junta a resposta do cliente à conversa que a loja abriu — o
   /// `wa_id` sozinho não serve, porque às vezes vem sem o nono dígito.
-  contactPhoneNormalized String?            @map("contact_phone_normalized")
+  contactPhoneNormalized String?             @map("contact_phone_normalized")
   /// Endereço do cliente no canal (o `wa_id`), gravado quando ele escreve.
-  externalContactId      String?            @map("external_contact_id")
+  externalContactId      String?             @map("external_contact_id")
   /// Última mensagem **do cliente**. No WhatsApp, é o que abre e fecha a
   /// janela de 24 h de mensagem livre (`janelaDeAtendimentoAberta`).
-  customerLastMessageAt  DateTime?          @map("customer_last_message_at") @db.Timestamptz()
-  createdAt              DateTime           @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt              DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
+  customerLastMessageAt  DateTime?           @map("customer_last_message_at") @db.Timestamptz()
+  createdAt              DateTime            @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt              DateTime            @updatedAt @map("updated_at") @db.Timestamptz()
 
   tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer        User?            @relation("ConversationsAsCustomer", fields: [customerUserId], references: [id], onDelete: Cascade)
@@ -1337,31 +1348,33 @@ model Deal {
   vehicleCostSnapshot Decimal? @map("vehicle_cost_snapshot") @db.Decimal(14, 2)
   grossMargin         Decimal? @map("gross_margin") @db.Decimal(14, 2)
 
-  closedAt     DateTime? @map("closed_at") @db.Timestamptz()
-  deliveredAt  DateTime? @map("delivered_at") @db.Timestamptz()
-  canceledAt   DateTime? @map("canceled_at") @db.Timestamptz()
+  closedAt         DateTime? @map("closed_at") @db.Timestamptz()
+  deliveredAt      DateTime? @map("delivered_at") @db.Timestamptz()
+  canceledAt       DateTime? @map("canceled_at") @db.Timestamptz()
   /// Complemento em texto livre. Obrigatório quando o código é `outro`.
-  cancelReason String?   @map("cancel_reason")
+  cancelReason     String?   @map("cancel_reason")
   /// Motivo estruturado do cancelamento ou distrato, da lista fechada do
   /// shared. Era só o texto livre acima, e o funil de valor não conseguia
   /// dizer por que o dinheiro não entrou.
-  cancelReasonCode String? @map("cancel_reason_code")
+  cancelReasonCode String?   @map("cancel_reason_code")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
-  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch       DealershipBranch? @relation(fields: [branchId], references: [id])
-  lead         Lead?             @relation(fields: [leadId], references: [id])
-  vehicle      Vehicle           @relation(fields: [vehicleId], references: [id])
-  customer     User?             @relation("DealCustomer", fields: [customerUserId], references: [id])
-  salesperson  User?             @relation("DealSalesperson", fields: [salespersonId], references: [id])
-  payments     DealPayment[]
-  statusEvents DealStatusEvent[]
-  tradeIn      TradeIn?
-  contracts    DealContract[]
-  warranty     DealWarranty?
-  buyer        DealBuyer?
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch           DealershipBranch? @relation(fields: [branchId], references: [id])
+  lead             Lead?             @relation(fields: [leadId], references: [id])
+  vehicle          Vehicle           @relation(fields: [vehicleId], references: [id])
+  customer         User?             @relation("DealCustomer", fields: [customerUserId], references: [id])
+  salesperson      User?             @relation("DealSalesperson", fields: [salespersonId], references: [id])
+  payments         DealPayment[]
+  statusEvents     DealStatusEvent[]
+  tradeIn          TradeIn?
+  contracts        DealContract[]
+  warranty         DealWarranty?
+  buyer            DealBuyer?
+  /// Contas a receber geradas por este negócio (Fase 3 do financeiro).
+  financialEntries FinancialEntry[]
 
   @@index([tenantId, status])
   @@index([tenantId, createdAt(sort: Desc)])
@@ -1387,8 +1400,10 @@ model DealPayment {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deal           Deal            @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  /// O lançamento que esta parcela gerou — um só, por construção.
+  financialEntry FinancialEntry?
 
   @@index([tenantId])
   @@index([dealId])
@@ -1995,4 +2010,179 @@ model PushSubscription {
 
   @@index([tenantId, userId])
   @@map("push_subscriptions")
+}
+
+// ============ FINANCEIRO DA LOJA ============
+//
+// Decidido em 27/09/2026 (docs/decisoes/2026-09-27 modulo financeiro.md):
+// financeiro **gerencial** — a pagar, a receber, caixa, DRE mensal, fechamento
+// e conciliação. Fiscal (SPED, apuração) e folha ficam fora.
+//
+// Três decisões estão no desenho destas tabelas:
+//
+//  1. **Saldo não é coluna.** Nenhuma tabela aqui guarda saldo: ele é a soma dos
+//     lançamentos pagos mais o saldo inicial da conta. Saldo gravado vira saldo
+//     errado no primeiro lançamento editado.
+//  2. **`value` é sempre positivo** e o sinal está em `direction`. Um CHECK
+//     garante; valor negativo para representar saída é soma que engana.
+//  3. **Nada apaga.** Lançamento errado vira `cancelado` com motivo, e a linha
+//     fica — é o que permite conferir o caixa de três meses atrás.
+
+enum FinancialAccountKind {
+  caixa
+  banco
+  adquirente
+  outro
+}
+
+enum FinancialDirection {
+  entrada
+  saida
+}
+
+/// `previsto` é promessa, `pago` é fato, `cancelado` é erro assumido.
+enum FinancialEntryStatus {
+  previsto
+  pago
+  cancelado
+}
+
+enum FinancialCategoryGroup {
+  veiculos
+  operacao
+  pessoal
+  impostos
+  financeiro
+  outros
+}
+
+/// Onde o dinheiro está: o caixa da loja, cada banco, cada adquirente.
+///
+/// `openingBalance` existe porque a loja começa a usar o sistema no meio da vida
+/// dela: sem saldo inicial, o primeiro mês mostraria um caixa que nunca existiu.
+model FinancialAccount {
+  id             String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String               @map("tenant_id") @db.Uuid
+  kind           FinancialAccountKind
+  name           String
+  bankName       String?              @map("bank_name")
+  openingBalance Decimal              @default(0) @map("opening_balance") @db.Decimal(14, 2)
+  active         Boolean              @default(true)
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime             @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  entries FinancialEntry[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("financial_accounts")
+}
+
+/// Plano de contas curto, por loja.
+///
+/// Nasce semeado com `CATEGORIAS_PADRAO` (shared) porque uma tela de financeiro
+/// que abre vazia e exige cadastrar categoria antes do primeiro lançamento é uma
+/// tela que o lojista fecha. A loja renomeia, desativa e cria as suas.
+model FinancialCategory {
+  id        String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String                 @map("tenant_id") @db.Uuid
+  direction FinancialDirection
+  group     FinancialCategoryGroup
+  name      String
+  active    Boolean                @default(true)
+  createdAt DateTime               @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime               @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  entries FinancialEntry[]
+
+  @@unique([tenantId, direction, name])
+  @@index([tenantId])
+  @@map("financial_categories")
+}
+
+/// O lançamento: uma promessa de dinheiro entrando ou saindo, e o fato quando
+/// acontece.
+///
+/// `dueDate` é a promessa e `paidAt` é o fato — regime de caixa, que é como a
+/// loja pensa. Os vínculos opcionais (`dealId`, `vehicleId`, `dealPaymentId`) são
+/// o que evita dupla contagem com o DRE por veículo: o financeiro **aponta** para
+/// a linha de origem em vez de copiar o valor dela.
+model FinancialEntry {
+  id        String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String               @map("tenant_id") @db.Uuid
+  direction FinancialDirection
+  status    FinancialEntryStatus @default(previsto)
+  value     Decimal              @db.Decimal(14, 2)
+
+  dueDate DateTime  @map("due_date") @db.Timestamptz()
+  paidAt  DateTime? @map("paid_at") @db.Timestamptz()
+
+  description    String
+  supplierName   String? @map("supplier_name")
+  documentNumber String? @map("document_number")
+  notes          String?
+
+  accountId  String? @map("account_id") @db.Uuid
+  categoryId String  @map("category_id") @db.Uuid
+  branchId   String? @map("branch_id") @db.Uuid
+
+  /// Origem: quando o lançamento nasceu de algo que a loja já fez no sistema.
+  dealId        String? @map("deal_id") @db.Uuid
+  vehicleId     String? @map("vehicle_id") @db.Uuid
+  /// Único: a parcela do negócio gera **um** lançamento, e regerar não duplica.
+  dealPaymentId String? @unique @map("deal_payment_id") @db.Uuid
+
+  /// Mesma série de uma repetição (aluguel, salário). Sem tabela própria: a
+  /// série só precisa ser reconhecível para editar ou cancelar as futuras.
+  recurrenceId String? @map("recurrence_id") @db.Uuid
+
+  canceledAt   DateTime? @map("canceled_at") @db.Timestamptz()
+  cancelReason String?   @map("cancel_reason")
+
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account     FinancialAccount? @relation(fields: [accountId], references: [id])
+  category    FinancialCategory @relation(fields: [categoryId], references: [id])
+  branch      DealershipBranch? @relation(fields: [branchId], references: [id])
+  deal        Deal?             @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  vehicle     Vehicle?          @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  dealPayment DealPayment?      @relation(fields: [dealPaymentId], references: [id], onDelete: SetNull)
+  autor       User?             @relation(fields: [createdBy], references: [id])
+
+  @@index([tenantId, dueDate])
+  @@index([tenantId, status, dueDate])
+  @@index([tenantId, accountId, status])
+  @@index([tenantId, categoryId])
+  @@index([recurrenceId])
+  @@map("financial_entries")
+}
+
+/// Mês conferido e fechado.
+///
+/// A trava é pelo **vencimento** do lançamento, não pela data em que alguém
+/// digitou: fechar março diz "março está conferido", e um lançamento novo com
+/// vencimento em março mudaria o resultado de um mês já fechado. Um trigger
+/// repete a regra no banco, como no contrato emitido.
+model FinancialPeriod {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  year         Int
+  month        Int       @db.SmallInt
+  closedAt     DateTime  @default(now()) @map("closed_at") @db.Timestamptz()
+  closedBy     String?   @map("closed_by") @db.Uuid
+  reopenedAt   DateTime? @map("reopened_at") @db.Timestamptz()
+  reopenReason String?   @map("reopen_reason")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  autor  User?  @relation(fields: [closedBy], references: [id])
+
+  @@unique([tenantId, year, month])
+  @@index([tenantId])
+  @@map("financial_periods")
 }

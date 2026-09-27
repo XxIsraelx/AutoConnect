@@ -50,10 +50,14 @@ ponte entre os dois.
 
 ---
 
-## Fase 1 — o esqueleto do dinheiro (≈ 3 dias)
+## Fase 1 — o esqueleto do dinheiro ✅ 27/09/2026
 
-**Entrega:** o lançamento existe, com conta, categoria e vínculo opcional ao
-negócio ou ao veículo. Sem tela ainda: API, migrations com RLS e teste.
+**Entregue em 27/09/2026:** quatro tabelas com RLS, os CHECKs de coerência, o
+trigger do mês fechado, `GET/POST/PATCH` de contas, categorias e lançamentos,
+baixa idempotente, cancelamento com motivo, fechamento e reabertura de mês, e o
+resumo que responde as quatro perguntas do dono. 19 testes de regra no shared e
+18 e2e — incluindo o que confere que o saldo da API é o mesmo que a regra pura dá
+sobre as mesmas linhas, e que a loja vizinha não vê nada.
 
 Tabelas novas, todas com `tenant_id` e policy `tenant_isolation` na migration:
 

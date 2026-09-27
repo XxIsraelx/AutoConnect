@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.270 testes (928 na API, 342 no `shared`):
+são 1.307 testes (946 na API, 361 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -647,6 +647,41 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 cobranca e bloqueio por venci
   `executarEmUmaReplica`), idempotente por `lastNoticeAt` comparado ao marco da
   situação — um e-mail por marco, não um por dia.
 
+## Financeiro da loja
+
+O porquê de cada regra: `docs/decisoes/2026-09-27 modulo financeiro.md`; o plano
+em 6 fases: `docs/planos/plano-financeiro.md`.
+
+- **É financeiro gerencial, não fiscal.** A pagar, a receber, contas, caixa, DRE
+  mensal, fechamento, conciliação por OFX. SPED, apuração e folha ficam fora, e a
+  NF-e segue adiada. A divisão é de destinatário: o gerencial responde ao dono da
+  loja, o fiscal responde ao Estado.
+- **Saldo nunca é coluna.** É o `opening_balance` da conta mais entradas pagas
+  menos saídas pagas, num `groupBy` — nunca num laço por conta. A mesma regra
+  existe pura no shared (`saldoDaConta`), para listas que já estão na tela, e um
+  e2e confere que as duas dão o mesmo número.
+- **`value` é sempre positivo; o sinal está em `direction`**, com CHECK no banco.
+  A direção vem da **categoria**, nunca do corpo: senão uma despesa entra como
+  receita e o saldo mente sem ninguém ver.
+- **`previsto` é promessa, `pago` é fato, `cancelado` é erro assumido.** CHECKs
+  garantem a coerência (pago exige data e conta; previsto não tem `paid_at`;
+  cancelado exige motivo). **Nada apaga** — cancelar deixa a linha.
+- **Baixa é idempotente:** dois cliques no botão não viram dois pagamentos.
+- **Mês fechado tranca pelo vencimento**, não pela data de digitação. A regra está
+  no shared (`mesEstaFechado`, `podeAlterar`), o service recusa com 409 em
+  português, e um **trigger** repete no banco — a rede que não tem como escapar.
+  Reabrir exige motivo.
+- **O lançamento aponta para a origem** (`deal_id`, `vehicle_id`,
+  `deal_payment_id`) em vez de copiar valor: é o que evita dupla contagem com o
+  DRE por veículo. `deal_payment_id` é único — regerar não duplica.
+- **Financeiro é de gerência** (`manager`, `tenant_admin`, `super_admin`).
+  Vendedor não vê o caixa, pela mesma razão da carteira fechada por padrão.
+- **Dinheiro no corpo é `valorMonetario`** (`"1234.56"`), o mesmo do negócio —
+  quem formata e desformata é a tela. Duas gramáticas de dinheiro na API seria a
+  próxima divergência esperando acontecer.
+- ⚠ **Nada do financeiro foi revisado por contador.** Mesmo aviso do template de
+  contrato sem advogado; entra na mesma revisão.
+
 ## Validação de saque (dinheiro saindo da conta da plataforma)
 
 O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.md`.
@@ -715,7 +750,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
   foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
   migrations (ver *Testes e CI*).
-- Migrations atuais (25): `init`, `trade_in_and_dealer_setting`,
+- Migrations atuais (29): `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
   `add_announcements_invites_alerts_searches_goals`,
   `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`,
@@ -727,7 +762,8 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   `cobranca_asaas`, `validacao_de_saque`,
   `filial_do_veiculo_geocodificacao_e_chat_sem_conta`, `loja_de_demonstracao`,
   `cortesia_de_cobranca`, `preco_travado_e_ciclo`,
-  `plano_pendente_de_pagamento`.
+  `plano_pendente_de_pagamento`, `whatsapp_oficial`, `leads_dos_portais`,
+  `push_do_vendedor`, `financeiro_gerencial`.
 
 ---
 

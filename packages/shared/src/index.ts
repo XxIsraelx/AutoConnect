@@ -28,3 +28,5 @@ export * from './schemas/whatsapp';
 export * from './domain/portais';
 export * from './schemas/portais';
 export * from './domain/push';
+export * from './domain/financeiro';
+export * from './schemas/financeiro';
