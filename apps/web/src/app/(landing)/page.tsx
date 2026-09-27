@@ -5,6 +5,7 @@ import Problema from '@/components/landing/Problema';
 import OQueMuda from '@/components/landing/OQueMuda';
 import ComoFunciona from '@/components/landing/ComoFunciona';
 import Maquete from '@/components/landing/Maquete';
+import Calculadora from '@/components/landing/Calculadora';
 import Planos from '@/components/landing/Planos';
 import CtaFinal from '@/components/landing/CtaFinal';
 import Rodape from '@/components/landing/Rodape';
@@ -50,6 +51,7 @@ export default function HomePage() {
         <OQueMuda />
         <ComoFunciona />
         <Maquete />
+        <Calculadora />
         <Planos />
         <CtaFinal />
       </main>
