@@ -1,7 +1,7 @@
 import {
   aplicarEventoDeCobranca, avaliarCobranca, CATALOGO_DE_PLANOS, DIAS_DE_AVISO_ANTES,
   DIAS_DE_CARENCIA, ehPlanoPago, FAIXAS, faixaParaEstoque, limiteDeVeiculos,
-  PLANOS_PAGOS, somarDias, usoDoEstoque,
+  PLANO_DA_CORTESIA, PLANOS_PAGOS, somarDias, usoDoEstoque,
   type EstadoDaCobranca,
 } from './cobranca';
 
@@ -21,10 +21,11 @@ describe('catálogo de planos', () => {
     expect(FAIXAS[FAIXAS.length - 1]!.limiteVeiculos).toBeNull();
   });
 
-  it('cobra os valores decididos, em centavos', () => {
-    expect(CATALOGO_DE_PLANOS.essencial.precoMensalCentavos).toBe(27_900n);
-    expect(CATALOGO_DE_PLANOS.crescimento.precoMensalCentavos).toBe(47_900n);
-    expect(CATALOGO_DE_PLANOS.profissional.precoMensalCentavos).toBe(79_900n);
+  it('cobra os valores de lançamento decididos em 27/09/2026, em centavos', () => {
+    expect(CATALOGO_DE_PLANOS.essencial.precoMensalCentavos).toBe(19_700n);
+    expect(CATALOGO_DE_PLANOS.crescimento.precoMensalCentavos).toBe(34_700n);
+    expect(CATALOGO_DE_PLANOS.profissional.precoMensalCentavos).toBe(59_700n);
+    expect(CATALOGO_DE_PLANOS.profissional.nome).toBe('Profissional');
   });
 
   it('o catálogo cobre exatamente os planos pagos', () => {
@@ -159,6 +160,37 @@ describe('avaliarCobranca', () => {
     // sem o tratamento, a loja ficaria em trial para sempre.
     const v = avaliarCobranca({ plan: 'trial', status: 'active', trialEndsAt: 'lixo' }, AGORA);
     expect(v.somenteLeitura).toBe(true);
+  });
+});
+
+describe('cortesia', () => {
+  const cortesia = { plan: PLANO_DA_CORTESIA, status: 'active', courtesySince: dias(-400) };
+
+  it('loja em cortesia nunca bloqueia nem recebe aviso', () => {
+    expect(avaliarCobranca(cortesia, AGORA)).toEqual({
+      situacao: 'cortesia', somenteLeitura: false, diasRestantes: null, prazoAte: null, aviso: null,
+    });
+  });
+
+  it('vale acima de qualquer prazo: trial vencido, fatura em atraso, carência passada', () => {
+    // A fundadora é a loja que mais usa o sistema; um dado velho de trial ou
+    // de fatura não pode trancá-la.
+    const piores = [
+      { ...cortesia, plan: 'trial', trialEndsAt: dias(-60) },
+      { ...cortesia, status: 'past_due', graceUntil: dias(-30) },
+      { ...cortesia, status: 'canceled' },
+    ];
+    for (const a of piores) expect(avaliarCobranca(a, AGORA).situacao).toBe('cortesia');
+  });
+
+  it('sem a marca, a mesma loja volta às regras de sempre', () => {
+    const revogada = { plan: 'trial', status: 'active', trialEndsAt: dias(-60), courtesySince: null };
+    expect(avaliarCobranca(revogada, AGORA).somenteLeitura).toBe(true);
+  });
+
+  it('o plano da cortesia é o do programa de fundadores, com teto de 80 veículos', () => {
+    expect(PLANO_DA_CORTESIA).toBe('crescimento');
+    expect(limiteDeVeiculos(PLANO_DA_CORTESIA)).toBe(80);
   });
 });
 

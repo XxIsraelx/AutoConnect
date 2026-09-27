@@ -40,7 +40,14 @@ export interface FaixaDePlano {
 
 /**
  * A tabela de preços. **Este é o único lugar onde os valores moram** — a API,
- * a tela da loja, o painel do super admin e o adaptador do gateway leem daqui.
+ * a tela da loja, o painel do super admin, a landing e o adaptador do gateway
+ * leem daqui.
+ *
+ * Preço de **lançamento** (decisão de 27/09/2026, `docs/decisoes/2026-09-27
+ * plano de precos.md`): entre 19% e 46% abaixo da média do mercado em cada
+ * faixa, porque o AutoConnect ainda não tem integração com portais nem NF-e.
+ * A tabela cheia só entra quando elas existirem — e quem assinou no
+ * lançamento fica com a tabela de lançamento (ver a decisão).
  *
  * Cobrança **por loja**, com faixa por volume de estoque e usuários
  * ilimitados: num setor de alta rotatividade de vendedor, cobrar por assento
@@ -51,21 +58,21 @@ export const CATALOGO_DE_PLANOS: Record<PlanoPago, FaixaDePlano> = {
   essencial: {
     plano: 'essencial',
     nome: 'Essencial',
-    precoMensalCentavos: 27_900n,
+    precoMensalCentavos: 19_700n,
     limiteVeiculos: 30,
     resumo: 'Para a loja que gira até 30 carros no pátio.',
   },
   crescimento: {
     plano: 'crescimento',
     nome: 'Crescimento',
-    precoMensalCentavos: 47_900n,
+    precoMensalCentavos: 34_700n,
     limiteVeiculos: 80,
     resumo: 'Para quem passou dos 30 e ainda cabe em 80.',
   },
   profissional: {
     plano: 'profissional',
-    nome: 'Pro',
-    precoMensalCentavos: 79_900n,
+    nome: 'Profissional',
+    precoMensalCentavos: 59_700n,
     limiteVeiculos: null,
     resumo: 'Estoque ilimitado, sem teto de anúncios.',
   },
@@ -162,6 +169,7 @@ export type SubscriptionStatusValue = (typeof SUBSCRIPTION_STATUSES)[number];
 
 /** O que o sistema faz com a loja agora. */
 export const SITUACOES_DE_COBRANCA = [
+  'cortesia',
   'trial',
   'trial_terminando',
   'ativa',
@@ -173,6 +181,8 @@ export type SituacaoDeCobranca = (typeof SITUACOES_DE_COBRANCA)[number];
 export interface AssinaturaParaAvaliar {
   plan: string;
   status: string;
+  /** Desde quando a loja é isenta de cobrança. `null` = paga como qualquer outra. */
+  courtesySince?: Date | string | null;
   trialEndsAt?: Date | string | null;
   currentPeriodEnd?: Date | string | null;
   /** Fim da carência, gravado quando a fatura vence. */
@@ -212,6 +222,7 @@ function diasAte(alvo: Date, agora: Date): number {
  *
  * As regras, na ordem:
  *
+ * 0. **Cortesia** (fundadora ou loja interna) nunca bloqueia nem avisa.
  * 1. **Plano pago com status `active` é a loja em dia**, sem mais perguntas —
  *    inclusive quando o super admin trocou o plano à mão, que é o caminho de
  *    desbloqueio manual e precisa continuar funcionando depois do bloqueio.
@@ -232,6 +243,14 @@ export function avaliarCobranca(
   // cliente por causa de uma migração.
   if (!assinatura) {
     return { situacao: 'ativa', somenteLeitura: false, diasRestantes: null, prazoAte: null, aviso: null };
+  }
+
+  // Cortesia antes de tudo: a fundadora e a loja interna não pagam, então
+  // nenhum prazo — trial, fatura, cancelamento — vale para elas. É uma
+  // situação própria, e não "ativa", para o painel do super admin e a tela da
+  // loja dizerem por que ninguém cobra.
+  if (assinatura.courtesySince) {
+    return { situacao: 'cortesia', somenteLeitura: false, diasRestantes: null, prazoAte: null, aviso: null };
   }
 
   const pago = ehPlanoPago(assinatura.plan);
@@ -321,6 +340,36 @@ export function avaliarCobranca(
 export function somarDias(base: Date, dias: number): Date {
   return new Date(base.getTime() + dias * 86_400_000);
 }
+
+/* ── Cortesia ─────────────────────────────────────────────────── */
+
+/**
+ * Por que uma loja não paga. Só o super admin concede, e o motivo fica
+ * gravado junto de quem concedeu (`tenant_subscriptions.courtesy_*` e o log
+ * de auditoria).
+ *
+ * - `fundadora`: uma das 5 lojas do programa de fundadores — grátis para
+ *   sempre no Crescimento, em troca de feedback, depoimento e indicação.
+ * - `interna`: loja da própria AutoConnect, como a que recebe os pedidos de
+ *   Raio-X da landing.
+ */
+export const MOTIVOS_DE_CORTESIA = ['fundadora', 'interna'] as const;
+export type MotivoDeCortesia = (typeof MOTIVOS_DE_CORTESIA)[number];
+
+export const ROTULO_MOTIVO_DE_CORTESIA: Record<MotivoDeCortesia, string> = {
+  fundadora: 'Loja fundadora',
+  interna: 'Loja interna da AutoConnect',
+};
+
+/** O plano de quem está em cortesia: o do programa de fundadores. */
+export const PLANO_DA_CORTESIA: PlanoPago = 'crescimento';
+
+/**
+ * Dias para a loja escolher um plano quando a cortesia é revogada. Revogar
+ * não pode ser um bloqueio instantâneo: a loja usava o sistema de graça até
+ * ontem e precisa de tempo para contratar.
+ */
+export const DIAS_PARA_ESCOLHER_PLANO_APOS_CORTESIA = 7;
 
 /* ── O provedor ───────────────────────────────────────────────── */
 

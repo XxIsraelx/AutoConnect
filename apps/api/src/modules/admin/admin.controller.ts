@@ -3,7 +3,7 @@ import {
   Get, Param, ParseUUIDPipe, Patch, Post, Query, Req,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { SUBSCRIPTION_PLANS } from '@autoconnect/shared';
+import { MOTIVOS_DE_CORTESIA, SUBSCRIPTION_PLANS } from '@autoconnect/shared';
 import { AdminService, PAPEIS_FILTRAVEIS } from './admin.service';
 import { Public } from '../../common/decorators/public.decorator';
 import type { AuthenticatedRequest } from '../../common/middleware/tenant.middleware';
@@ -23,6 +23,8 @@ const criarConviteSchema = z.object({
 const planoSchema = z.object({ plan: z.enum(SUBSCRIPTION_PLANS) });
 
 const estenderTrialSchema = z.object({ days: z.number().int().min(1).max(365) });
+
+export const cortesiaSchema = z.object({ motivo: z.enum(MOTIVOS_DE_CORTESIA) });
 
 const avisoSchema = z.object({
   message: z.string().trim().min(1, 'Escreva a mensagem.').max(500),
@@ -124,6 +126,26 @@ export class AdminController {
   ) {
     this.guard(req);
     return this.admin.extendTrial(id, estenderTrialSchema.parse(body).days);
+  }
+
+  /** Cortesia: a loja deixa de pagar (fundadora ou loja interna). */
+  @Patch('tenants/:id/cortesia')
+  concederCortesia(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    this.guard(req);
+    return this.admin.concederCortesia(id, cortesiaSchema.parse(body).motivo, req.user!.id);
+  }
+
+  @Delete('tenants/:id/cortesia')
+  revogarCortesia(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<unknown> {
+    this.guard(req);
+    return this.admin.revogarCortesia(id, req.user!.id);
   }
 
   @Patch('tenants/:id/toggle')

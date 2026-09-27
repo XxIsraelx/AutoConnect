@@ -293,6 +293,14 @@ model TenantSubscription {
   canceledAt         DateTime?          @map("canceled_at") @db.Timestamptz()
   /// Último aviso de fim de trial/vencimento enviado, para o cron não repetir.
   lastNoticeAt       DateTime?          @map("last_notice_at") @db.Timestamptz()
+  /// Cortesia: desde quando a loja é isenta de cobrança. `null` = paga como
+  /// qualquer outra. `avaliarCobranca` decide por este campo antes de todo o
+  /// resto — nenhum prazo vale para loja em cortesia. Só o super admin concede.
+  courtesySince      DateTime?          @map("courtesy_since") @db.Timestamptz()
+  /// `fundadora` ou `interna` (`MOTIVOS_DE_CORTESIA`, no shared).
+  courtesyReason     String?            @map("courtesy_reason")
+  /// Quem concedeu. O log de auditoria guarda o mesmo, com o histórico.
+  courtesyGrantedBy  String?            @map("courtesy_granted_by") @db.Uuid
   /// Herdado do desenho por assento, sem uso: a cobrança é por loja e a faixa
   /// é de **estoque** (`CATALOGO_DE_PLANOS`). Usuários são ilimitados.
   seatsLimit         Int?               @map("seats_limit")

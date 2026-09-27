@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 995 testes (718 na API, 277 no `shared`):
+são 1.006 testes (725 na API, 281 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -555,8 +555,14 @@ O porquê de cada regra: `docs/decisoes/vendas-e-contrato.md`.
 O porquê de cada regra: `docs/decisoes/2026-09-25 cobranca e bloqueio por vencimento.md`.
 
 - **Cobrança por loja, faixa por volume de estoque, usuários ilimitados.**
-  Essencial (30 veículos, R$ 279), Crescimento (80, R$ 479), Pro (ilimitado,
-  R$ 799). Os valores moram **num lugar só**: `CATALOGO_DE_PLANOS` no shared.
+  Tabela de lançamento: Essencial (30 veículos, R$ 197), Crescimento (80,
+  R$ 347), Profissional (ilimitado, R$ 597). Os valores moram **num lugar só**:
+  `CATALOGO_DE_PLANOS` no shared — a landing também lê de lá. Porquê:
+  `docs/decisoes/2026-09-27 plano de precos.md`.
+- **Cortesia** (fundadora ou loja interna): `courtesy_since` na assinatura, só
+  o super admin concede (`/admin › loja › Cortesia`). `avaliarCobranca` decide
+  por ela antes de tudo — situação `cortesia`, nenhum prazo bloqueia, o cron não
+  avisa, contratar é 409. Revogar volta ao trial com 7 dias, nunca bloqueia na hora.
 - **Gateway atrás de `ProvedorDeCobranca`** (`modules/cobranca/`), webhook
   `POST /webhooks/cobranca` autenticado pelo token que a Asaas devolve em
   `asaas-access-token` (comparação em tempo constante), corpo cru, idempotente
@@ -652,7 +658,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
   foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
   migrations (ver *Testes e CI*).
-- Migrations atuais (22): `init`, `trade_in_and_dealer_setting`,
+- Migrations atuais (23): `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
   `add_announcements_invites_alerts_searches_goals`,
   `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`,
@@ -662,7 +668,8 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   `funil_lead_anonimo`, `rascunho_de_anuncio`,
   `rodizio_sla_carteira_motivo_perda`, `carteira_fechada_por_padrao`,
   `cobranca_asaas`, `validacao_de_saque`,
-  `filial_do_veiculo_geocodificacao_e_chat_sem_conta`, `loja_de_demonstracao`.
+  `filial_do_veiculo_geocodificacao_e_chat_sem_conta`, `loja_de_demonstracao`,
+  `cortesia_de_cobranca`.
 
 ---
 

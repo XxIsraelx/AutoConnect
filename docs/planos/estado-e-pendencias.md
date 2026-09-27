@@ -123,7 +123,7 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
 
 **Encontradas em 27/09/2026** — Claude Cowork, ao revisar o plano da nova landing
 
-- **Preço sem decisão: três tabelas diferentes.**
+- ✅ **Resolvido em 27/09/2026** ([decisão](../decisoes/2026-09-27%20plano%20de%20precos.md): tabela de lançamento no catálogo, lida também pela landing). **Preço sem decisão: três tabelas diferentes.**
   - Onde: `apps/web/src/app/page.tsx` (seção Planos), `packages/shared/src/domain/cobranca.ts`
     (`CATALOGO_DE_PLANOS`) e o programa de fundadores (combinado fora do repositório em 22/09/2026).
   - O que é: a home anuncia Trial de 14 dias com "até 10 veículos, 1 usuário" e Pro a R$ 297
@@ -140,7 +140,7 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
     passa a ler `CATALOGO_DE_PLANOS` e `DURACAO_DO_TRIAL_DIAS` do shared em vez de texto fixo.
   - Como testar: nenhum valor em R$ digitado à mão em `page.tsx`; teste que monta os planos da
     home a partir do catálogo.
-- **Programa de fundadores não existe no repositório.**
+- ◐ **Em parte em 27/09/2026** ([decisão](../decisoes/2026-09-27%20plano%20de%20precos.md): a isenção existe — cortesia concedida pelo super admin, com motivo `fundadora` ou `interna`; falta o termo do programa refletir o Crescimento). **Programa de fundadores não existe no repositório.**
   - Onde: nenhum arquivo — buscar "fundador" em `docs/`, `apps/` e `packages/` não retorna nada.
   - O que é: combinado em 22/09/2026 — 5 lojas não pagam nunca pelo plano, com cadastro do
     estoque e treinamento feitos pelo Israel, em troca de feedback, depoimento e indicação. Não

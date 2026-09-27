@@ -3,8 +3,11 @@ import type { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import request from 'supertest';
 import {
-  CATALOGO_DE_PLANOS, DIAS_DE_CARENCIA, somarDias,
+  CATALOGO_DE_PLANOS, DIAS_DE_CARENCIA, DIAS_PARA_ESCOLHER_PLANO_APOS_CORTESIA, somarDias,
 } from '@autoconnect/shared';
+
+/** O preço do Essencial como a API o devolve ("197.00"): lido do catálogo, não digitado. */
+const PRECO_ESSENCIAL = (Number(CATALOGO_DE_PLANOS.essencial.precoMensalCentavos) / 100).toFixed(2);
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { PrismaService } from '../src/common/prisma/prisma.service';
@@ -113,6 +116,7 @@ describe('Cobrança e bloqueio por vencimento (e2e)', () => {
       await ajustarAssinatura(loja.id, {
         plan: 'trial', status: 'active', trialEndsAt: somarDias(new Date(), 14),
         graceUntil: null, canceledAt: null, lastNoticeAt: null,
+        courtesySince: null, courtesyReason: null, courtesyGrantedBy: null,
         externalId: null, externalCustomerId: null, externalProvider: null,
         currentPeriodEnd: null, currentPeriodStart: null,
       });
@@ -136,7 +140,7 @@ describe('Cobrança e bloqueio por vencimento (e2e)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ disponivel: true, provedor: 'simulado', simulado: true });
     expect(res.body.planos).toHaveLength(3);
-    expect(res.body.planos[0]).toMatchObject({ plano: 'essencial', precoMensal: '279.00', limiteVeiculos: 30 });
+    expect(res.body.planos[0]).toMatchObject({ plano: 'essencial', precoMensal: PRECO_ESSENCIAL, limiteVeiculos: 30 });
   });
 
   it('só tenant_admin mexe em plano e pagamento', async () => {
@@ -236,7 +240,7 @@ describe('Cobrança e bloqueio por vencimento (e2e)', () => {
       expect(res.status).toBe(201);
       expect(res.body).toMatchObject({ contratada: true, plano: 'essencial' });
       expect(res.body.fatura.urlPagamento).toMatch(/^https:\/\//);
-      expect(res.body.fatura.valor).toBe('279.00');
+      expect(res.body.fatura.valor).toBe(PRECO_ESSENCIAL);
 
       const sub = await assinaturaDe(f.a.id);
       expect(sub).toMatchObject({ plan: 'essencial', externalProvider: 'simulado', paymentMethod: 'pix' });
@@ -299,7 +303,7 @@ describe('Cobrança e bloqueio por vencimento (e2e)', () => {
 
       const res = await get('/cobranca', comoAdmin);
       const paga = res.body.faturas.find((x: { status: string }) => x.status === 'paga');
-      expect(paga).toMatchObject({ valor: '279.00', meio: 'pix' });
+      expect(paga).toMatchObject({ valor: PRECO_ESSENCIAL, meio: 'pix' });
       expect(paga.pagoEm).not.toBeNull();
     });
 
@@ -549,7 +553,7 @@ describe('Cobrança e bloqueio por vencimento (e2e)', () => {
         plan: 'essencial', status: 'active', situacao: 'ativa',
         somenteLeitura: false, inadimplente: false,
       });
-      expect(loja.cobranca.ultimaFatura).toMatchObject({ status: 'paga', valor: '279.00' });
+      expect(loja.cobranca.ultimaFatura).toMatchObject({ status: 'paga', valor: PRECO_ESSENCIAL });
     });
 
     it('o painel marca a loja bloqueada como inadimplente', async () => {
@@ -561,6 +565,85 @@ describe('Cobrança e bloqueio por vencimento (e2e)', () => {
         .find((t) => t.id === f.a.id)!;
 
       expect(loja.cobranca).toMatchObject({ situacao: 'somente_leitura', inadimplente: true });
+    });
+  });
+
+  /* ── Cortesia ───────────────────────────────────────────── */
+
+  describe('cortesia (fundadora e loja interna)', () => {
+    const del = (rota: string, t: string) =>
+      http().delete(`/api/v1${rota}`).set('Authorization', `Bearer ${t}`);
+
+    it('conceder destrava uma loja bloqueada, no plano Crescimento, e registra quem concedeu', async () => {
+      await ajustarAssinatura(f.a.id, { trialEndsAt: somarDias(new Date(), -30) });
+      expect((await escreverAlgo(comoAdmin)).status).toBe(402);
+
+      const res = await patch(`/admin/tenants/${f.a.id}/cortesia`, comoSuperAdmin, { motivo: 'fundadora' });
+      expect(res.status).toBe(200);
+
+      expect((await escreverAlgo(comoAdmin)).status).toBe(200);
+      expect(await assinaturaDe(f.a.id)).toMatchObject({
+        plan: 'crescimento', status: 'active', courtesyReason: 'fundadora', courtesyGrantedBy: f.a.usuarioId,
+      });
+    });
+
+    it('só o super admin concede, e só com um motivo conhecido', async () => {
+      expect((await patch(`/admin/tenants/${f.a.id}/cortesia`, comoAdmin, { motivo: 'fundadora' })).status).toBe(403);
+      expect((await patch(`/admin/tenants/${f.a.id}/cortesia`, comoSuperAdmin, { motivo: 'amigo' })).status).toBe(400);
+      expect((await assinaturaDe(f.a.id))!.courtesySince).toBeNull();
+    });
+
+    it('nenhum prazo antigo bloqueia a loja em cortesia — nem trial, nem fatura, nem carência', async () => {
+      await patch(`/admin/tenants/${f.a.id}/cortesia`, comoSuperAdmin, { motivo: 'interna' });
+      await ajustarAssinatura(f.a.id, { status: 'past_due', graceUntil: somarDias(new Date(), -10) });
+      expect((await escreverAlgo(comoAdmin)).status).toBe(200);
+    });
+
+    it('a tela da loja diz que é cortesia, e a contratação é recusada', async () => {
+      await patch(`/admin/tenants/${f.a.id}/cortesia`, comoSuperAdmin, { motivo: 'fundadora' });
+
+      const tela = await get('/cobranca', comoAdmin);
+      expect(tela.body).toMatchObject({ situacao: 'cortesia', somenteLeitura: false });
+      expect(tela.body.assinatura.cortesia).toMatchObject({ motivo: 'fundadora' });
+
+      const contratar = await post('/cobranca/contratar', comoAdmin, { plano: 'essencial', meio: 'pix' });
+      expect(contratar.status).toBe(409);
+      expect((await assinaturaDe(f.a.id))!.externalId).toBeNull();
+    });
+
+    it('o painel mostra a cortesia e não chama a loja de inadimplente', async () => {
+      await patch(`/admin/tenants/${f.a.id}/cortesia`, comoSuperAdmin, { motivo: 'fundadora' });
+      await ajustarAssinatura(f.a.id, { status: 'past_due', graceUntil: somarDias(new Date(), -1) });
+
+      const res = await get('/admin/tenants', comoSuperAdmin);
+      const loja = (res.body as { id: string; cobranca: Record<string, unknown> }[])
+        .find((t) => t.id === f.a.id)!;
+      expect(loja.cobranca).toMatchObject({
+        situacao: 'cortesia', inadimplente: false, cortesia: expect.objectContaining({ motivo: 'fundadora' }),
+      });
+    });
+
+    it('a varredura não manda aviso de vencimento para loja em cortesia', async () => {
+      await patch(`/admin/tenants/${f.a.id}/cortesia`, comoSuperAdmin, { motivo: 'fundadora' });
+      await ajustarAssinatura(f.a.id, { plan: 'trial', trialEndsAt: somarDias(new Date(), 1), lastNoticeAt: null });
+
+      await cron.processar();
+      expect((await assinaturaDe(f.a.id))!.lastNoticeAt).toBeNull();
+    });
+
+    it('revogar devolve a loja ao trial com prazo para escolher um plano, sem bloqueio imediato', async () => {
+      await patch(`/admin/tenants/${f.a.id}/cortesia`, comoSuperAdmin, { motivo: 'fundadora' });
+
+      expect((await del(`/admin/tenants/${f.a.id}/cortesia`, comoSuperAdmin)).status).toBe(200);
+
+      const sub = await assinaturaDe(f.a.id);
+      expect(sub).toMatchObject({ plan: 'trial', courtesySince: null, courtesyReason: null });
+      const dias = (sub!.trialEndsAt!.getTime() - Date.now()) / 86_400_000;
+      expect(Math.round(dias)).toBe(DIAS_PARA_ESCOLHER_PLANO_APOS_CORTESIA);
+      expect((await escreverAlgo(comoAdmin)).status).toBe(200);
+
+      // Revogar o que não existe é 404, não um "ok" que esconde o engano.
+      expect((await del(`/admin/tenants/${f.a.id}/cortesia`, comoSuperAdmin)).status).toBe(404);
     });
   });
 

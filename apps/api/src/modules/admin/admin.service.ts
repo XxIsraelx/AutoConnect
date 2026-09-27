@@ -11,6 +11,9 @@ import { randomBytes } from 'crypto';
 import { Prisma } from '@autoconnect/db';
 import {
   avaliarCobranca,
+  DIAS_PARA_ESCOLHER_PLANO_APOS_CORTESIA,
+  PLANO_DA_CORTESIA,
+  type MotivoDeCortesia,
   DEAL_FATURADO_STATUSES,
   DEAL_TERMINAL_STATUSES,
   type FornecedorDeConsulta,
@@ -370,6 +373,7 @@ export class AdminService {
     assinatura: {
       plan: string; status: string; trialEndsAt: Date | null;
       currentPeriodEnd?: Date | null; graceUntil?: Date | null;
+      courtesySince?: Date | null; courtesyReason?: string | null;
     } | null,
     ultimaFatura?: { status: string; amount: Prisma.Decimal; dueDate: Date; paidAt: Date | null } | null,
   ) {
@@ -382,7 +386,11 @@ export class AdminService {
       somenteLeitura: veredito.somenteLeitura,
       diasRestantes: veredito.diasRestantes,
       prazoAte: veredito.prazoAte,
-      inadimplente: assinatura?.status === 'past_due' || veredito.somenteLeitura,
+      inadimplente: veredito.situacao !== 'cortesia'
+        && (assinatura?.status === 'past_due' || veredito.somenteLeitura),
+      cortesia: assinatura?.courtesySince
+        ? { desde: assinatura.courtesySince, motivo: assinatura.courtesyReason ?? null }
+        : null,
       ultimaFatura: ultimaFatura
         ? {
             status: ultimaFatura.status,
@@ -405,6 +413,7 @@ export class AdminService {
             select: {
               plan: true, status: true, trialEndsAt: true,
               currentPeriodEnd: true, graceUntil: true,
+              courtesySince: true, courtesyReason: true,
               // Só a última: o painel mostra "a fatura mais recente", e trazer
               // o histórico inteiro de cada loja para uma lista seria pagar
               // por um dado que ninguém lê ali.
@@ -503,6 +512,74 @@ export class AdminService {
     this.estadoDaLoja.invalidar(tenantId);
 
     return sub;
+  }
+
+  /**
+   * Cortesia: a loja deixa de pagar (fundadora ou loja interna da AutoConnect).
+   *
+   * Vai para o plano da cortesia (Crescimento, o do programa de fundadores),
+   * ativa e sem carência pendente. `avaliarCobranca` passa a decidir por
+   * `courtesySince` antes de todo o resto, então nenhum prazo antigo — trial,
+   * fatura — volta a valer enquanto a marca existir. Quem concedeu fica na
+   * assinatura e na auditoria.
+   */
+  async concederCortesia(tenantId: string, motivo: MotivoDeCortesia, atorId: string): Promise<unknown> {
+    const tenant = await this.privilegiado.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) throw new NotFoundException('Concessionária não encontrada');
+
+    const dados = {
+      plan: PLANO_DA_CORTESIA,
+      status: 'active' as const,
+      graceUntil: null,
+      courtesySince: new Date(),
+      courtesyReason: motivo,
+      courtesyGrantedBy: atorId,
+    };
+    const sub = await this.privilegiado.tenantSubscription.upsert({
+      where: { tenantId },
+      update: dados,
+      create: { tenantId, ...dados },
+    });
+
+    await this.writeAudit({
+      action: 'courtesy_granted',
+      entityType: 'tenant',
+      entityId: tenantId,
+      actorUserId: atorId,
+      diff: { motivo, plan: PLANO_DA_CORTESIA },
+    });
+    this.estadoDaLoja.invalidar(tenantId);
+    return sub;
+  }
+
+  /**
+   * Fim da cortesia. A loja volta ao trial com `DIAS_PARA_ESCOLHER_PLANO_APOS_CORTESIA`
+   * para contratar: revogar não pode ser bloqueio instantâneo de quem usava o
+   * sistema de graça até ontem. Plano pago sem assinatura no gateway não serve
+   * de destino — `avaliarCobranca` trataria como "em dia" para sempre.
+   */
+  async revogarCortesia(tenantId: string, atorId: string): Promise<unknown> {
+    const sub = await this.privilegiado.tenantSubscription.findUnique({ where: { tenantId } });
+    if (!sub?.courtesySince) throw new NotFoundException('Esta loja não está em cortesia');
+
+    const prazo = new Date(Date.now() + DIAS_PARA_ESCOLHER_PLANO_APOS_CORTESIA * 86_400_000);
+    const atualizada = await this.privilegiado.tenantSubscription.update({
+      where: { tenantId },
+      data: {
+        plan: 'trial', status: 'active', trialEndsAt: prazo, graceUntil: null, lastNoticeAt: null,
+        courtesySince: null, courtesyReason: null, courtesyGrantedBy: null,
+      },
+    });
+
+    await this.writeAudit({
+      action: 'courtesy_revoked',
+      entityType: 'tenant',
+      entityId: tenantId,
+      actorUserId: atorId,
+      diff: { motivoAnterior: sub.courtesyReason, desde: sub.courtesySince, trialEndsAt: prazo },
+    });
+    this.estadoDaLoja.invalidar(tenantId);
+    return atualizada;
   }
 
   async extendTrial(tenantId: string, days: number): Promise<unknown> {

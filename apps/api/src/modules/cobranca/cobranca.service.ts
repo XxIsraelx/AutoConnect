@@ -154,6 +154,9 @@ export class CobrancaService {
             trialEndsAt: dados.assinatura.trialEndsAt,
             currentPeriodEnd: dados.assinatura.currentPeriodEnd,
             graceUntil: dados.assinatura.graceUntil,
+            cortesia: dados.assinatura.courtesySince
+              ? { desde: dados.assinatura.courtesySince, motivo: dados.assinatura.courtesyReason }
+              : null,
             canceledAt: dados.assinatura.canceledAt,
             meio: dados.assinatura.paymentMethod,
             contratada: Boolean(dados.assinatura.externalId),
@@ -204,6 +207,11 @@ export class CobrancaService {
       return { loja, assinatura };
     });
 
+    if (atual.assinatura.courtesySince) {
+      throw new ConflictException(
+        'Esta loja está em cortesia e não paga assinatura. Fale com a AutoConnect para mudar de plano.',
+      );
+    }
     if (atual.assinatura.externalId && atual.assinatura.status !== 'canceled') {
       throw new ConflictException(
         'Esta loja já tem uma assinatura ativa no gateway. Cancele a atual antes de contratar outra.',

@@ -58,6 +58,8 @@ export interface Tenant {
     diasRestantes: number | null;
     prazoAte: string | null;
     inadimplente: boolean;
+    /** Loja isenta (fundadora ou interna). */
+    cortesia: { desde: string; motivo: string | null } | null;
     ultimaFatura: { status: string; valor: string; vencimento: string; pagoEm: string | null } | null;
   };
   branches: { city: string | null; state: string | null }[];
