@@ -22,6 +22,21 @@ export class ChatEventosService {
     this.servidor = servidor;
   }
 
+  /**
+   * Emite para a equipe da loja inteira (sala `tenant:<id>`, em que todo socket
+   * de quem tem loja entra ao conectar). É como a lista de conversas descobre
+   * uma conversa que ninguém abriu ainda — a do cliente que escreveu no
+   * WhatsApp agora.
+   */
+  emitirParaLoja(tenantId: string, evento: string, payload: unknown): void {
+    if (!this.servidor) return;
+    try {
+      this.servidor.to(`tenant:${tenantId}`).emit(evento, payload);
+    } catch (err) {
+      this.logger.warn(`Falha ao emitir ${evento} para a loja: ${err}`);
+    }
+  }
+
   /** Emite para a sala da conversa. Sem servidor registrado, não faz nada. */
   emitir(conversationId: string, evento: string, payload: unknown): void {
     if (!this.servidor) return;

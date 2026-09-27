@@ -29,6 +29,9 @@ import { RelatoriosModule } from './modules/relatorios/relatorios.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { CobrancaModule } from './modules/cobranca/cobranca.module';
 import { SaquesModule } from './modules/saques/saques.module';
+import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
+import { PortaisModule } from './modules/portais/portais.module';
+import { PushModule } from './modules/users/push/push.module';
 
 @Module({
   imports: [
@@ -63,6 +66,9 @@ import { SaquesModule } from './modules/saques/saques.module';
     CrmModule,
     CobrancaModule,
     SaquesModule,
+    WhatsappModule,
+    PortaisModule,
+    PushModule,
   ],
   providers: [
     {

@@ -23,3 +23,8 @@ export * from './domain/link-de-catalogo';
 export * from './schemas/conversation';
 export * from './domain/raio-x';
 export * from './domain/lead-perdido';
+export * from './domain/whatsapp';
+export * from './schemas/whatsapp';
+export * from './domain/portais';
+export * from './schemas/portais';
+export * from './domain/push';
