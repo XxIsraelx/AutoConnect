@@ -39,3 +39,20 @@ export function mensagemDoWhatsApp(secao?: string) {
     ? `Oi, Israel! Vi a parte "${secao}" do site do AutoConnect e quero saber mais.`
     : 'Oi, Israel! Vi o site do AutoConnect e quero saber mais.';
 }
+
+/**
+ * A seção que ocupa o meio da tela agora — ou, entre duas, a última que
+ * começou acima dele. Calculada no clique, e não com IntersectionObserver:
+ * o observador não dispara com a aba em segundo plano, e a mensagem saía sem
+ * a seção.
+ */
+export function secaoNoMeioDaTela(): string | undefined {
+  const meio = window.innerHeight / 2;
+  let acima: string | undefined;
+  for (const s of Array.from(document.querySelectorAll<HTMLElement>('section[data-secao]'))) {
+    const r = s.getBoundingClientRect();
+    if (r.top <= meio) acima = s.dataset.secao;
+    if (r.top <= meio && r.bottom >= meio) return s.dataset.secao;
+  }
+  return acima;
+}

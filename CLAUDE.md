@@ -188,6 +188,7 @@ NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=...          # upload de fotos
 NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=...       # precisa ser "unsigned"
 NEXT_PUBLIC_SITE_URL=...                       # domínio público, para a prévia do link (og:image)
 NEXT_PUBLIC_RAIO_X_TENANT_ID=...               # loja "AutoConnect" que recebe o Raio-X; vazio = pedido pelo WhatsApp
+NEXT_PUBLIC_CLARITY_ID=...                     # Clarity só na home e em /raio-x; vazio = não carrega
 ```
 
 ### Documentos privados — usadas pelo `DocumentosStorage`

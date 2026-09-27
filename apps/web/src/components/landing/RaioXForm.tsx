@@ -9,12 +9,14 @@ import {
   TEXTO_DE_CONSENTIMENTO_RAIO_X,
   mascararTelefoneBr,
   mensagemDoRaioX,
+  origemDoRaioX,
   type CargoDoRaioX,
 } from '@autoconnect/shared';
 import { api, ApiError } from '@/lib/api';
 import { textoDoErro } from '@/components/ErroAoCarregar';
 import { cn } from '@/lib/utils';
 import { waLink } from './config';
+import { registrarEvento } from './eventos';
 
 /**
  * Loja "AutoConnect" que recebe os pedidos. Criada pelo cadastro normal em
@@ -62,6 +64,7 @@ export default function RaioXForm({ secao }: { secao: 'hero' | 'final' | 'pagina
         href={waLink('Oi, Israel! Quero o Raio-X gratuito do atendimento da minha loja.')}
         target="_blank"
         rel="noopener noreferrer"
+        data-evento="whatsapp_click"
         className="flex w-full items-center justify-center gap-2 bg-brand-accent text-white font-semibold px-6 py-3.5 rounded-xl hover:bg-blue-600 transition text-sm"
       >
         Pedir o Raio-X pelo WhatsApp
@@ -101,6 +104,7 @@ export default function RaioXForm({ secao }: { secao: 'hero' | 'final' | 'pagina
         },
       });
       setEnviado(true);
+      registrarEvento('raio_x_enviado', { secao, origem: origemDoRaioX(origem) });
     } catch (err) {
       // `fieldErrors` vem do ZodFilter: marca o campo em vez de "Validation failed".
       if (err instanceof ApiError && err.fieldErrors.length > 0) {
@@ -133,7 +137,8 @@ export default function RaioXForm({ secao }: { secao: 'hero' | 'final' | 'pagina
   const rotulo = 'block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1';
 
   return (
-    <form onSubmit={enviar} noValidate className="space-y-3 text-left">
+    // `data-clarity-mask`: o que se digita aqui não entra na gravação do Clarity.
+    <form onSubmit={enviar} noValidate data-clarity-mask="true" className="space-y-3 text-left">
       <div>
         <label htmlFor={id('nome')} className={rotulo}>Seu nome</label>
         <input
@@ -240,6 +245,7 @@ export default function RaioXForm({ secao }: { secao: 'hero' | 'final' | 'pagina
               href={waLink('Oi, Israel! Tentei pedir o Raio-X pelo site e não consegui.')}
               target="_blank"
               rel="noopener noreferrer"
+              data-evento="whatsapp_click"
               className="underline font-medium"
             >
               Pedir pelo WhatsApp

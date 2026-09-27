@@ -42,6 +42,7 @@ export default function Hero() {
           <div className="mt-4 text-center">
             <Link
               href="/comecar"
+              data-evento="conta_criar_click"
               className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition"
             >
               ou crie sua conta e teste {DURACAO_DO_TRIAL_DIAS} dias

@@ -48,6 +48,7 @@ export default function Planos() {
       <div className="text-center mt-8 space-y-3">
         <Link
           href="/comecar"
+          data-evento="conta_criar_click"
           className="inline-flex items-center gap-2 bg-brand-accent text-white font-semibold px-7 py-3.5 rounded-xl hover:bg-blue-600 transition text-sm"
         >
           Criar conta grátis
@@ -58,6 +59,7 @@ export default function Planos() {
             href={waLink('Oi, Israel! Quero saber o preço do AutoConnect para a minha loja.')}
             target="_blank"
             rel="noopener noreferrer"
+            data-evento="whatsapp_click"
             className="underline hover:text-slate-600"
           >
             Valores de lançamento pelo WhatsApp

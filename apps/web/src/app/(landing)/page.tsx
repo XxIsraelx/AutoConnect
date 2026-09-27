@@ -7,6 +7,7 @@ import ComoFunciona from '@/components/landing/ComoFunciona';
 import Maquete from '@/components/landing/Maquete';
 import Calculadora from '@/components/landing/Calculadora';
 import Planos from '@/components/landing/Planos';
+import Faq from '@/components/landing/Faq';
 import CtaFinal from '@/components/landing/CtaFinal';
 import Rodape from '@/components/landing/Rodape';
 import WhatsAppFlutuante from '@/components/landing/WhatsAppFlutuante';
@@ -53,6 +54,7 @@ export default function HomePage() {
         <Maquete />
         <Calculadora />
         <Planos />
+        <Faq />
         <CtaFinal />
       </main>
       <Rodape />

@@ -23,6 +23,7 @@ export default function CtaFinal() {
         </div>
         <Link
           href="/comecar"
+          data-evento="conta_criar_click"
           className="inline-flex items-center gap-2 text-sm font-semibold text-white px-6 py-3 rounded-xl border border-white/40 hover:bg-white/10 transition"
         >
           Criar conta grátis
