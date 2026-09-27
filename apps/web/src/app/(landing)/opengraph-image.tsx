@@ -37,7 +37,7 @@ export default function Image() {
           {TITULO_DO_HERO}
         </div>
         <div style={{ display: 'flex', fontSize: 30, color: '#93c5fd' }}>
-          Raio-X gratuito do atendimento · laudo em 24 h
+          Raio-X gratuito do atendimento · laudo em 24 h
         </div>
       </div>
     ),

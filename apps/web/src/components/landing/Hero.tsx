@@ -25,7 +25,7 @@ export default function Hero() {
           <p className="text-base sm:text-lg text-slate-500 dark:text-slate-400 max-w-xl">
             Estoque, leads, chat e agendamento de test drive num painel só, feito para revendas e
             concessionárias. Peça o Raio-X gratuito: testamos o atendimento da sua loja como cliente
-            oculto e mandamos o resultado em 24 h.
+            oculto e mandamos o resultado em 24 h.
           </p>
         </div>
 
@@ -35,7 +35,7 @@ export default function Hero() {
         >
           <p className="font-semibold mb-1">Raio-X gratuito do atendimento</p>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">
-            Um cliente oculto chama sua loja e você recebe o laudo em 24 h: quanto tempo levou a
+            Um cliente oculto chama sua loja e você recebe o laudo em 24 h: quanto tempo levou a
             resposta, se houve retorno e onde a venda esfriou.
           </p>
           <RaioXForm secao="hero" />

@@ -14,7 +14,7 @@ type Chave = keyof EntradaDaCalculadora;
 
 const CAMPOS: { chave: Chave; rotulo: string; prefixo?: string; sufixo?: string }[] = [
   { chave: 'leadsPorMes', rotulo: 'Leads por mês' },
-  { chave: 'percentualRespondidoTarde', rotulo: 'Respondidos depois de 1 h', sufixo: '%' },
+  { chave: 'percentualRespondidoTarde', rotulo: 'Respondidos depois de 1 h', sufixo: '%' },
   { chave: 'taxaDeFechamento', rotulo: 'Taxa de fechamento', sufixo: '%' },
   { chave: 'lucroPorCarro', rotulo: 'Lucro médio por carro', prefixo: 'R$' },
 ];
@@ -81,7 +81,7 @@ export default function Calculadora() {
             Descobrir meu tempo real de resposta
           </a>
           <p className="mt-6 text-xs text-slate-400 max-w-xl mx-auto">
-            Leads respondidos depois de 1 h × taxa de fechamento × lucro por carro. É um teto: supõe
+            Leads respondidos depois de 1 h × taxa de fechamento × lucro por carro. É um teto: supõe
             que esses leads fechariam na taxa normal se respondidos a tempo.
           </p>
         </div>

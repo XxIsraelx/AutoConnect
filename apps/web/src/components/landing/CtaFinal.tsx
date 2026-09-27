@@ -16,7 +16,7 @@ export default function CtaFinal() {
           Descubra quanto tempo sua loja leva para responder
         </h2>
         <p className="text-blue-100 mb-8 max-w-lg mx-auto">
-          O Raio-X é gratuito e o laudo chega no seu WhatsApp em 24 h.
+          O Raio-X é gratuito e o laudo chega no seu WhatsApp em 24 h.
         </p>
         <div className="mx-auto max-w-md rounded-2xl bg-white dark:bg-slate-900 p-5 text-slate-900 dark:text-slate-100 mb-6">
           <RaioXForm secao="final" />

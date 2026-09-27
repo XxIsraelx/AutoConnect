@@ -123,7 +123,7 @@ export default function RaioXForm({ secao }: { secao: 'hero' | 'final' | 'pagina
         <CheckCircle2 size={36} className="text-emerald-500" />
         <p className="font-semibold">Pedido recebido!</p>
         <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs">
-          Em até 24 h o laudo do atendimento da sua loja chega no seu WhatsApp.
+          Em até 24 h o laudo do atendimento da sua loja chega no seu WhatsApp.
         </p>
       </div>
     );

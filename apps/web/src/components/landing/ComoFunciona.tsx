@@ -6,7 +6,7 @@ const CAMINHOS = [
     titulo: 'Pedindo o Raio-X',
     passos: [
       'Você pede o Raio-X gratuito.',
-      'Um cliente oculto chama sua loja, e o laudo chega no seu WhatsApp em 24 h.',
+      'Um cliente oculto chama sua loja, e o laudo chega no seu WhatsApp em 24 h.',
       'A gente conversa sobre o que mudar — com ou sem o AutoConnect.',
     ],
   },

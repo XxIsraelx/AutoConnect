@@ -7,7 +7,7 @@ import RaioXForm from '@/components/landing/RaioXForm';
 export const metadata: Metadata = {
   title: 'Raio-X gratuito do atendimento — AutoConnect',
   description:
-    'Testamos o atendimento da sua loja como cliente oculto e mandamos o laudo no seu WhatsApp em 24 h.',
+    'Testamos o atendimento da sua loja como cliente oculto e mandamos o laudo no seu WhatsApp em 24 h.',
 };
 
 const O_QUE_A_LOJA_RECEBE = [
@@ -33,7 +33,7 @@ export default function RaioXPage() {
           Raio-X gratuito do atendimento da sua loja
         </h1>
         <p className="text-slate-500 dark:text-slate-400 mb-6">
-          Um cliente oculto chama sua loja. Em 24 h você recebe o laudo no WhatsApp.
+          Um cliente oculto chama sua loja. Em 24 h você recebe o laudo no WhatsApp.
         </p>
         <ul className="space-y-2.5 mb-8">
           {O_QUE_A_LOJA_RECEBE.map((item) => (

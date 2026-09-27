@@ -14,7 +14,7 @@ import WhatsAppFlutuante from '@/components/landing/WhatsAppFlutuante';
 
 const DESCRICAO =
   'Estoque, leads, chat e test drive num painel só, para revendas e concessionárias. ' +
-  'Peça o Raio-X gratuito: testamos o atendimento da sua loja como cliente oculto e mandamos o resultado em 24 h.';
+  'Peça o Raio-X gratuito: testamos o atendimento da sua loja como cliente oculto e mandamos o resultado em 24 h.';
 
 /**
  * O link da home vai circular no WhatsApp: sem título, descrição e imagem, a

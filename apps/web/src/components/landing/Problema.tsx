@@ -15,7 +15,7 @@ export default function Problema() {
         <p className="text-5xl sm:text-6xl font-extrabold tracking-tight text-brand-accent mb-4">42 horas</p>
         <p className="text-base sm:text-lg text-slate-600 dark:text-slate-300">
           Num estudo da Harvard Business Review com 2.241 empresas dos EUA (2011), a resposta a um lead
-          online levou em média 42 horas. Quem respondeu em até 1 hora teve quase 7 vezes mais chance de
+          online levou em média 42 horas. Quem respondeu em até 1 hora teve quase 7 vezes mais chance de
           qualificar o lead.
         </p>
       </div>
