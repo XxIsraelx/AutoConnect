@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.036 testes (744 na API, 292 no `shared`):
+são 1.045 testes (753 na API, 292 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -610,6 +610,15 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 cobranca e bloqueio por venci
 - **A volta é imediata**: o webhook, a troca de plano e a extensão de trial
   chamam `EstadoDaLojaService.invalidar()`. O cache de 30 s existe porque o
   guard roda em toda escrita e o banco está a ~0,6 s de distância.
+- **E-mails de cobrança** para o e-mail principal da loja: contratação,
+  pagamento confirmado, cancelamento (pela loja, pelo gateway ou estorno) e
+  cortesia concedida/revogada. Saem **depois** do que aconteceu, sem `await`
+  de quem chamou (`avisarLoja`): e-mail fora do ar nunca derruba o webhook
+  nem a contratação. No webhook, só quando o evento **mudou** o estado — a
+  reentrega e o `PAYMENT_RECEIVED` depois do `CONFIRMED` não repetem.
+- **Todo e-mail usa o layout único** (`common/email/layout.ts`, `montarEmail`):
+  tabelas e estilo inline, botão à prova de Outlook com o endereço por extenso,
+  marca em texto. Quem chama escapa o que veio de formulário (`esc`).
 - **O cron não bloqueia, ele avisa** (`vencimentos.cron.ts`, diário, sob
   `executarEmUmaReplica`), idempotente por `lastNoticeAt` comparado ao marco da
   situação — um e-mail por marco, não um por dia.

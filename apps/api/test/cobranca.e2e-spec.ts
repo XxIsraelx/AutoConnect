@@ -18,6 +18,7 @@ import { ProvedorSimuladoDeCobranca } from '../src/modules/cobranca/provedor-sim
 import { EstadoDaLojaService } from '../src/modules/cobranca/estado-da-loja.service';
 import { VencimentosCron } from '../src/modules/cobranca/vencimentos.cron';
 import { CABECALHO_TOKEN_ASAAS } from '../src/modules/cobranca/token-webhook';
+import { EmailService } from '../src/common/email/email.service';
 import { comoApp, criarDoisTenants, type DoisTenants } from './helpers/tenant-fixture';
 
 /**
@@ -390,6 +391,93 @@ describe('Cobrança e bloqueio por vencimento (e2e)', () => {
     it('ciclo que não existe é 400', async () => {
       const res = await post('/cobranca/contratar', comoAdmin, { plano: 'essencial', ciclo: 'semanal' });
       expect(res.status).toBe(400);
+    });
+  });
+
+  /* ── E-mails de cobrança ────────────────────────────────── */
+
+  describe('e-mails de cobrança', () => {
+    let email: EmailService;
+    const espioes = () => ({
+      contratada: jest.spyOn(email, 'sendAssinaturaContratada').mockResolvedValue(),
+      pago: jest.spyOn(email, 'sendPagamentoConfirmado').mockResolvedValue(),
+      cancelada: jest.spyOn(email, 'sendAssinaturaCancelada').mockResolvedValue(),
+      cortesia: jest.spyOn(email, 'sendCortesiaConcedida').mockResolvedValue(),
+      fimDaCortesia: jest.spyOn(email, 'sendCortesiaRevogada').mockResolvedValue(),
+    });
+    let e: ReturnType<typeof espioes>;
+
+    /** O e-mail sai depois da resposta, sem `await`: espera ele ser chamado. */
+    const chamado = async (espiao: jest.SpyInstance, vezes = 1) => {
+      for (let i = 0; i < 40 && espiao.mock.calls.length < vezes; i++) {
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      // Um respiro a mais para um segundo e-mail indevido ter tempo de aparecer.
+      await new Promise((r) => setTimeout(r, 100));
+      return espiao.mock.calls;
+    };
+
+    const entregar = async (acao: 'pagar' | 'vencer' | 'estornar' | 'cancelar') => {
+      const sub = await assinaturaDe(f.a.id);
+      for (const ev of provedor.simular(sub!.externalId!, acao)) {
+        await webhook(ev.corpo, String(ev.cabecalhos[CABECALHO_TOKEN_ASAAS]));
+      }
+    };
+
+    beforeAll(() => { email = app.get(EmailService, { strict: false }); });
+    beforeEach(() => { e = espioes(); });
+    afterEach(() => jest.restoreAllMocks());
+
+    it('contratar avisa a loja com plano, ciclo, valor e link de pagamento', async () => {
+      await post('/cobranca/contratar', comoAdmin, { plano: 'essencial', meio: 'pix' });
+      const chamadas = await chamado(e.contratada);
+      expect(chamadas).toHaveLength(1);
+      expect(chamadas[0]![0]).toMatchObject({
+        to: `${f.a.slug}@exemplo.test`, plano: 'Essencial', ciclo: 'mensal', valor: PRECO_ESSENCIAL,
+      });
+      expect(chamadas[0]![0].urlPagamento).toMatch(/^https:\/\//);
+    });
+
+    it('pagamento confirmado manda UM e-mail, mesmo com o gateway entregando mais de um evento', async () => {
+      await post('/cobranca/contratar', comoAdmin, { plano: 'essencial', meio: 'pix' });
+      await entregar('pagar');
+      const chamadas = await chamado(e.pago);
+      expect(chamadas).toHaveLength(1);
+      expect(chamadas[0]![0]).toMatchObject({ plano: 'Essencial', valor: PRECO_ESSENCIAL });
+    });
+
+    it('cancelar pela tela avisa uma vez — o aviso do gateway que chega depois não repete', async () => {
+      await post('/cobranca/contratar', comoAdmin, { plano: 'essencial', meio: 'pix' });
+      await post('/cobranca/cancelar', comoAdmin);
+      await entregar('cancelar');
+      const chamadas = await chamado(e.cancelada);
+      expect(chamadas).toHaveLength(1);
+      expect(chamadas[0]![0]).toMatchObject({ origem: 'loja', plano: 'Essencial' });
+    });
+
+    it('estorno encerra a assinatura e o e-mail diz que foi estorno', async () => {
+      await post('/cobranca/contratar', comoAdmin, { plano: 'essencial', meio: 'pix' });
+      await entregar('pagar');
+      await entregar('estornar');
+      const chamadas = await chamado(e.cancelada);
+      expect(chamadas).toHaveLength(1);
+      expect(chamadas[0]![0]).toMatchObject({ origem: 'estorno' });
+    });
+
+    it('conceder e revogar a cortesia avisam a loja', async () => {
+      await patch(`/admin/tenants/${f.a.id}/cortesia`, comoSuperAdmin, { motivo: 'fundadora' });
+      expect((await chamado(e.cortesia))[0]![0]).toMatchObject({ motivo: 'Loja fundadora', plano: 'Crescimento' });
+
+      await http().delete(`/api/v1/admin/tenants/${f.a.id}/cortesia`).set('Authorization', `Bearer ${comoSuperAdmin}`);
+      expect(await chamado(e.fimDaCortesia)).toHaveLength(1);
+    });
+
+    it('e-mail que falha não derruba a contratação', async () => {
+      e.contratada.mockRejectedValue(new Error('provedor de e-mail fora do ar'));
+      const res = await post('/cobranca/contratar', comoAdmin, { plano: 'essencial', meio: 'pix' });
+      expect(res.status).toBe(201);
+      await chamado(e.contratada);
+      expect((await assinaturaDe(f.a.id))!.externalId).not.toBeNull();
     });
   });
 

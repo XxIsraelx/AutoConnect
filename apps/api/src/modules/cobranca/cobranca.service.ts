@@ -6,7 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@autoconnect/db';
 import {
   aplicarEventoDeCobranca, avaliarCobranca, CATALOGO_DE_PLANOS, deCentavos, DIAS_DE_CARENCIA,
-  faixaParaEstoque, FAIXAS, precoDoPlano, somarDias, STATUS_QUE_CONTA_NO_LIMITE, tabelaDaLoja,
+  ehPlanoPago, faixaParaEstoque, FAIXAS, precoDoPlano, somarDias, STATUS_QUE_CONTA_NO_LIMITE, tabelaDaLoja,
   usoDoEstoque,
   type CabecalhosDeCobranca, type CicloDeCobranca, type EstadoDaCobranca, type EventoDeCobranca, type FaturaDoGateway,
   type MeioDePagamento, type PlanoPago, type ProvedorDeCobranca,
@@ -18,6 +18,7 @@ import { PROVEDOR_DE_COBRANCA } from './provedor';
 import { ProvedorSimuladoDeCobranca, type AcaoSimuladaDeCobranca } from './provedor-simulado';
 import { sha256Hex } from './token-webhook';
 import { EstadoDaLojaService } from './estado-da-loja.service';
+import { EmailService } from '../../common/email/email.service';
 
 /**
  * O evento normalizado, em JSON gravável.
@@ -80,7 +81,38 @@ export class CobrancaService {
     private readonly config: ConfigService,
     @Inject(PROVEDOR_DE_COBRANCA)
     private readonly provedor: ProvedorDeCobranca,
+    private readonly email: EmailService,
   ) {}
+
+  /**
+   * Avisa a loja por e-mail, no endereço principal dela.
+   *
+   * **Nunca derruba o que já aconteceu**: o e-mail sai depois de a contratação,
+   * o pagamento ou o cancelamento estarem gravados, sem `await` de quem chamou,
+   * e falha só vira aviso no log. Um provedor de e-mail fora do ar não pode
+   * fazer o webhook responder erro (a Asaas reentregaria) nem a contratação
+   * parecer que falhou.
+   */
+  private avisarLoja(
+    tenantId: string,
+    envio: (loja: { email: string; nome: string }) => Promise<void>,
+  ): void {
+    void (async () => {
+      try {
+        const loja = await this.prisma.withTenant(tenantId, (tx) =>
+          tx.tenant.findFirst({ where: { id: tenantId }, select: { primaryEmail: true, tradeName: true } }),
+        );
+        if (!loja?.primaryEmail) return;
+        await envio({ email: loja.primaryEmail, nome: loja.tradeName });
+      } catch (err) {
+        this.logger.warn(`E-mail de cobrança não saiu para a loja ${tenantId}: ${err}`);
+      }
+    })();
+  }
+
+  private nomeDoPlano(plano: string): string {
+    return ehPlanoPago(plano) ? CATALOGO_DE_PLANOS[plano].nome : 'Período de teste';
+  }
 
   private tenantDe(escopo: Escopo): string {
     if (ehGlobal(escopo)) {
@@ -314,6 +346,17 @@ export class CobrancaService {
     this.estadoDaLoja.invalidar(tenantId);
 
     const fatura = await this.sincronizarFatura(tenantId, assinatura.idExterno);
+
+    this.avisarLoja(tenantId, (loja) => this.email.sendAssinaturaContratada({
+      to: loja.email,
+      dealerName: loja.nome,
+      plano: faixa.nome,
+      ciclo,
+      valor: fatura?.valor ?? deCentavos(valorCentavos),
+      vencimento: fatura?.vencimento ?? primeiroVencimento,
+      urlPagamento: fatura?.urlPagamento ?? null,
+    }));
+
     return { contratada: true, plano, ciclo, fatura };
   }
 
@@ -397,7 +440,7 @@ export class CobrancaService {
     const tenantId = this.tenantDe(escopo);
 
     const assinatura = await this.prisma.withTenant(tenantId, (tx) =>
-      tx.tenantSubscription.findUnique({ where: { tenantId }, select: { externalId: true, status: true } }),
+      tx.tenantSubscription.findUnique({ where: { tenantId }, select: { externalId: true, status: true, plan: true } }),
     );
     if (!assinatura) throw new NotFoundException('Assinatura não encontrada');
     if (assinatura.status === 'canceled') return { cancelada: true };
@@ -413,6 +456,12 @@ export class CobrancaService {
       }),
     );
     this.estadoDaLoja.invalidar(tenantId);
+
+    // O `SUBSCRIPTION_DELETED` que o gateway manda depois encontra a assinatura
+    // já cancelada e não muda nada — então não gera um segundo e-mail.
+    this.avisarLoja(tenantId, (loja) => this.email.sendAssinaturaCancelada({
+      to: loja.email, dealerName: loja.nome, plano: this.nomeDoPlano(assinatura.plan), origem: 'loja',
+    }));
 
     return { cancelada: true };
   }
@@ -440,6 +489,8 @@ export class CobrancaService {
     }
 
     const chave = evento.idEvento ?? sha256Hex(corpo);
+    /** O que o evento mudou, para o e-mail que sai depois da transação. */
+    const mudanca: { de: { estado: EstadoDaCobranca; plano: string } | null } = { de: null };
 
     const resultado = await this.prisma.withTenant(alvo.tenantId, async (tx) => {
       // Idempotência, camada 1: `(provider, event_key)` é único. A segunda
@@ -503,6 +554,7 @@ export class CobrancaService {
         data: { applied: mudou },
       });
 
+      if (mudou) mudanca.de = { estado, plano: linha.plan };
       return { aplicado: mudou, motivo: mudou ? undefined : ('sem-efeito' as const) };
     });
 
@@ -520,6 +572,30 @@ export class CobrancaService {
     // bloqueada até o cache de 30 s expirar — e 30 segundos olhando para um
     // aviso de bloqueio depois de pagar é tempo de sobra para abrir um chamado.
     this.estadoDaLoja.invalidar(alvo.tenantId);
+
+    // E-mail só quando o evento **mudou** o estado: a reentrega do mesmo
+    // evento, e o `PAYMENT_RECEIVED` que chega depois do `PAYMENT_CONFIRMED`,
+    // não mudam nada — e não mandam um segundo e-mail.
+    if (mudanca.de) {
+      const { estado, plano } = mudanca.de;
+      if (evento.tipo === 'pagamento_confirmado') {
+        this.avisarLoja(alvo.tenantId, (loja) => this.email.sendPagamentoConfirmado({
+          to: loja.email,
+          dealerName: loja.nome,
+          plano: this.nomeDoPlano(plano),
+          valor: evento.fatura ? deCentavos(evento.fatura.valorCentavos) : null,
+          pagoEm: evento.fatura?.pagoEm ?? evento.ocorridoEm,
+          proximaCobranca: estado.currentPeriodEnd,
+        }));
+      } else if (estado.status === 'canceled') {
+        this.avisarLoja(alvo.tenantId, (loja) => this.email.sendAssinaturaCancelada({
+          to: loja.email,
+          dealerName: loja.nome,
+          plano: this.nomeDoPlano(plano),
+          origem: evento.tipo === 'reembolso' ? 'estorno' : 'gateway',
+        }));
+      }
+    }
 
     return { recebido: true, ...resultado };
   }
