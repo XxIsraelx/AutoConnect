@@ -7,7 +7,7 @@ import { Menu, X } from 'lucide-react';
 import ThemeToggle from '@/components/ThemeToggle';
 
 const SECOES = [
-  { href: '#funcionalidades', label: 'Funcionalidades' },
+  { href: '#como-funciona', label: 'Como funciona' },
   { href: '#planos', label: 'Planos' },
 ];
 
@@ -54,7 +54,7 @@ export default function LandingNav() {
             href="/comecar"
             className="text-sm bg-brand-accent text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-600 transition"
           >
-            Começar grátis
+            Criar conta grátis
           </Link>
         </div>
 
