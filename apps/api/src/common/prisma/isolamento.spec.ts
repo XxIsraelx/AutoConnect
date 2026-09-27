@@ -40,6 +40,9 @@ const MODELOS_DE_TENANT = [
   // WhatsApp oficial: o número da loja e os eventos do webhook, com o texto
   // das mensagens dos clientes.
   'whatsappAccount', 'whatsappWebhookEvent',
+  // Leads dos portais: o endereço de entrada da loja e as entregas cruas, com
+  // o contato de quem se interessou.
+  'portalConnection', 'portalDelivery',
 ];
 
 /**
@@ -188,6 +191,9 @@ describe('isolamento por tenant — regra de arquitetura', () => {
     // O webhook do WhatsApp chega sem loja: acha a loja pelo id do número
     // (só id e tenantId) e segue em withTenant, um evento por transação.
     'modules/whatsapp/whatsapp.service.ts',
+    // A entrega do portal chega sem loja: acha a conexão pelo hash do token
+    // (só id, tenantId e portal) e segue em withTenant.
+    'modules/portais/portais.service.ts',
   ])('%s atravessa concessionárias pela conexão privilegiada, e isso é visível', (arquivo) => {
     const fonte = readFileSync(join(RAIZ, arquivo), 'utf8');
 

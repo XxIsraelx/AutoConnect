@@ -28,6 +28,14 @@ export const ROTA_WEBHOOK_SAQUE = '/api/v1/webhooks/asaas/saque';
 export const ROTA_WEBHOOK_WHATSAPP = '/api/v1/webhooks/whatsapp';
 
 /**
+ * Leads dos portais: o corpo cru é o que se guarda para reprocessar com um
+ * leitor novo, e o SHA-256 dele é a chave de idempotência do webhook. O
+ * prefixo cobre `/webhooks/portais/:token`.
+ */
+export const ROTA_WEBHOOK_PORTAIS = '/api/v1/webhooks/portais';
+export const ROTA_EMAIL_DE_ENTRADA = '/api/v1/webhooks/email-de-entrada';
+
+/**
  * Configuração da aplicação — prefixo, filtros, pipes e CORS.
  *
  * Vive fora do `bootstrap()` para que os testes subam a app com exatamente a
@@ -44,6 +52,9 @@ export function configureApp(app: INestApplication): INestApplication {
   app.use(ROTA_WEBHOOK_SAQUE, corpoCru(1024 * 1024));
   // 3 MB: uma entrega da Meta junta até mil eventos de várias contas.
   app.use(ROTA_WEBHOOK_WHATSAPP, corpoCru(3 * 1024 * 1024));
+  app.use(ROTA_WEBHOOK_PORTAIS, corpoCru(1024 * 1024));
+  // E-mail com HTML de portal (imagens embutidas não vêm; o provedor as separa).
+  app.use(ROTA_EMAIL_DE_ENTRADA, corpoCru(5 * 1024 * 1024));
 
   // Um salto de proxy (a borda do Railway). Sem isto, `req.ip` é o IP do
   // proxy para todo mundo, e o limite por IP do formulário público — cinco

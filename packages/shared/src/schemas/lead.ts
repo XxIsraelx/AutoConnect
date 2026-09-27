@@ -25,6 +25,8 @@ export const LEAD_SOURCES = [
   'ad',
   'other',
   'trade_in',
+  /** Escrita pela entrada de leads dos portais (OLX, Webmotors…) — ver `domain/portais.ts`. */
+  'portal',
 ] as const;
 
 /**
@@ -45,6 +47,7 @@ export const ROTULO_DA_ORIGEM_DE_LEAD: Record<(typeof LEAD_SOURCES)[number], str
   ad: 'Anúncio',
   other: 'Outro',
   trade_in: 'Troca',
+  portal: 'Portal',
 };
 
 export const LEAD_STATUSES = [

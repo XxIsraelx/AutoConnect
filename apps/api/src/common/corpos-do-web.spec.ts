@@ -38,6 +38,7 @@ import {
   conectarWhatsAppSchema,
   enviarModeloDeWhatsAppSchema,
   simularWhatsAppSchema,
+  simularLeadDePortalSchema,
 } from '@autoconnect/shared';
 import { acceptInviteSchema } from '../modules/invitations/invitations.controller';
 import { anularSchema, assinarSchema } from '../modules/contracts/contracts.controller';
@@ -198,6 +199,10 @@ const ROTAS: Record<string, Declaracao> = {
   'POST /whatsapp/conversas': { schema: abrirConversaDeWhatsAppSchema },
   'POST /whatsapp/conversas/:p/modelo': { schema: enviarModeloDeWhatsAppSchema },
   'POST /whatsapp/simular': { schema: simularWhatsAppSchema },
+
+  /* Leads dos portais */
+  'POST /portais/entregas/:p/reprocessar': { semCorpo: true },
+  'POST /portais/:p/simular': { schema: simularLeadDePortalSchema },
   'POST /public/conversations/:p/messages': { schema: mensagemDeVisitanteSchema },
   'PATCH /conversations/:p/close': { semCorpo: true },
 };

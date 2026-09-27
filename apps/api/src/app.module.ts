@@ -30,6 +30,7 @@ import { CrmModule } from './modules/crm/crm.module';
 import { CobrancaModule } from './modules/cobranca/cobranca.module';
 import { SaquesModule } from './modules/saques/saques.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
+import { PortaisModule } from './modules/portais/portais.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     CobrancaModule,
     SaquesModule,
     WhatsappModule,
+    PortaisModule,
   ],
   providers: [
     {

@@ -27,6 +27,7 @@
 | **Cobrança e bloqueio** | ✅ completo | ✅ completo | camada neutra, faixas por estoque, somente leitura com carência, cron de avisos, painel do super admin; **adaptador Asaas escrito e NÃO exercitado — falta conta** ([decisão](../decisoes/2026-09-25%20cobranca%20e%20bloqueio%20por%20vencimento.md)) |
 | **Assinatura externa** | ✅ estrutura | ✅ completo | camada neutra, webhook com HMAC, provedor simulado e adaptador Clicksign (API 3.0, testado no sandbox); **ligado em sandbox; falta assinatura de ponta a ponta e conta de produção** ([decisão](../decisoes/2026-09-22%20assinatura%20externa.md)) |
 | **WhatsApp oficial** | ✅ estrutura | ✅ completo | desde 27/09/2026 (sessão 2, item C1): camada neutra com provedor simulado, webhook com HMAC do corpo cru e idempotente, cliente que escreve vira lead pelo caminho do formulário (dedupe, rodízio, prazo), resposta pelo chat com a janela de 24 h conferida na API, modelos aprovados, status de entrega, uso do mês em **Canais**. **Adaptador da Meta escrito e NÃO exercitado — falta a conta** ([decisão](../decisoes/2026-09-27%20whatsapp%20oficial.md)) |
+| **Leads dos portais** | ✅ estrutura | ✅ completo | desde 27/09/2026 (sessão 2, item C2): endereço de entrada por loja e portal (URL de webhook e e-mail de encaminhamento, token só em hash), entregas guardadas cruas e reprocessáveis, formato AutoConnect no webhook e leitor genérico de e-mail com rótulos, código de confirmação do Gmail na tela, lead pelo caminho do formulário com origem `portal`. **Falta a conta do e-mail de entrada (Postmark) e uma notificação real da OLX** ([decisão](../decisoes/2026-09-27%20leads%20dos%20portais.md)) |
 
 ## Pendências conhecidas
 
@@ -377,6 +378,10 @@ existe por causa delas, e a tabela só sobe quando as duas primeiras existirem.
   - Como testar: carro publicado no AutoConnect aparece no portal em até N minutos e some ao
     ser vendido; lead de teste enviado pelo portal cai no funil com a fonte certa e no vendedor
     de plantão.
+  - **Situação em 27/09/2026:** a **entrada** está pronta (item C2, sessão 2) — endereço por
+    loja e portal, webhook e e-mail, testada com o provedor simulado; falta a conta do e-mail
+    de entrada e uma notificação real da OLX. A **publicação** continua sem módulo. Ver a
+    [decisão](../decisoes/2026-09-27%20leads%20dos%20portais.md).
 - ◐ **Emissão de nota fiscal (NF-e) — adiada por decisão em 27/09/2026** ([plano de resolução](plano-resolucao-de-pendencias.md#adiado-por-decisão)). A contradição entre os dois planos deixou de existir: os dois apontam para o adiamento.
   - Onde: não existe módulo. O [plano de vendas](plano-implementacao-vendas.md), Fase 5,
     prevê NF-e via emissor terceiro (Focus NFe, NFe.io, Tecnospeed); o

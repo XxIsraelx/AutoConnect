@@ -7,6 +7,7 @@ import { formatarTelefoneBr, mascararTelefoneBr } from '@autoconnect/shared';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
+import Portais from './Portais';
 
 interface Capacidade {
   disponivel: boolean;
@@ -35,8 +36,9 @@ const input =
 /**
  * Canais: por onde o cliente chega e por onde a loja responde.
  *
- * Hoje, o WhatsApp oficial. Conectar o número é do administrador (é a voz da
- * loja); o resto da equipe vê o estado e usa o canal pelo chat e pelo lead.
+ * O WhatsApp oficial e os leads dos portais. Conectar é do administrador (é a
+ * voz da loja, e o endereço dela); o resto da equipe vê o estado e usa os
+ * canais pelo chat e pelo lead.
  * Com o provedor simulado, a tela diz isso em destaque e oferece o simulador —
  * é assim que se testa o fluxo inteiro antes de existir conta na Meta.
  */
@@ -130,6 +132,8 @@ export default function CanaisPage() {
           )}
         </div>
       </section>
+
+      {token && <Portais token={token} administra={administra} />}
     </div>
   );
 }

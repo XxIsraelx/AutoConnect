@@ -163,6 +163,11 @@ em 25/09/2026. Sobram os três que o mercado cobra, na ordem do
   (webhook ou leitura da caixa que o portal já manda), OLX primeiro.
   **Antes de começar:** a decisão 3 (quais portais), que depende de onde as
   lojas fundadoras anunciam — pergunta de implantação.
+  🟡 **Entrada pronta em 27/09/2026** (sessão 2): endereço de entrada por loja e
+  portal, webhook no formato AutoConnect, e-mail encaminhado com leitor genérico,
+  entregas guardadas cruas e reprocessáveis — **falta a conta do e-mail de entrada
+  (Postmark) e uma notificação real da OLX** para o leitor específico. Ver a
+  [decisão](../decisoes/2026-09-27%20leads%20dos%20portais.md).
 - **C3 — Push do vendedor (item 14).** Service worker + web-push; hoje só
   funciona com a aba aberta, e o rodízio perde a razão se o vendedor não vê o
   lead a tempo.
