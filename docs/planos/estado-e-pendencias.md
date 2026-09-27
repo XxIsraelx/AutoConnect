@@ -185,6 +185,26 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
   - Como testar: e2e que baixa cada CSV com dois tenants e confirma que nenhum vaza dado do
     outro; abrir no Excel e conferir os acentos.
 
+- **E-mail de contato num domínio que talvez não exista: `contato@autoconnect.app`.**
+  - Onde: `apps/web/src/components/PaginaLegal.tsx:5` (`CONTATO_LEGAL`, usado em `/termos` e
+    `/privacidade`), `components/ErroAoCarregar.tsx:7` (`SUPORTE`),
+    `components/AvisoDeEnvioDeFotos.tsx:32` e o plano Enterprise da home (`page.tsx:245`). A
+    maquete da home também mostra `autoconnect.app/dashboard`.
+  - O que é: produção roda em `autoconnectweb-production.up.railway.app` (CLAUDE.md, "Deploy") e
+    o domínio próprio ainda não foi registrado segundo o plano growth; o e-mail do negócio em uso
+    é `suporte.autoconnect@gmail.com`.
+  - Evidência: `grep -rn "autoconnect\.app" apps/web/src` em 27/09/2026. Não deu para checar o
+    DNS daqui (sem rede no ambiente).
+  - Impacto: se o domínio não for seu, o canal do titular da LGPD em `/privacidade`, o contato
+    dos Termos e o "fale com o suporte" das telas de erro mandam e-mail para o vazio — e alguém
+    pode registrar o domínio e receber essas mensagens.
+  - Sugestão: confirmar se `autoconnect.app` é seu. Se não for, registrar o domínio escolhido
+    (`.app` ou `.com.br`) com e-mail funcionando, ou trocar as quatro ocorrências por
+    `suporte.autoconnect@gmail.com` numa constante só no shared.
+  - Como testar: mandar um e-mail para o endereço exibido em `/privacidade` e recebê-lo; `grep`
+    sem endereço fixo fora da constante.
+  - Encontrado em: 27/09/2026 · Claude Cowork · ao planejar o próximo passo do plano growth.
+
 ## Onde o plano de paridade de CRM está
 
 `docs/planos/plano-paridade-crm.md`. Estado em 25/09/2026:
