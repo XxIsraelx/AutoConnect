@@ -4,8 +4,12 @@ declare global {
   }
 }
 
-/** Conversões da landing: as três portas da métrica do plano. */
-export type EventoDaLanding = 'raio_x_enviado' | 'conta_criar_click' | 'whatsapp_click';
+/** Conversões da landing (as três portas da métrica do plano) e o interesse na vitrine demo. */
+export type EventoDaLanding =
+  | 'raio_x_enviado'
+  | 'conta_criar_click'
+  | 'whatsapp_click'
+  | 'vitrine_demo_click';
 
 /**
  * Evento no Microsoft Clarity. Sem o script (`NEXT_PUBLIC_CLARITY_ID` vazio,

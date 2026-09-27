@@ -101,6 +101,22 @@ Fechadas em 27/09/2026: o Raio-X é a porta principal do hero e o cadastro a sec
 |---|---|
 | 1. Correções e verdade | Feita. Planos mostram as faixas de `FAIXAS` **sem valor** até a decisão de preço |
 | 2. Raio-X | Feita no código (`RaioXForm`, `mensagemDoRaioX`, `raio-x.e2e-spec.ts`). **Falta em produção:** criar a loja "AutoConnect" pelo cadastro, estender o trial dela e preencher `NEXT_PUBLIC_RAIO_X_TENANT_ID` no web — sem a variável, o formulário vira botão de WhatsApp |
-| 3. Produto e calculadora | Calculadora feita (`valorEmRiscoEmCentavos`, com teste). Vitrine demo espera a decisão da "Aurora Seminovos"; a maquete do painel segue no lugar |
+| 3. Produto e calculadora | Feita. "Veja o sistema funcionando" troca a maquete por cinco telas reais do painel e linka a vitrine da Aurora, agora [loja de demonstração](../decisoes/2026-09-27%20loja%20de%20demonstracao.md). Calculadora com `valorEmRiscoEmCentavos` testada |
 | 4. Preço e fundadores | Bloqueada (decisão de preço e do programa) |
 | 5. Confiança e medição | FAQ, Clarity (só com `NEXT_PUBLIC_CLARITY_ID`), eventos e `/privacidade` feitos. "Quem está por trás" fora por decisão. ⚠ O Clarity grava cookies com base em legítimo interesse, sem banner de consentimento — confirmar na revisão jurídica |
+
+## Telas do sistema na landing — como refazer
+
+As cinco imagens de `apps/web/public/landing/sistema/` (leads, chat, agenda, negócio,
+relatórios) são capturas do produto, não desenhos. Quando uma dessas telas mudar, refaça:
+
+1. Banco local de teste com `db:seed`, API e web locais.
+2. Dados da loja "Auto Sul" do seed: quatro leads novos pela rota pública (um no prazo, um
+   vencendo, um estourado, um já contatado — ajuste `first_response_due_at` para "agora"), uma
+   conversa de chat criada por `POST /conversations/from-lead` + mensagens do visitante pela
+   rota pública, comissão de 1,5% nos perfis de vendedor e horários em expediente.
+3. Chrome headless (`--remote-debugging-port`), 1440×900 com `deviceScaleFactor: 2`, tema
+   escuro e `autoconnect:notif-dismissed = 1`; o chat logado como o vendedor dono da conversa
+   (senão as mensagens dele aparecem do lado do cliente); `Page.captureScreenshot` em WebP 82.
+
+Nenhum dado real aparece: nomes, telefones e e-mails são os fictícios do seed.

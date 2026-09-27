@@ -4,7 +4,7 @@ import Hero from '@/components/landing/Hero';
 import Problema from '@/components/landing/Problema';
 import OQueMuda from '@/components/landing/OQueMuda';
 import ComoFunciona from '@/components/landing/ComoFunciona';
-import Maquete from '@/components/landing/Maquete';
+import SistemaNaPratica from '@/components/landing/SistemaNaPratica';
 import Calculadora from '@/components/landing/Calculadora';
 import Planos from '@/components/landing/Planos';
 import Faq from '@/components/landing/Faq';
@@ -51,7 +51,7 @@ export default function HomePage() {
         <Problema />
         <OQueMuda />
         <ComoFunciona />
-        <Maquete />
+        <SistemaNaPratica />
         <Calculadora />
         <Planos />
         <Faq />

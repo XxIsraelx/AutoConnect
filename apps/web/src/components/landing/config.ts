@@ -27,7 +27,7 @@ export const SECOES = {
   problema: 'As 42 horas',
   oQueMuda: 'O que muda na loja',
   comoFunciona: 'Como funciona',
-  produto: 'O painel',
+  produto: 'O sistema funcionando',
   calculadora: 'Calculadora',
   planos: 'Planos',
   faq: 'Perguntas',
