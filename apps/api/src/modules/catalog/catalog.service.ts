@@ -135,6 +135,7 @@ export class CatalogService {
       where: { id: tenantId, isActive: true },
       select: {
         id: true,
+        slug: true,
         tradeName: true,
         logoUrl: true,
         brandColor: true,

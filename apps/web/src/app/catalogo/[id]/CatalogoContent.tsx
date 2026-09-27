@@ -23,6 +23,7 @@ import type {
 } from '../../../app/buscar/types';
 import SeloProcedencia from './SeloProcedencia';
 import AvisoDeDemonstracao from '@/components/AvisoDeDemonstracao';
+import LogoDaLoja, { FaixaDaLoja } from '@/components/LogoDaLoja';
 import { escolherWhatsApp, formatarTelefoneBr, veiculoDaBusca } from '@autoconnect/shared';
 
 /* ── Helpers ─────────────────────────────────────────────── */
@@ -1019,7 +1020,6 @@ export default function CatalogoContent() {
   }
 
   const activeFilters = (brandId ? 1 : 0) + (condition ? 1 : 0);
-  const initials = dealer?.tradeName.slice(0, 2).toUpperCase() ?? '??';
   const branch   = dealer?.branches[0] ?? null;
 
   const dealerPhone = branch?.phone ?? dealer?.primaryPhone ?? null;
@@ -1071,17 +1071,20 @@ export default function CatalogoContent() {
   return (
     <div className="min-h-screen sup-base txt-forte">
       {dealer?.isDemo && <AvisoDeDemonstracao />}
+      {dealer && <FaixaDaLoja cor={dealer.brandColor} />}
 
       {/* ── HEADER ───────────────────────────────────── */}
       <header className="sticky top-0 z-30 sup-base/95 border-b borda backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-3">
+          {/* Loja de demonstração não está no mapa: o caminho de volta dela é a
+              vitrine, de onde a pessoa veio pela landing. */}
           <Link
-            href="/buscar"
+            href={dealer?.isDemo && dealer.slug ? `/c/${dealer.slug}` : '/buscar'}
             className="flex items-center gap-1.5 text-sm txt-fraco hover:txt-forte
                        transition-colors font-medium group"
           >
             <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
-            <span className="hidden sm:block">Mapa</span>
+            <span className="hidden sm:block">{dealer?.isDemo ? 'Vitrine' : 'Mapa'}</span>
           </Link>
 
           <span className="txt-tenue text-sm">/</span>
@@ -1090,10 +1093,14 @@ export default function CatalogoContent() {
             <div className="h-4 w-32 sup-media rounded animate-pulse" />
           ) : (
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700
-                              flex items-center justify-center shrink-0">
-                <span className="txt-forte text-[11px] font-extrabold">{initials}</span>
-              </div>
+              {dealer && (
+                <LogoDaLoja
+                  nome={dealer.tradeName}
+                  logoUrl={dealer.logoUrl}
+                  cor={dealer.brandColor}
+                  className="w-7 h-7 rounded-lg text-[11px]"
+                />
+              )}
               <span className="font-bold txt-forte text-sm truncate">{dealer?.tradeName}</span>
               {branch && (
                 <span className="hidden md:block text-xs text-slate-500">
@@ -1141,11 +1148,12 @@ export default function CatalogoContent() {
       {!loadingDealer && dealer && (
         <div className="bg-gradient-to-b from-white dark:from-[#1e293b] to-slate-50 dark:to-[#0f172a] border-b borda">
           <div className="max-w-6xl mx-auto px-4 py-8 flex items-center gap-5">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700
-                            flex items-center justify-center shrink-0
-                            shadow-xl shadow-blue-900/50">
-              <span className="txt-forte text-2xl font-extrabold tracking-tight">{initials}</span>
-            </div>
+            <LogoDaLoja
+              nome={dealer.tradeName}
+              logoUrl={dealer.logoUrl}
+              cor={dealer.brandColor}
+              className="w-20 h-20 rounded-2xl text-2xl shadow-xl shadow-black/20"
+            />
             <div className="min-w-0">
               <h1 className="text-2xl font-extrabold txt-forte leading-tight">{dealer.tradeName}</h1>
               {branch && (
