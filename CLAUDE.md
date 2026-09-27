@@ -717,6 +717,16 @@ Tabela de módulos, pendências auditadas, fases do plano e próximos passos:
 e 5) e `docs/planos/plano-paridade-crm.md` (**Ondas 0, 1 e 3 fechadas**;
 faltam 2, 4 e 5).
 
+**Regra — achou e não resolveu, registrou.** Erro, bug, inconsistência, documentação
+desatualizada, dado estranho ou qualquer coisa deixada para trás que **não** for
+corrigida ou revisada na mesma tarefa entra em "Pendências conhecidas" de
+`docs/planos/estado-e-pendencias.md` antes de a tarefa terminar — mesmo pequena,
+mesmo fora do escopo. Fora do escopo não se corrige sem pedir: registra-se. Cada item
+diz onde, o que é, a evidência, o impacto, a sugestão de correção, como testar e
+quando/quem/em qual tarefa encontrou (formato no topo da seção). Resolvido: riscar
+com `~~…~~` e anotar "resolvido em DD/MM/AAAA" com o commit. A resposta final da
+tarefa diz o que foi registrado.
+
 **Bloqueiam uso real:** template de contrato sem revisão jurídica, ausência de
 fornecedor de consulta veicular e **ausência de conta na Asaas** — a camada de
 cobrança está pronta e o adaptador foi validado contra o sandbox, mas a chave de
