@@ -5,8 +5,12 @@ import { io, Socket } from 'socket.io-client';
 import {
   Send, MessageSquare, Circle, Loader2,
   RefreshCw, AlertCircle, ChevronLeft, BadgeDollarSign, X, Archive,
-  Link as LinkIcon,
+  Link as LinkIcon, MessageCircle, Clock, Check, CheckCheck, FileText,
 } from 'lucide-react';
+import {
+  MODELOS_DE_WHATSAPP, MODELOS_MANUAIS, formatarTelefoneBr, janelaDeAtendimentoAberta,
+  janelaFechaEm, type ChaveDoModelo,
+} from '@autoconnect/shared';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { cn } from '@/lib/utils';
@@ -29,16 +33,25 @@ interface Conversation {
   salesperson: { id: string; fullName: string; email: string } | null;
   vehicle: { id: string; versionName: string | null; yearModel: number; brand: { name: string }; model: { name: string }; images: { url: string }[] } | null;
   messages: { body: string; createdAt: string; kind: string }[];
+  /** `whatsapp`: entra e sai pelo número oficial da loja. */
+  channel: 'chat' | 'whatsapp';
+  /** Última mensagem do cliente — no WhatsApp, abre e fecha a janela de 24 h. */
+  customerLastMessageAt: string | null;
+  contactPhoneNormalized: string | null;
 }
 
 interface Message {
   id: string;
+  conversationId?: string;
   body: string;
   kind: string;
   createdAt: string;
   senderUserId: string | null;
   sender: { id: string; fullName: string; avatarUrl: string | null } | null;
   metadata?: unknown;
+  /** Só no que a loja mandou pelo WhatsApp: enviando → enviada → entregue → lida, ou falhou. */
+  deliveryStatus?: string | null;
+  failureReason?: string | null;
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
@@ -48,9 +61,42 @@ function nomeDoContato(conv: Conversation): string {
   return conv.customer?.fullName ?? conv.contactName ?? 'Visitante';
 }
 
-/** Conversa de quem não tem conta: entra por link, não por login. */
+/**
+ * Conversa de quem não tem conta: entra por link, não por login. A de
+ * WhatsApp também não tem conta, mas não precisa de link — o cliente responde
+ * pelo próprio WhatsApp.
+ */
 function semConta(conv: Conversation): boolean {
-  return !conv.customer;
+  return !conv.customer && conv.channel !== 'whatsapp';
+}
+
+function ehWhatsApp(conv: Conversation | undefined): boolean {
+  return conv?.channel === 'whatsapp';
+}
+
+/** Insere ou substitui pelo id: o socket e a resposta do POST trazem a mesma mensagem. */
+function comMensagem(lista: Message[], msg: Message): Message[] {
+  return lista.some((m) => m.id === msg.id)
+    ? lista.map((m) => (m.id === msg.id ? msg : m))
+    : [...lista, msg];
+}
+
+/** O texto do modelo com os campos no lugar dos números, para a prévia. */
+function previaDoModelo(chave: ChaveDoModelo): string {
+  const m = MODELOS_DE_WHATSAPP[chave];
+  return m.texto.replace(/\{\{(\d+)\}\}/g, (_, n: string) => `[${m.campos[Number(n) - 1]}]`);
+}
+
+/** O que aconteceu com a mensagem que a loja mandou pelo WhatsApp. */
+function StatusDeEntrega({ msg }: { msg: Message }) {
+  switch (msg.deliveryStatus) {
+    case 'enviando': return <Clock size={11} aria-label="enviando" />;
+    case 'enviada':  return <Check size={11} aria-label="enviada" />;
+    case 'entregue': return <CheckCheck size={11} aria-label="entregue" />;
+    case 'lida':     return <CheckCheck size={11} className="text-emerald-300" aria-label="lida" />;
+    case 'falhou':   return <AlertCircle size={11} className="text-rose-200" aria-label="não enviada" />;
+    default:         return null;
+  }
 }
 
 /* ── Helpers ──────────────────────────────────────────── */
@@ -102,6 +148,11 @@ function ConversationItem({ conv, active, onClick }: {
                 sem conta
               </span>
             )}
+            {ehWhatsApp(conv) && (
+              <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                <MessageCircle size={10} /> WhatsApp
+              </span>
+            )}
           </p>
           {conv.lastMessageAt && (
             <span className="text-xs text-slate-400 shrink-0">{fmtDate(conv.lastMessageAt)}</span>
@@ -140,6 +191,34 @@ export default function ChatPage() {
   const typingTimer = useRef<NodeJS.Timeout | null>(null);
 
   const activeConv = conversations.find((c) => c.id === activeId);
+  // O handler do socket é registrado uma vez; é pela ref que ele sabe qual
+  // conversa está na tela.
+  const activeIdRef = useRef<string | null>(null);
+  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
+
+  const [erroEnvio, setErroEnvio] = useState<string | null>(null);
+  const [modeloAberto, setModeloAberto] = useState(false);
+  const [modelo, setModelo] = useState<ChaveDoModelo>('primeiro_contato');
+  const [enviandoModelo, setEnviandoModelo] = useState(false);
+  useEffect(() => { setErroEnvio(null); setModeloAberto(false); }, [activeId]);
+
+  async function enviarModelo() {
+    if (!token || !activeId || enviandoModelo) return;
+    setEnviandoModelo(true);
+    setErroEnvio(null);
+    try {
+      const msg = await api<Message>(`/whatsapp/conversas/${activeId}/modelo`, {
+        method: 'POST', token, body: { modelo },
+      });
+      setMessages((prev) => comMensagem(prev, msg));
+      setModeloAberto(false);
+      if (msg.deliveryStatus === 'falhou') setErroEnvio(msg.failureReason ?? 'O WhatsApp recusou o modelo.');
+    } catch (err) {
+      setErroEnvio(textoDoErro(err));
+    } finally {
+      setEnviandoModelo(false);
+    }
+  }
 
   const [encerrando, setEncerrando] = useState(false);
   const [erroEncerrar, setErroEncerrar] = useState<string | null>(null);
@@ -221,6 +300,23 @@ export default function ChatPage() {
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
+  /**
+   * Recarga silenciosa, sem o spinner: é o que o socket dispara quando chega
+   * mensagem de outra conversa, ou uma conversa nova (o cliente que escreveu
+   * no WhatsApp agora). Falha aqui não substitui a lista por erro — a lista
+   * que está na tela continua valendo, e o botão de atualizar mostra o erro.
+   */
+  const recarregarLista = useCallback(async () => {
+    if (!token) return;
+    try {
+      const r = await api<{ items: Conversation[] }>('/conversations', { token });
+      setConversations(r.items);
+    } catch {
+      // Silencioso com motivo: é uma atualização de fundo; a lista atual fica.
+    }
+  }, [token]);
+  const recarregarRef = useRef(recarregarLista);
+  useEffect(() => { recarregarRef.current = recarregarLista; }, [recarregarLista]);
   /* Deep-link: abre conversa via ?c=<id> (ex: vindo de um lead) */
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -251,13 +347,28 @@ export default function ChatPage() {
     });
     socketRef.current = socket;
 
+    // O socket entra na sala de cada conversa aberta e não sai: sem o filtro,
+    // a mensagem de uma conversa aparecia na que estivesse na tela.
     socket.on('conversation:message', (msg: Message) => {
-      setMessages((prev) => [...prev, msg]);
+      if (msg.conversationId && msg.conversationId !== activeIdRef.current) {
+        void recarregarRef.current();
+        return;
+      }
+      setMessages((prev) => comMensagem(prev, msg));
+      if (msg.senderUserId === null) {
+        // O cliente escreveu: no WhatsApp, é o que reabre a janela de 24 h.
+        setConversations((cs) => cs.map((c) =>
+          c.id === activeIdRef.current ? { ...c, customerLastMessageAt: msg.createdAt } : c));
+      }
     });
 
     socket.on('conversation:message:update', (msg: Message) => {
+      if (msg.conversationId && msg.conversationId !== activeIdRef.current) return;
       setMessages((prev) => prev.map((m) => (m.id === msg.id ? msg : m)));
     });
+
+    // Conversa nova ou movimentada na loja (sala `tenant:<id>`).
+    socket.on('conversation:updated', () => { void recarregarRef.current(); });
 
     socket.on('conversation:typing', ({ userId, isTyping }: { userId: string; isTyping: boolean }) => {
       setTypingUsers((prev) => {
@@ -293,10 +404,20 @@ export default function ChatPage() {
 
   async function sendMessage() {
     if (!newMsg.trim() || !activeId || !socketRef.current || sending) return;
+    const texto = newMsg.trim();
     setSending(true);
+    setErroEnvio(null);
     socketRef.current.emit('conversation:send', {
-      conversationId: activeId, body: newMsg.trim(),
-    }, () => setSending(false));
+      conversationId: activeId, body: texto,
+    }, (r?: { ok: boolean; error?: string }) => {
+      setSending(false);
+      // A recusa (janela do WhatsApp fechada, conversa encerrada) aparece aqui,
+      // e o texto volta para o campo em vez de sumir.
+      if (r && !r.ok) {
+        setErroEnvio(r.error ?? 'Não foi possível enviar a mensagem.');
+        setNewMsg((atual) => atual || texto);
+      }
+    });
     setNewMsg('');
   }
 
@@ -385,6 +506,12 @@ export default function ChatPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium">{nomeDoContato(activeConv)}</p>
+                    {ehWhatsApp(activeConv) && (
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                        <MessageCircle size={11} /> WhatsApp
+                        {activeConv.contactPhoneNormalized && ` · ${formatarTelefoneBr(activeConv.contactPhoneNormalized)}`}
+                      </p>
+                    )}
                     {activeConv.vehicle && (
                       <p className="text-xs text-slate-500">
                         {activeConv.vehicle.brand.name} {activeConv.vehicle.model.name} {activeConv.vehicle.yearModel}
@@ -514,10 +641,22 @@ export default function ChatPage() {
                         ? 'bg-blue-600 text-white rounded-tr-sm'
                         : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-tl-sm shadow-sm',
                     )}>
-                      <p className="leading-relaxed break-words">{msg.body}</p>
-                      <p className={cn('text-[10px] mt-1', isMe ? 'text-blue-200 text-right' : 'text-slate-400')}>
+                      {typeof (msg.metadata as { modelo?: unknown } | undefined)?.modelo === 'string' && (
+                        <p className={cn('text-[10px] font-semibold mb-1 flex items-center gap-1', isMe ? 'text-blue-100' : 'text-slate-400')}>
+                          <FileText size={10} />
+                          Modelo: {MODELOS_DE_WHATSAPP[(msg.metadata as { modelo: ChaveDoModelo }).modelo]?.rotulo ?? 'aprovado'}
+                        </p>
+                      )}
+                      <p className="leading-relaxed break-words whitespace-pre-line">{msg.body}</p>
+                      <p className={cn('text-[10px] mt-1 flex items-center gap-1', isMe ? 'text-blue-200 justify-end' : 'text-slate-400')}>
                         {fmtTime(msg.createdAt)}
+                        {isMe && <StatusDeEntrega msg={msg} />}
                       </p>
+                      {msg.deliveryStatus === 'falhou' && (
+                        <p className="text-[11px] mt-1 text-rose-100">
+                          Não chegou ao cliente{msg.failureReason ? `: ${msg.failureReason}` : '.'}
+                        </p>
+                      )}
                     </div>
                   </div>
                 );
@@ -539,7 +678,23 @@ export default function ChatPage() {
 
             {/* Input */}
             <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+              {erroEnvio && (
+                <p role="alert" className="mb-2 text-xs text-rose-600 dark:text-rose-400">{erroEnvio}</p>
+              )}
+              {activeConv && ehWhatsApp(activeConv) && (
+                <PainelDoWhatsApp
+                  conv={activeConv}
+                  aberto={modeloAberto}
+                  onAbrir={() => setModeloAberto((v) => !v)}
+                  modelo={modelo}
+                  onModelo={setModelo}
+                  enviando={enviandoModelo}
+                  onEnviar={() => void enviarModelo()}
+                />
+              )}
+              {!(activeConv && ehWhatsApp(activeConv) && !janelaDeAtendimentoAberta(activeConv.customerLastMessageAt)) && (
               <div className="flex items-end gap-2">
+                {!ehWhatsApp(activeConv) && (
                 <button
                   onClick={() => setShowProposal(true)}
                   title="Enviar proposta comercial"
@@ -549,6 +704,7 @@ export default function ChatPage() {
                 >
                   <BadgeDollarSign size={16} />
                 </button>
+                )}
                 <textarea
                   value={newMsg}
                   onChange={(e) => { setNewMsg(e.target.value); onTyping(); }}
@@ -566,6 +722,7 @@ export default function ChatPage() {
                   {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                 </button>
               </div>
+              )}
             </div>
           </>
         )}
@@ -585,6 +742,77 @@ export default function ChatPage() {
             setShowProposal(false);
           }}
         />
+      )}
+    </div>
+  );
+}
+
+/* ── WhatsApp: janela de 24 h e modelos ───────────────────── */
+
+/**
+ * A regra do WhatsApp na tela: dentro da janela, o campo de sempre (e o modelo
+ * à mão, para o retorno de proposta); fora dela, o campo some e sobra o modelo
+ * — em vez de deixar o vendedor digitar e descobrir a recusa depois.
+ */
+function PainelDoWhatsApp({ conv, aberto, onAbrir, modelo, onModelo, enviando, onEnviar }: {
+  conv: Conversation;
+  aberto: boolean;
+  onAbrir: () => void;
+  modelo: ChaveDoModelo;
+  onModelo: (m: ChaveDoModelo) => void;
+  enviando: boolean;
+  onEnviar: () => void;
+}) {
+  const janela = janelaDeAtendimentoAberta(conv.customerLastMessageAt);
+  const fecha = janelaFechaEm(conv.customerLastMessageAt);
+  const mostrarModelos = !janela || aberto;
+
+  return (
+    <div className="mb-2 space-y-2">
+      {janela ? (
+        <p className="text-[11px] text-slate-500 flex items-center gap-2">
+          Janela de conversa aberta até {fecha?.toLocaleString('pt-BR', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}.
+          <button onClick={onAbrir} className="font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">
+            {aberto ? 'Fechar modelos' : 'Usar um modelo'}
+          </button>
+        </p>
+      ) : (
+        <p className="text-xs rounded-xl px-3 py-2 bg-emerald-50 text-emerald-900 dark:bg-emerald-500/10 dark:text-emerald-200">
+          {conv.customerLastMessageAt
+            ? 'O cliente não escreve há mais de 24 horas. Pelas regras do WhatsApp, a loja só pode mandar um modelo aprovado — quando ele responder, a conversa livre volta.'
+            : 'A loja fala primeiro: pelas regras do WhatsApp, o primeiro contato é por um modelo aprovado. Quando o cliente responder, a conversa livre começa.'}
+        </p>
+      )}
+      {mostrarModelos && (
+        <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/30 p-3 space-y-2">
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Modelo">
+            {MODELOS_MANUAIS.map((k) => (
+              <button
+                key={k}
+                role="radio"
+                aria-checked={modelo === k}
+                onClick={() => onModelo(k)}
+                className={cn(
+                  'text-[11px] font-medium px-2.5 py-1 rounded-full border transition',
+                  modelo === k
+                    ? 'bg-emerald-600 border-emerald-600 text-white'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300',
+                )}
+              >
+                {MODELOS_DE_WHATSAPP[k].rotulo}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">{previaDoModelo(modelo)}</p>
+          <button
+            onClick={onEnviar}
+            disabled={enviando}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white
+                       hover:bg-emerald-700 disabled:opacity-50 transition"
+          >
+            {enviando ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Enviar modelo
+          </button>
+        </div>
       )}
     </div>
   );
