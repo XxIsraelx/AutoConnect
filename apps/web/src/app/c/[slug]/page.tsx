@@ -10,6 +10,7 @@ interface Dealer {
   id: string; slug: string; tradeName: string;
   logoUrl: string | null; brandColor: string | null;
   websiteUrl: string | null; primaryPhone: string | null;
+  isDemo?: boolean;
   branches: {
     id: string; name: string; city: string; state: string;
     addressLine: string | null; addressNumber: string | null;
@@ -47,6 +48,9 @@ export async function generateMetadata(
 
   return {
     title: `${dealer.tradeName} — AutoConnect`,
+    // Loja de demonstração não vai para o Google: quem a acha pela busca é
+    // comprador, e ela não existe.
+    ...(dealer.isDemo ? { robots: { index: false, follow: false } } : {}),
     description: desc,
     openGraph: {
       title: dealer.tradeName,

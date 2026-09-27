@@ -22,6 +22,7 @@ import type {
   VehiclesPage, PublicBrand,
 } from '../../../app/buscar/types';
 import SeloProcedencia from './SeloProcedencia';
+import AvisoDeDemonstracao from '@/components/AvisoDeDemonstracao';
 import { escolherWhatsApp, formatarTelefoneBr, veiculoDaBusca } from '@autoconnect/shared';
 
 /* ── Helpers ─────────────────────────────────────────────── */
@@ -1069,6 +1070,7 @@ export default function CatalogoContent() {
 
   return (
     <div className="min-h-screen sup-base txt-forte">
+      {dealer?.isDemo && <AvisoDeDemonstracao />}
 
       {/* ── HEADER ───────────────────────────────────── */}
       <header className="sticky top-0 z-30 sup-base/95 border-b borda backdrop-blur-md">

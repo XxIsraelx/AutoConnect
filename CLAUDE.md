@@ -652,7 +652,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
   foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
   migrations (ver *Testes e CI*).
-- Migrations atuais (21): `init`, `trade_in_and_dealer_setting`,
+- Migrations atuais (22): `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
   `add_announcements_invites_alerts_searches_goals`,
   `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`,
@@ -662,7 +662,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   `funil_lead_anonimo`, `rascunho_de_anuncio`,
   `rodizio_sla_carteira_motivo_perda`, `carteira_fechada_por_padrao`,
   `cobranca_asaas`, `validacao_de_saque`,
-  `filial_do_veiculo_geocodificacao_e_chat_sem_conta`.
+  `filial_do_veiculo_geocodificacao_e_chat_sem_conta`, `loja_de_demonstracao`.
 
 ---
 

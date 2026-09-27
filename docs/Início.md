@@ -40,6 +40,7 @@ com o código e lido pelo Claude quando o assunto aparece.
 - [Vendas e contrato — decisões](decisoes/vendas-e-contrato.md)
   · [assinatura externa](decisoes/2026-09-22%20assinatura%20externa.md)
   · [cadastro em autosserviço](decisoes/2026-09-25%20cadastro%20em%20autosservico.md)
+  · [loja de demonstração](decisoes/2026-09-27%20loja%20de%20demonstracao.md)
 - [Estado, pendências e próximos passos](planos/estado-e-pendencias.md)
 
 ## Como pedir algo ao Claude usando o cofre

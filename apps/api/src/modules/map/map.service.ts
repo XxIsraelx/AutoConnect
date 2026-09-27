@@ -37,7 +37,9 @@ export class MapService {
   async getDealerships(): Promise<DealershipPin[]> {
     const { branches, semFilialPorLoja } = await this.prisma.withPublic(async (tx) => {
       const branches = await tx.dealershipBranch.findMany({
-        where: { isActive: true, tenant: { isActive: true } },
+        // Loja de demonstração fora do mapa: é vitrine para o lojista, não
+        // loja onde o comprador possa ir (`tenants.is_demo`).
+        where: { isActive: true, tenant: { isActive: true, isDemo: false } },
         select: {
           id: true,
           tenantId: true,

@@ -153,7 +153,7 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
     estado é bloqueada.
   - Também afeta: a loja "AutoConnect" que recebe os pedidos de Raio-X no
     [plano da nova landing](plano-nova-landing.md) precisa da mesma isenção.
-- **Loja fictícia em produção aparece para compradores reais.**
+- ✅ **Resolvido em 27/09/2026** ([decisão](../decisoes/2026-09-27%20loja%20de%20demonstracao.md): loja de demonstração, fora da busca e do mapa). **Loja fictícia em produção aparece para compradores reais.**
   - Onde: tabela `tenants`, slug `demo` ("Aurora Seminovos"); `/buscar`, o mapa e `/c/demo`.
   - O que é: 25 veículos, 22 publicados, `created_at` em 04/10/2024. Contradiz a nota acima de
     que o banco de produção não foi semeado.

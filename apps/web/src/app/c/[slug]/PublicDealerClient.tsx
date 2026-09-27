@@ -15,6 +15,7 @@ import ScheduleModal from '@/components/ScheduleModal';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import TradeInModal from '@/components/TradeInModal';
 import FormularioDeInteresse from '@/components/FormularioDeInteresse';
+import AvisoDeDemonstracao from '@/components/AvisoDeDemonstracao';
 import {
   escolherWhatsApp, formatarTelefoneBr, linkDoVeiculoNoCatalogo,
 } from '@autoconnect/shared';
@@ -25,6 +26,8 @@ interface Dealer {
   logoUrl: string | null; brandColor: string | null;
   websiteUrl: string | null; primaryPhone: string | null;
   acceptsTradeIn?: boolean;
+  /** Loja de demonstração: a vitrine mostra o aviso. */
+  isDemo?: boolean;
   branches: {
     id: string; name: string; city: string; state: string;
     addressLine: string | null; addressNumber: string | null;
@@ -158,6 +161,7 @@ export default function PublicDealerClient({ dealer }: { dealer: Dealer }) {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+      {dealer.isDemo && <AvisoDeDemonstracao />}
       {/* Faixa com a cor da marca */}
       <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${brandColor}, ${brandColor}88, transparent)` }} />
 
