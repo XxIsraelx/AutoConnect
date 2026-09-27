@@ -30,6 +30,11 @@ desatualizado.
 | **E** | Dívidas com gatilho: só viram trabalho quando o gatilho acontecer | — | o gatilho |
 | — | **Adiado por decisão** (NF-e, financeiro da loja) | — | — |
 
+**Quem executa:** duas sessões em paralelo, com dono por módulo — a divisão, as
+regras de convivência e o prompt da sessão 2 estão em
+[divisão entre sessões](divisao-entre-sessoes.md). A Onda B fica fora dela: é
+pedido e espera, não código.
+
 ---
 
 ## Onda A — um dia, e o produto para de trabalhar contra si
