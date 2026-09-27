@@ -69,9 +69,35 @@ export function configureApp(app: INestApplication): INestApplication {
  * testar no celular). Em dev, libera localhost em qualquer porta — previews e
  * ferramentas locais sobem em portas variáveis.
  */
+export function origensPermitidas(
+  webUrl = process.env.WEB_URL ?? 'http://localhost:3000',
+  extras = process.env.CORS_ORIGENS_EXTRAS ?? '',
+): string[] {
+  const lista = ['http://localhost:3000', 'http://127.0.0.1:3000', webUrl];
+
+  // O irmão www/raiz entra sozinho. O site responde nos dois endereços, e o
+  // CORS aceitava um só: quem entrasse pelo outro via a tela montar e nenhuma
+  // chamada funcionar — falha que não aparece em teste de rota, só no navegador.
+  try {
+    const u = new URL(webUrl);
+    u.hostname = u.hostname.startsWith('www.') ? u.hostname.slice(4) : `www.${u.hostname}`;
+    lista.push(u.origin);
+  } catch {
+    // WEB_URL malformada: o resto da lista continua valendo.
+  }
+
+  // Durante uma troca de domínio, o endereço antigo precisa continuar valendo
+  // até o último cliente parar de usá-lo.
+  for (const extra of extras.split(',')) {
+    const limpo = extra.trim().replace(/\/$/, '');
+    if (limpo) lista.push(limpo);
+  }
+
+  return [...new Set(lista)];
+}
+
 function criarVerificadorDeOrigem() {
-  const webUrl = process.env.WEB_URL ?? 'http://localhost:3000';
-  const permitidas = [...new Set(['http://localhost:3000', 'http://127.0.0.1:3000', webUrl])];
+  const permitidas = origensPermitidas();
 
   return (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     // Requisições sem origin (curl, Postman, SSR do próprio Next) passam.

@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.006 testes (725 na API, 281 no `shared`):
+são 1.011 testes (730 na API, 281 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -367,6 +367,20 @@ pnpm exec turbo run typecheck lint test
 
 O `--env-file /dev/null` é obrigatório: o Compose lê o `.env` da raiz sozinho e
 é mais estrito que o dotenv do Node — uma linha sem `=` aborta o comando.
+
+**Sem Docker**, um Postgres local serve, desde que tenha **PostGIS** (o schema
+depende da extensão). Com o `postgresql@18` do Homebrew:
+
+```bash
+psql -U "$USER" -d postgres -c "ALTER ROLE postgres LOGIN SUPERUSER PASSWORD 'postgres'"
+createdb -U postgres autoconnect_test
+export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/autoconnect_test"
+export DIRECT_URL="$DATABASE_URL"
+pnpm --filter @autoconnect/db exec prisma migrate deploy
+```
+
+A porta muda (5432 em vez de 55432) e os dados **não** morrem com o contêiner —
+lembre de recriar o banco quando quiser partir do zero.
 
 Detalhes (o que cada e2e fixa, CI e drift): `docs/arquitetura/testes-e-ci.md`.
 
