@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
 import { ehGlobal, type Escopo } from '../../common/escopo';
 import { Prisma } from '@autoconnect/db';
-import type { UpdateBranchInput, UpdateTenantInput } from '@autoconnect/shared';
+import type { NovaFilialInput, UpdateBranchInput, UpdateTenantInput } from '@autoconnect/shared';
+import { faixaParaFiliais, limiteDeFiliais } from '@autoconnect/shared';
 import {
   GeocodificacaoService,
   type FilialLocalizavel,
@@ -493,6 +494,56 @@ export class TenantsService {
         dealerState: branch?.state ?? null,
       };
     });
+  }
+
+  /**
+   * Nova filial, dentro do teto do plano.
+   *
+   * O teto é de filiais **ativas** e é conferido só aqui, na criação: a loja
+   * que já tem mais filiais que o plano mantém todas — nenhuma some, só a
+   * próxima é recusada (decisão de 27/09/2026, a mesma regra do teto de
+   * estoque, que nunca despublica).
+   */
+  async createBranch(tenantId: string, data: NovaFilialInput): Promise<unknown> {
+    const { businessHours, latitude, longitude, ...resto } = data;
+
+    const criada = await this.prisma.withTenant(tenantId, async (tx) => {
+      const assinatura = await tx.tenantSubscription.findUnique({
+        where: { tenantId }, select: { plan: true },
+      });
+      const limite = limiteDeFiliais(assinatura?.plan ?? 'trial');
+      const ativas = await tx.dealershipBranch.count({ where: { tenantId, isActive: true } });
+
+      if (limite !== null && ativas >= limite) {
+        const proxima = faixaParaFiliais(ativas + 1);
+        throw new UnprocessableEntityException(
+          `Seu plano permite ${limite} filia${limite === 1 ? 'l' : 'is'} e a loja já tem ${ativas}. ` +
+            (proxima
+              ? `O plano ${proxima.nome} permite ${proxima.limiteFiliais ?? 'filiais ilimitadas'}` +
+                `${proxima.limiteFiliais ? ' filiais' : ''} — mude em Configurações › Plano e cobrança.`
+              : 'Para mais filiais, fale com a AutoConnect.'),
+        );
+      }
+
+      return tx.dealershipBranch.create({
+        data: {
+          tenantId,
+          ...resto,
+          isHeadquarters: false,
+          // Coordenada informada na criação é do lojista, como na edição:
+          // entra como `manual` e a geocodificação não a sobrescreve.
+          ...(latitude != null && longitude != null
+            ? { latitude, longitude, geocodePrecision: 'manual', geocodedAt: new Date() }
+            : {}),
+          ...(businessHours ? { businessHours: businessHours as Prisma.InputJsonValue } : {}),
+        },
+      });
+    });
+
+    // Sem `await`, como na edição: a filial já existe, e o endereço vira pino
+    // no mapa quando o serviço de geocodificação responder.
+    this.geo.agendar(criada as FilialLocalizavel);
+    return criada;
   }
 
   /** Atualiza dados de uma filial */

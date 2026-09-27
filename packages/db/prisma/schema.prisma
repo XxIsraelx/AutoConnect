@@ -286,6 +286,12 @@ model TenantSubscription {
   externalCustomerId String?            @map("external_customer_id")
   /// Meio escolhido na contratação (`pix`, `boleto`, `cartao`, `indefinido`).
   paymentMethod      String?            @map("payment_method")
+  /// Tabela de preço em que a loja contratou (`TABELAS_DE_PRECO`, no shared).
+  /// Gravada na primeira contratação e mantida para sempre — a loja paga por
+  /// ela mesmo depois que a tabela vigente subir, e em qualquer plano.
+  priceTable         String?            @map("price_table")
+  /// `mensal` ou `anual` (12 meses pelo preço de 10).
+  billingCycle       String             @default("mensal") @map("billing_cycle")
   /// Até quando a loja escreve depois de vencer. `null` = sem fatura vencida.
   /// Gravado uma vez por vencimento — ver `aplicarEventoDeCobranca`.
   graceUntil         DateTime?          @map("grace_until") @db.Timestamptz()

@@ -2,6 +2,8 @@ import {
   aplicarEventoDeCobranca, avaliarCobranca, CATALOGO_DE_PLANOS, DIAS_DE_AVISO_ANTES,
   DIAS_DE_CARENCIA, ehPlanoPago, FAIXAS, faixaParaEstoque, limiteDeVeiculos,
   PLANO_DA_CORTESIA, PLANOS_PAGOS, somarDias, usoDoEstoque,
+  DIAS_DO_CICLO, TABELA_VIGENTE, TABELAS_DE_PRECO, faixaParaFiliais, limiteDeFiliais,
+  precoDoPlano, tabelaDaLoja,
   type EstadoDaCobranca,
 } from './cobranca';
 
@@ -160,6 +162,82 @@ describe('avaliarCobranca', () => {
     // sem o tratamento, a loja ficaria em trial para sempre.
     const v = avaliarCobranca({ plan: 'trial', status: 'active', trialEndsAt: 'lixo' }, AGORA);
     expect(v.somenteLeitura).toBe(true);
+  });
+});
+
+describe('tabela de preço travada', () => {
+  // Um conjunto de tabelas de mentira: a de lançamento e uma "cheia", mais
+  // cara, como a que vai entrar quando houver integração com portais.
+  const TABELAS = {
+    lancamento: { essencial: 19_700n, crescimento: 34_700n, profissional: 59_700n },
+    cheia: { essencial: 24_700n, crescimento: 44_700n, profissional: 74_700n },
+  };
+
+  it('loja travada no lançamento continua pagando o lançamento depois que a tabela sobe', () => {
+    expect(precoDoPlano('essencial', { tabela: 'lancamento' }, TABELAS, 'cheia')).toBe(19_700n);
+  });
+
+  it('a trava é da TABELA: quem sobe de plano paga o plano novo no preço de lançamento', () => {
+    expect(precoDoPlano('crescimento', { tabela: 'lancamento' }, TABELAS, 'cheia')).toBe(34_700n);
+  });
+
+  it('quem nunca contratou paga a tabela vigente', () => {
+    expect(precoDoPlano('essencial', { tabela: null }, TABELAS, 'cheia')).toBe(24_700n);
+  });
+
+  it('tabela travada que não existe mais cai na vigente, sem quebrar a contratação', () => {
+    expect(tabelaDaLoja('tabela-apagada', TABELAS, 'cheia')).toBe('cheia');
+    expect(tabelaDaLoja('__proto__', TABELAS, 'cheia')).toBe('cheia');
+  });
+
+  it('o catálogo exibido é a tabela vigente', () => {
+    for (const p of PLANOS_PAGOS) {
+      expect(CATALOGO_DE_PLANOS[p].precoMensalCentavos).toBe(TABELAS_DE_PRECO[TABELA_VIGENTE][p]);
+    }
+  });
+});
+
+describe('ciclo anual', () => {
+  it('cobra 10 meses e cobre 12: R$ 1.970 no Essencial de lançamento', () => {
+    expect(precoDoPlano('essencial', { ciclo: 'anual' })).toBe(197_000n);
+    expect(precoDoPlano('crescimento', { ciclo: 'anual' })).toBe(347_000n);
+    expect(precoDoPlano('profissional', { ciclo: 'anual' })).toBe(597_000n);
+  });
+
+  it('sem ciclo, é mensal', () => {
+    expect(precoDoPlano('essencial', {})).toBe(19_700n);
+  });
+
+  it('o pagamento anual cobre 365 dias, e o mensal 30', () => {
+    const atual = { status: 'past_due' as const, currentPeriodEnd: null, graceUntil: dias(3) };
+    const fatura = {
+      idExterno: 'pay_1', status: 'paga' as const, valorCentavos: 197_000n,
+      vencimento: AGORA, pagoEm: AGORA, meio: 'pix' as const, urlPagamento: null,
+    };
+    const evento = { tipo: 'pagamento_confirmado' as const, fatura, ocorridoEm: AGORA };
+
+    expect(aplicarEventoDeCobranca(atual, evento, DIAS_DE_CARENCIA, 'anual').estado.currentPeriodEnd)
+      .toEqual(dias(DIAS_DO_CICLO.anual));
+    expect(aplicarEventoDeCobranca(atual, evento).estado.currentPeriodEnd).toEqual(dias(30));
+  });
+});
+
+describe('limite de filiais', () => {
+  it('1, 2 e 5 filiais por faixa; o trial roda com o da menor', () => {
+    expect(limiteDeFiliais('essencial')).toBe(1);
+    expect(limiteDeFiliais('crescimento')).toBe(2);
+    expect(limiteDeFiliais('profissional')).toBe(5);
+    expect(limiteDeFiliais('trial')).toBe(1);
+  });
+
+  it('a cortesia herda o teto do Crescimento', () => {
+    expect(limiteDeFiliais(PLANO_DA_CORTESIA)).toBe(2);
+  });
+
+  it('diz qual faixa comporta a filial a mais', () => {
+    expect(faixaParaFiliais(2)?.plano).toBe('crescimento');
+    expect(faixaParaFiliais(3)?.plano).toBe('profissional');
+    expect(faixaParaFiliais(6)).toBeNull();
   });
 });
 

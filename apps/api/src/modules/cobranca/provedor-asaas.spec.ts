@@ -226,6 +226,7 @@ describe('ProvedorAsaas — o que sai no corpo', () => {
       idClienteExterno: 'cus_000009236901',
       plano: 'essencial',
       valorCentavos: 27_900n,
+      ciclo: 'mensal',
       meio: 'indefinido',
       primeiroVencimento: new Date('2026-09-28T12:00:00.000Z'),
       descricao: 'AutoConnect — plano Essencial',
@@ -245,6 +246,21 @@ describe('ProvedorAsaas — o que sai no corpo', () => {
     expect(r.idExterno).toBe('sub_bvd0y3fephsyvduy');
   });
 
+  it('assinatura anual vai como YEARLY, com o valor dos 10 meses', async () => {
+    const { p, chamadas } = provedor(() => ({ corpo: { ...ASSINATURA_CRIADA, id: 'sub_anual' } }));
+    await p.criarAssinatura({
+      idClienteExterno: 'cus_000009236901',
+      plano: 'essencial',
+      valorCentavos: 197_000n,
+      ciclo: 'anual',
+      meio: 'indefinido',
+      primeiroVencimento: new Date('2026-09-28T12:00:00.000Z'),
+      descricao: 'AutoConnect — plano Essencial (anual)',
+      referencia: 'assinatura-uuid',
+    });
+    expect(corpoDe(chamadas[0]!)).toMatchObject({ cycle: 'YEARLY', value: 1970 });
+  });
+
   it('o `proximoVencimento` devolvido é o CICLO SEGUINTE, não a primeira fatura', async () => {
     // A armadilha que custou um mês de carência: pedimos 28/09, a Asaas gerou
     // a cobrança para 28/09 e respondeu `nextDueDate: 2026-10-28`. Quem
@@ -252,7 +268,7 @@ describe('ProvedorAsaas — o que sai no corpo', () => {
     // `cobranca.service` usa o vencimento que *pediu*.
     const { p } = provedor(() => ({ corpo: ASSINATURA_CRIADA }));
     const r = await p.criarAssinatura({
-      idClienteExterno: 'cus_000009236901', plano: 'essencial', valorCentavos: 27_900n,
+      idClienteExterno: 'cus_000009236901', plano: 'essencial', valorCentavos: 27_900n, ciclo: 'mensal',
       meio: 'indefinido', primeiroVencimento: new Date('2026-09-28T12:00:00.000Z'),
       descricao: 'x', referencia: 'assinatura-uuid',
     });
@@ -337,7 +353,7 @@ describe('ProvedorAsaas — erros', () => {
     const { p } = provedor(() => ({ status: 401, corpo: {} }));
     await p
       .criarAssinatura({
-        idClienteExterno: 'cus_1', plano: 'essencial', valorCentavos: 27_900n,
+        idClienteExterno: 'cus_1', plano: 'essencial', valorCentavos: 27_900n, ciclo: 'mensal',
         meio: 'pix', primeiroVencimento: new Date(), descricao: 'x', referencia: 'r',
       })
       .catch((e: ErroAsaas) => {

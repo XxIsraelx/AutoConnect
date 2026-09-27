@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import {
-  deCentavos, emCentavos,
-  type AssinaturaNoGateway, type CabecalhosDeCobranca, type ClienteDeCobranca,
+  DIAS_DO_CICLO, deCentavos, emCentavos,
+  type AssinaturaNoGateway, type CicloDeCobranca, type CabecalhosDeCobranca, type ClienteDeCobranca,
   type EventoDeCobranca, type FaturaDoGateway, type MeioDePagamento, type NovaAssinatura,
   type ProvedorDeCobranca, type StatusDeFatura, type TipoEventoCobranca,
 } from '@autoconnect/shared';
@@ -57,6 +57,7 @@ const PARA_GATEWAY: Record<MeioDePagamento, string> = {
 interface AssinaturaEmMemoria {
   idCliente: string;
   valorCentavos: bigint;
+  ciclo: CicloDeCobranca;
   meio: MeioDePagamento;
   referencia: string;
   cancelada: boolean;
@@ -122,6 +123,7 @@ export class ProvedorSimuladoDeCobranca implements ProvedorDeCobranca {
     this.assinaturas.set(id, {
       idCliente: nova.idClienteExterno,
       valorCentavos: nova.valorCentavos,
+      ciclo: nova.ciclo,
       meio: nova.meio,
       referencia: nova.referencia,
       cancelada: false,
@@ -133,7 +135,8 @@ export class ProvedorSimuladoDeCobranca implements ProvedorDeCobranca {
     // devolvia o primeiro vencimento, e era por isso que o e2e não pegava o
     // cálculo errado de carência (validado no sandbox em 25/09/2026).
     const proximoCiclo = new Date(nova.primeiroVencimento);
-    proximoCiclo.setUTCMonth(proximoCiclo.getUTCMonth() + 1);
+    if (nova.ciclo === 'anual') proximoCiclo.setUTCFullYear(proximoCiclo.getUTCFullYear() + 1);
+    else proximoCiclo.setUTCMonth(proximoCiclo.getUTCMonth() + 1);
 
     return Promise.resolve({ idExterno: id, proximoVencimento: proximoCiclo });
   }
@@ -241,7 +244,7 @@ export class ProvedorSimuladoDeCobranca implements ProvedorDeCobranca {
         idExterno: this.proximoId('pay'),
         status: 'pendente',
         pagoEm: null,
-        vencimento: new Date(fatura.vencimento.getTime() + 30 * 86_400_000),
+        vencimento: new Date(fatura.vencimento.getTime() + DIAS_DO_CICLO[a.ciclo] * 86_400_000),
       });
     } else if (acao === 'vencer') {
       fatura.status = 'vencida';

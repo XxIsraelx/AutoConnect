@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Building2, Phone, Globe, Palette, MapPin, ChevronRight,
@@ -14,6 +14,7 @@ import {
   type BusinessHours, defaultBusinessHours, hasBusinessHours, WEEKDAYS_LONG,
 } from '@/lib/businessHours';
 import { AjustesDeCrm } from './AjustesDeCrm';
+import Filiais from './Filiais';
 import AvisoDeEnvioDeFotos from '@/components/AvisoDeEnvioDeFotos';
 import { CATALOGO_DE_PLANOS, mascararTelefoneBr } from '@autoconnect/shared';
 
@@ -30,6 +31,8 @@ const NOME_DO_PLANO: Record<string, string> = {
 interface Branch {
   id: string;
   name: string;
+  isHeadquarters: boolean;
+  isActive: boolean;
   phone: string | null;
   email: string | null;
   addressLine: string | null;
@@ -250,6 +253,31 @@ export default function ConfiguracoesPage() {
     latitude: '', longitude: '',
   });
   const [hours, setHours] = useState<BusinessHours>(defaultBusinessHours());
+  /**
+   * Qual filial o formulário de endereço está editando. Em ref além do estado
+   * para o `load` (que recarrega depois de salvar) manter a escolha sem
+   * depender dela — senão cada troca de filial recarregaria a página.
+   */
+  const [filialId, setFilialId] = useState<string | null>(null);
+  const filialEscolhida = useRef<string | null>(null);
+
+  function preencherFilial(b: Branch) {
+    setBranchForm({
+      name:         b.name          ?? '',
+      phone:        b.phone         ?? '',
+      email:        b.email         ?? '',
+      addressLine:  b.addressLine   ?? '',
+      addressNumber:b.addressNumber ?? '',
+      complement:   b.complement    ?? '',
+      neighborhood: b.neighborhood  ?? '',
+      city:         b.city          ?? '',
+      state:        b.state         ?? '',
+      postalCode:   b.postalCode    ?? '',
+      latitude:     b.latitude  != null ? String(b.latitude)  : '',
+      longitude:    b.longitude != null ? String(b.longitude) : '',
+    });
+    setHours(hasBusinessHours(b.businessHours) ? b.businessHours : defaultBusinessHours());
+  }
 
   const [savingTenant, setSavingTenant] = useState(false);
   const [savingBranch, setSavingBranch] = useState(false);
@@ -281,23 +309,16 @@ export default function ConfiguracoesPage() {
           logoUrl:      t.logoUrl      ?? '',
           acceptsTradeIn: t.acceptsTradeIn ?? false,
         });
-        const b = t.branches[0];
+        // A filial escolhida continua escolhida depois de salvar; sem escolha,
+        // a matriz (ou a primeira ativa).
+        const ativas = t.branches.filter((b) => b.isActive !== false);
+        const b = ativas.find((x) => x.id === filialEscolhida.current)
+          ?? ativas.find((x) => x.isHeadquarters)
+          ?? ativas[0];
         if (b) {
-          setBranchForm({
-            name:         b.name          ?? '',
-            phone:        b.phone         ?? '',
-            email:        b.email         ?? '',
-            addressLine:  b.addressLine   ?? '',
-            addressNumber:b.addressNumber ?? '',
-            complement:   b.complement    ?? '',
-            neighborhood: b.neighborhood  ?? '',
-            city:         b.city          ?? '',
-            state:        b.state         ?? '',
-            postalCode:   b.postalCode    ?? '',
-            latitude:     b.latitude  != null ? String(b.latitude)  : '',
-            longitude:    b.longitude != null ? String(b.longitude) : '',
-          });
-          setHours(hasBusinessHours(b.businessHours) ? b.businessHours : defaultBusinessHours());
+          filialEscolhida.current = b.id;
+          setFilialId(b.id);
+          preencherFilial(b);
         }
       })
       // Sem os dados reais o formulário abriria com os valores padrão, e um
@@ -343,7 +364,8 @@ export default function ConfiguracoesPage() {
 
   async function saveBranch(e: React.FormEvent) {
     e.preventDefault();
-    if (!token || !tenant?.branches[0]) return;
+    const filial = tenant?.branches.find((b) => b.id === filialId);
+    if (!token || !filial) return;
 
     /**
      * Coordenada: as duas juntas ou nenhuma (a API recusa meia coordenada, que
@@ -363,7 +385,7 @@ export default function ConfiguracoesPage() {
 
     setSavingBranch(true);
     try {
-      await api(`/tenant/branch/${tenant.branches[0].id}`, {
+      await api(`/tenant/branch/${filial.id}`, {
         method: 'PATCH',
         token,
         body: JSON.stringify({
@@ -416,6 +438,15 @@ export default function ConfiguracoesPage() {
 
   const setT = (k: string, v: string | boolean) => setTenantForm(f => ({ ...f, [k]: v }));
   const setB = (k: string, v: string) => setBranchForm(f => ({ ...f, [k]: v }));
+  const filiaisAtivas = tenant.branches.filter((b) => b.isActive !== false);
+  const filialAtual = filiaisAtivas.find((b) => b.id === filialId);
+  const escolherFilial = (id: string) => {
+    const b = filiaisAtivas.find((x) => x.id === id);
+    if (!b) return;
+    filialEscolhida.current = id;
+    setFilialId(id);
+    preencherFilial(b);
+  };
 
   return (
     <div className="p-8 max-w-3xl">
@@ -587,10 +618,24 @@ export default function ConfiguracoesPage() {
           <AjustesDeCrm />
         </Section>
 
+        {/* ── Filiais ───────────────────────────────────── */}
+        {token && (
+          <Section title="Filiais" icon={Building2}>
+            <Filiais
+              filiais={filiaisAtivas}
+              selecionada={filialId}
+              plano={tenant.subscription?.plan ?? 'trial'}
+              token={token}
+              onSelecionar={escolherFilial}
+              onCriada={(id) => { filialEscolhida.current = id; load(); showToast('ok', 'Filial criada! Complete o endereço abaixo.'); }}
+            />
+          </Section>
+        )}
+
         {/* ── Endereço da filial ────────────────────────── */}
-        {tenant?.branches[0] && (
+        {filialAtual && (
           <form onSubmit={saveBranch}>
-            <Section title="Endereço e contato da filial" icon={MapPin}>
+            <Section title={`Endereço e contato — ${filialAtual.name}`} icon={MapPin}>
 
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Nome da filial">

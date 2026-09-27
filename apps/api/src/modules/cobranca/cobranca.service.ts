@@ -6,8 +6,9 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@autoconnect/db';
 import {
   aplicarEventoDeCobranca, avaliarCobranca, CATALOGO_DE_PLANOS, deCentavos, DIAS_DE_CARENCIA,
-  faixaParaEstoque, FAIXAS, somarDias, STATUS_QUE_CONTA_NO_LIMITE, usoDoEstoque,
-  type CabecalhosDeCobranca, type EstadoDaCobranca, type EventoDeCobranca, type FaturaDoGateway,
+  faixaParaEstoque, FAIXAS, precoDoPlano, somarDias, STATUS_QUE_CONTA_NO_LIMITE, tabelaDaLoja,
+  usoDoEstoque,
+  type CabecalhosDeCobranca, type CicloDeCobranca, type EstadoDaCobranca, type EventoDeCobranca, type FaturaDoGateway,
   type MeioDePagamento, type PlanoPago, type ProvedorDeCobranca,
 } from '@autoconnect/shared';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -111,14 +112,23 @@ export class CobrancaService {
     };
   }
 
-  /** O catálogo, com os preços já em string decimal (o formato que a API troca). */
-  planos() {
+  /**
+   * O catálogo, com os preços já em string decimal (o formato que a API troca).
+   *
+   * Os preços são os da **tabela da loja** — a travada na primeira contratação
+   * ou, para quem nunca contratou, a vigente. Assim a tela mostra exatamente o
+   * que `contratar` vai cobrar.
+   */
+  planos(tabelaTravada?: string | null) {
+    const tabela = tabelaDaLoja(tabelaTravada);
     return FAIXAS.map((f) => ({
       plano: f.plano,
       nome: f.nome,
       resumo: f.resumo,
-      precoMensal: deCentavos(f.precoMensalCentavos),
+      precoMensal: deCentavos(precoDoPlano(f.plano, { tabela, ciclo: 'mensal' })),
+      precoAnual: deCentavos(precoDoPlano(f.plano, { tabela, ciclo: 'anual' })),
       limiteVeiculos: f.limiteVeiculos,
+      limiteFiliais: f.limiteFiliais,
     }));
   }
 
@@ -146,7 +156,7 @@ export class CobrancaService {
 
     return {
       ...this.capacidade(),
-      planos: this.planos(),
+      planos: this.planos(dados.assinatura?.priceTable),
       assinatura: dados.assinatura
         ? {
             plano: dados.assinatura.plan,
@@ -159,6 +169,10 @@ export class CobrancaService {
               : null,
             canceledAt: dados.assinatura.canceledAt,
             meio: dados.assinatura.paymentMethod,
+            ciclo: dados.assinatura.billingCycle,
+            // Tabela travada: a loja contratou nela e paga por ela em qualquer
+            // plano, mesmo depois de a vigente subir.
+            precoTravado: Boolean(dados.assinatura.priceTable),
             contratada: Boolean(dados.assinatura.externalId),
           }
         : null,
@@ -185,7 +199,12 @@ export class CobrancaService {
 
   /* ── 2. Contratar ──────────────────────────────────────────── */
 
-  async contratar(escopo: Escopo, plano: PlanoPago, meio: MeioDePagamento) {
+  async contratar(
+    escopo: Escopo,
+    plano: PlanoPago,
+    meio: MeioDePagamento,
+    ciclo: CicloDeCobranca = 'mensal',
+  ) {
     const tenantId = this.tenantDe(escopo);
     this.exigirProvedor();
 
@@ -235,6 +254,13 @@ export class CobrancaService {
       atual.assinatura.externalCustomerId,
     );
 
+    // Preço travado por TABELA: a loja que já contratou paga pela tabela em
+    // que contratou, em qualquer plano; quem contrata pela primeira vez trava
+    // a vigente agora. Trocar de plano passa por cancelar e contratar de novo,
+    // e é por isso que a trava fica na loja e sobrevive ao cancelamento.
+    const tabela = tabelaDaLoja(atual.assinatura.priceTable);
+    const valorCentavos = precoDoPlano(plano, { tabela, ciclo });
+
     // Primeiro vencimento: hoje + 3 dias, para o boleto ter tempo de ser
     // registrado e compensado antes de o trial acabar. Quem paga por Pix paga
     // na hora e a confirmação chega antes disso.
@@ -243,10 +269,11 @@ export class CobrancaService {
     const assinatura = await this.provedor.criarAssinatura({
       idClienteExterno: cliente.idExterno,
       plano,
-      valorCentavos: faixa.precoMensalCentavos,
+      valorCentavos,
+      ciclo,
       meio,
       primeiroVencimento,
-      descricao: `AutoConnect — plano ${faixa.nome}`,
+      descricao: `AutoConnect — plano ${faixa.nome}${ciclo === 'anual' ? ' (anual)' : ''}`,
       referencia: atual.assinatura.id,
     });
 
@@ -265,6 +292,8 @@ export class CobrancaService {
           externalId: assinatura.idExterno,
           externalCustomerId: cliente.idExterno,
           paymentMethod: meio,
+          priceTable: tabela,
+          billingCycle: ciclo,
           canceledAt: null,
           // Carência até o primeiro vencimento + a carência normal: a loja que
           // contratou no último dia do trial não pode virar somente leitura
@@ -285,7 +314,7 @@ export class CobrancaService {
     this.estadoDaLoja.invalidar(tenantId);
 
     const fatura = await this.sincronizarFatura(tenantId, assinatura.idExterno);
-    return { contratada: true, plano, fatura };
+    return { contratada: true, plano, ciclo, fatura };
   }
 
   /**
@@ -450,7 +479,10 @@ export class CobrancaService {
       // Idempotência, camada 2: a máquina de estados é pura. Mesmo que a
       // camada 1 falhasse (id de evento diferente para o mesmo fato), aplicar
       // duas vezes dá o mesmo estado.
-      const { estado, mudou } = aplicarEventoDeCobranca(atual, evento);
+      // O período pago depende do ciclo da assinatura: 30 dias no mensal,
+      // 365 no anual.
+      const ciclo: CicloDeCobranca = linha.billingCycle === 'anual' ? 'anual' : 'mensal';
+      const { estado, mudou } = aplicarEventoDeCobranca(atual, evento, DIAS_DE_CARENCIA, ciclo);
 
       if (mudou) {
         await tx.tenantSubscription.update({
