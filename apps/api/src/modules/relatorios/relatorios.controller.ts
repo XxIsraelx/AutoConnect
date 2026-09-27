@@ -65,6 +65,19 @@ export class RelatoriosController {
     this.entregar(res, `estoque_${Date.now()}.csv`, csv);
   }
 
+  /**
+   * GET /tenant/reports/lost-reasons?days=90 — por que a loja perdeu.
+   *
+   * Consolidado no servidor de propósito: o funil de `/negocios` é montado com a
+   * página que está na tela, e contar motivo ali daria o total da página, não o
+   * do período.
+   */
+  @Get('lost-reasons')
+  motivosDePerda(@Req() req: AuthRequest, @Query() query: unknown): Promise<unknown> {
+    const { days } = desempenhoQuerySchema.parse(query);
+    return this.relatorios.motivosDePerda(escopoDa(req.user), req.user, days);
+  }
+
   /* ── Portabilidade ──────────────────────────────────────────── */
 
   /** GET /tenant/reports/appointments.csv */

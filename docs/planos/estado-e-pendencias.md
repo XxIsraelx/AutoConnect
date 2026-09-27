@@ -507,9 +507,11 @@ Dívidas que os itens 6 a 9 da Onda 1 deixaram declaradas:
   responsável e espera alguém pegá-lo no filtro "Sem responsável"; ele não
   entra de novo no rodízio sozinho. Rodar o rodízio ali dentro faria o lead
   circular entre vendedores sem ninguém decidir nada.
-- **Só o lead tem contagem por motivo de perda.** O negócio grava
-  `cancel_reason_code`, mas nenhuma tela ainda agrupa por ele — o funil de
-  valor mostra o motivo no detalhe, não no consolidado.
+- ~~**Só o lead tem contagem por motivo de perda.**~~ — resolvido em 27/09/2026:
+  `GET /tenant/reports/lost-reasons` agrupa os terminais do período por
+  `cancel_reason_code` e o cartão "Por que perdemos" entrou em `/relatorios`. O
+  consolidado é do servidor de propósito: o funil de `/negocios` é montado com a
+  página carregada, e contar ali daria o total da página.
 
 Dívidas que os itens 10 e 11 da Onda 1 deixaram declaradas:
 

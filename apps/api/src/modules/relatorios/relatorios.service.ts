@@ -2,7 +2,10 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@autoconnect/db';
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { ehGlobal, type Escopo } from '../../common/escopo';
-import { calcularComissao, DEAL_FATURADO_STATUSES } from '@autoconnect/shared';
+import {
+  calcularComissao, DEAL_FATURADO_STATUSES, DEAL_TERMINAL_STATUSES,
+  MOTIVOS_DE_CANCELAMENTO_DE_NEGOCIO,
+} from '@autoconnect/shared';
 import { montarCsv, montarCsvComTeto, TETO_DE_LINHAS_CSV } from './csv';
 
 /** Quem enxerga custo, margem e comissão. Mesma lista do `deals.controller`. */
@@ -355,6 +358,72 @@ export class RelatoriosService {
     });
 
     return montarCsvComTeto(cabecalho, linhas);
+  }
+
+  /**
+   * Por que a loja perdeu — consolidado por motivo.
+   *
+   * O negócio grava `cancel_reason_code` desde 23/09/2026 e **nenhuma tela
+   * agrupava por ele**: o motivo aparecia no detalhe de cada negócio, um a um, e
+   * "por que perdemos este mês" não tinha resposta. O lead já tinha essa
+   * contagem (`/leads/stats`); o negócio, não.
+   *
+   * Um `groupBy` só, nunca um laço por motivo: a API roda a ~0,6s do banco.
+   *
+   * O valor sai de `listPrice` — o preço de tabela — porque negócio perdido cedo
+   * não tem valor de venda negociado, e somar `saleValue` faria o total despencar
+   * justamente nos que morreram antes da negociação.
+   *
+   * `codigo: null` é o negócio cancelado antes de 23/09/2026, quando o motivo
+   * não era obrigatório. Aparece como "sem motivo registrado" em vez de sumir:
+   * um total que não fecha com a lista é pior que uma linha honesta.
+   */
+  async motivosDePerda(escopo: Escopo, quem: QuemPede, days: number): Promise<{
+    periodo: { days: number; from: Date };
+    veDinheiro: boolean;
+    total: number;
+    motivos: { codigo: string | null; rotulo: string; quantidade: number; valorDeTabela: string | null }[];
+  }> {
+    const tenantId = this.tenantDe(escopo);
+    const dinheiro = this.veDinheiro(quem);
+    const from = new Date(Date.now() - days * 86_400_000);
+
+    const grupos = await this.prisma.withTenant(tenantId, (tx: ScopedClient) =>
+      tx.deal.groupBy({
+        by: ['cancelReasonCode'],
+        where: {
+          tenantId,
+          status: { in: [...DEAL_TERMINAL_STATUSES] },
+          updatedAt: { gte: from },
+          // Vendedor vê a própria carteira, como no resto do painel.
+          ...(dinheiro ? {} : { salespersonId: quem.id }),
+        },
+        _count: { _all: true },
+        _sum: { listPrice: true },
+      }),
+    );
+
+    const rotulos = new Map<string, string>(
+      MOTIVOS_DE_CANCELAMENTO_DE_NEGOCIO.map((m) => [m.codigo as string, m.rotulo]),
+    );
+
+    const motivos = grupos
+      .map((g) => ({
+        codigo: g.cancelReasonCode ?? null,
+        rotulo: g.cancelReasonCode
+          ? rotulos.get(g.cancelReasonCode) ?? g.cancelReasonCode
+          : 'Sem motivo registrado',
+        quantidade: g._count._all,
+        valorDeTabela: dinheiro ? (g._sum.listPrice?.toFixed(2) ?? '0.00') : null,
+      }))
+      .sort((a, b) => b.quantidade - a.quantidade || a.rotulo.localeCompare(b.rotulo));
+
+    return {
+      periodo: { days, from },
+      veDinheiro: dinheiro,
+      total: motivos.reduce((soma, m) => soma + m.quantidade, 0),
+      motivos,
+    };
   }
 
   /* ── Portabilidade: a loja leva os dados dela ───────────────────

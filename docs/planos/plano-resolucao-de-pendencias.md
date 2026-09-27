@@ -26,7 +26,7 @@ desatualizado.
 | **A** | Captação ligada, dinheiro visível, casa arrumada | ~1 dia | nós |
 | **B** | Três relógios de terceiro que precisam começar a correr | 1 dia nosso + espera | advogado, Clicksign, fornecedor |
 | **C** | Onda 2 do plano de paridade: WhatsApp, portais, push | 3 a 4 semanas | decisões 2 e 3 do plano de paridade |
-| **D** | Portabilidade LGPD e costura do que ficou pela metade | ~1 semana | ✅ D4 e ◐ D1 em 27/09/2026 |
+| **D** | Portabilidade LGPD e costura do que ficou pela metade | ~1 semana | ✅ D3 e D4, ◐ D1 em 27/09/2026 |
 | **E** | Dívidas com gatilho: só viram trabalho quando o gatilho acontecer | — | o gatilho |
 | — | **Adiado por decisão** (NF-e, financeiro da loja) | — | — |
 
@@ -181,7 +181,7 @@ em 25/09/2026. Sobram os três que o mercado cobra, na ordem do
   cliente pelo lead; cliente com conta e **sem** lead na loja é inalcançável
   pela tela. Endpoint novo respeitando a policy `cliente_relacionado` (quem tem
   lead, agendamento ou conversa com a loja — não a base inteira).
-- **D3. Motivo de perda consolidado no negócio.** O negócio grava
+- ✅ **D3. Motivo de perda consolidado no negócio** (27/09/2026). O negócio grava
   `cancel_reason_code` e nenhuma tela agrupa por ele — o lead já tem contagem,
   o negócio mostra só no detalhe. É a pergunta "por que perdemos" respondida
   uma vez por mês.
