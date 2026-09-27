@@ -207,6 +207,22 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
     sem endereço fixo fora da constante.
   - Encontrado em: 27/09/2026 · Claude Cowork · ao planejar o próximo passo do plano growth.
 
+- **CLAUDE.md com duas frases desatualizadas.**
+  - Onde: `CLAUDE.md`, seção "Cadastro de loja e primeiro acesso" (linha do trial) e seção
+    "Testes e CI" (contagem de testes).
+  - O que é: diz "⚠ Nada acontece quando o trial vence — bloqueio é a Onda 3", mas a Onda 3
+    está fechada e a seção "Cobrança e bloqueio por vencimento" do mesmo arquivo diz "Trial
+    vencido bloqueia na hora". E cita 1.036 testes (744 na API), quando o portão rodado depois
+    da PR #6 (e-mails de cobrança) deu 1.045 (753 na API, 292 no shared).
+  - Evidência: `grep -n "Nada acontece quando o trial" CLAUDE.md`; saída do
+    `pnpm exec turbo run typecheck lint test` na branch `claude/emails-corporativos`.
+  - Impacto: quem lê só a seção de cadastro conclui que o trial não bloqueia e pode escrever
+    código ou texto de venda assumindo isso.
+  - Sugestão: trocar a frase por "Trial vencido bloqueia — ver *Cobrança e bloqueio por
+    vencimento*" e atualizar a contagem.
+  - Como testar: `grep` sem "Nada acontece quando o trial"; a contagem bate com a saída do portão.
+  - Encontrado em: 27/09/2026 · Claude Code · na tarefa da seção "No celular" da landing.
+
 **Lacunas frente ao mercado** — Claude Cowork, 27/09/2026, na pesquisa de preços
 ([plano de preços](https://claude.ai/code/artifact/daf7ac7d-5114-4621-9028-3759dbb07be8)).
 O que os concorrentes com preço público entregam e o AutoConnect não. Várias já estão num

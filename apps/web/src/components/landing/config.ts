@@ -28,6 +28,7 @@ export const SECOES = {
   oQueMuda: 'O que muda na loja',
   comoFunciona: 'Como funciona',
   produto: 'O sistema funcionando',
+  celular: 'No celular',
   calculadora: 'Calculadora',
   planos: 'Planos',
   faq: 'Perguntas',
