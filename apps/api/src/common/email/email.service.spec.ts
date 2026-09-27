@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EmailService, esc } from './email.service';
+import { montarEmail } from './layout';
 
 type Enviado = { to: string; subject: string; html: string };
 
@@ -44,7 +45,9 @@ describe('EmailService — conteúdo vindo de formulário', () => {
 
     const { html, subject } = enviados[0];
     expect(html).not.toContain('href="https://golpe.test"');
-    expect(html).not.toContain('<img');
+    // O layout tem a imagem do logo; o que não pode aparecer é a do formulário.
+    expect(html).not.toContain('<img src=x');
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
     expect(html).toContain('&lt;a href=&quot;https://golpe.test&quot;&gt;');
     expect(html).toContain('Silva &amp; Filhos');
     // Assunto é cabeçalho, não HTML: escapar mostraria "&amp;" na caixa de entrada.
@@ -78,7 +81,7 @@ describe('EmailService — conteúdo vindo de formulário', () => {
       tenantName: 'Silva & Filhos',
     });
 
-    expect(enviados[0].html).toContain('<b>Silva &amp; Filhos</b>');
+    expect(enviados[0].html).toContain('<strong>Silva &amp; Filhos</strong>');
     expect(enviados[0].subject).toBe('Convite para a equipe da Silva & Filhos');
   });
 });
@@ -175,5 +178,69 @@ describe('EmailService — Resend', () => {
     await expect(svc.sendPasswordReset('ana@test', 'Ana', 'tok')).rejects.toThrow(
       /domain is not verified/,
     );
+  });
+});
+
+describe('layout único', () => {
+  const marca = { webUrl: 'https://app.test/', suporte: 'suporte@app.test' };
+
+  it('escapa os campos de texto puro e leva preheader, botão com endereço por extenso e rodapé', () => {
+    const html = montarEmail({
+      etiqueta: 'Cobrança <x>',
+      titulo: 'Título & cia',
+      preheader: 'Linha da caixa de entrada',
+      paragrafos: ['<strong>seguro</strong>'],
+      detalhes: [{ rotulo: 'Loja', valor: '<script>alert(1)</script>' }],
+      botao: { texto: 'Abrir', url: 'https://app.test/x?a=1&b=2' },
+      motivo: 'Você recebeu porque sim.',
+    }, marca);
+
+    expect(html).toContain('Cobrança &lt;x&gt;');
+    expect(html).toContain('<title>Título &amp; cia</title>');
+    expect(html).toContain('Linha da caixa de entrada');
+    expect(html).toContain('<strong>seguro</strong>');
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('href="https://app.test/x?a=1&amp;b=2"');
+    expect(html).toContain('Se o botão não funcionar');
+    expect(html).toContain('mailto:suporte@app.test');
+    expect(html).toContain('src="https://app.test/icon-192.png"');
+  });
+});
+
+describe('EmailService — cobrança', () => {
+  it('contratação traz plano, ciclo, valor em reais, vencimento e o link de pagamento', async () => {
+    const { svc, enviados } = servico();
+    await svc.sendAssinaturaContratada({
+      to: 'loja@test', dealerName: 'Auto Sul', plano: 'Essencial', ciclo: 'anual',
+      valor: '1970.00', vencimento: new Date('2026-10-01T15:00:00Z'), urlPagamento: 'https://pagar.test/1',
+    });
+    const { html, subject } = enviados[0];
+    expect(subject).toBe('Assinatura contratada: plano Essencial — AutoConnect');
+    expect(html).toContain('Anual');
+    expect(html).toMatch(/R\$\s1\.970,00/);
+    expect(html).toContain('01 de outubro de 2026');
+    expect(html).toContain('href="https://pagar.test/1"');
+  });
+
+  it('pagamento confirmado, cancelamento e cortesia saem com o assunto certo', async () => {
+    const { svc, enviados } = servico();
+    await svc.sendPagamentoConfirmado({
+      to: 'l@t', dealerName: 'Auto Sul', plano: 'Crescimento', valor: '347.00',
+      pagoEm: new Date('2026-10-01T15:00:00Z'), proximaCobranca: new Date('2026-10-31T15:00:00Z'),
+    });
+    await svc.sendAssinaturaCancelada({ to: 'l@t', dealerName: 'Auto Sul', plano: 'Crescimento', origem: 'estorno' });
+    await svc.sendCortesiaConcedida({ to: 'l@t', dealerName: 'Auto Sul', motivo: 'Loja fundadora', plano: 'Crescimento' });
+    await svc.sendCortesiaRevogada({ to: 'l@t', dealerName: 'Auto Sul', prazo: new Date('2026-10-04T15:00:00Z') });
+
+    expect(enviados.map((e) => e.subject)).toEqual([
+      'Pagamento confirmado — AutoConnect',
+      'Assinatura cancelada — AutoConnect',
+      'Sua loja agora é cortesia — AutoConnect',
+      'A cortesia da sua loja foi encerrada — AutoConnect',
+    ]);
+    expect(enviados[0].html).toContain('31 de outubro de 2026');
+    expect(enviados[1].html).toContain('foi estornado');
+    expect(enviados[2].html).toContain('loja fundadora');
+    expect(enviados[3].html).toContain('04 de outubro de 2026');
   });
 });

@@ -29,6 +29,7 @@ import {
   updateLeadSchema,
   updateTenantSchema,
   updateBranchSchema,
+  novaFilialSchema,
   updateVehicleSchema,
   iniciarConversaSchema,
   conversaDoLeadSchema,
@@ -180,6 +181,7 @@ const ROTAS: Record<string, Declaracao> = {
   /* Loja */
   'PATCH /tenant/me': { schema: updateTenantSchema },
   'PATCH /tenant/branch/:p': { schema: updateBranchSchema },
+  'POST /tenant/branch': { schema: novaFilialSchema },
   'PATCH /crm/settings': { schema: updateCrmSettingsSchema },
 
   /* Conversas */

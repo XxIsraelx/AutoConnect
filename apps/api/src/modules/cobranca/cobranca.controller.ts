@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { z } from 'zod';
-import { MEIOS_DE_PAGAMENTO, PLANOS_PAGOS } from '@autoconnect/shared';
+import { CICLOS_DE_COBRANCA, MEIOS_DE_PAGAMENTO, PLANOS_PAGOS } from '@autoconnect/shared';
 import { escopoDa } from '../../common/escopo';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -21,6 +21,8 @@ export const contratarSchema = z
     // compradores de SaaS no Brasil não usam cartão. Forçar o meio na
     // contratação é escolher por eles.
     meio: z.enum(MEIOS_DE_PAGAMENTO).default('indefinido'),
+    // Mensal por padrão; o anual cobra 10 meses e cobre 12.
+    ciclo: z.enum(CICLOS_DE_COBRANCA).default('mensal'),
   })
   .strict();
 
@@ -54,8 +56,8 @@ export class CobrancaController {
 
   @Post('contratar')
   contratar(@Req() req: AuthRequest, @Body() body: unknown): Promise<unknown> {
-    const { plano, meio } = contratarSchema.parse(body ?? {});
-    return this.cobranca.contratar(escopoDa(req.user), plano, meio);
+    const { plano, meio, ciclo } = contratarSchema.parse(body ?? {});
+    return this.cobranca.contratar(escopoDa(req.user), plano, meio, ciclo);
   }
 
   /** Relê a fatura no gateway — o link de pagamento expira e se renova. */

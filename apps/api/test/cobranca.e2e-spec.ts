@@ -3,7 +3,8 @@ import type { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import request from 'supertest';
 import {
-  CATALOGO_DE_PLANOS, DIAS_DE_CARENCIA, DIAS_PARA_ESCOLHER_PLANO_APOS_CORTESIA, somarDias,
+  CATALOGO_DE_PLANOS, DIAS_DE_CARENCIA, DIAS_DO_CICLO, DIAS_PARA_ESCOLHER_PLANO_APOS_CORTESIA,
+  TABELA_VIGENTE, somarDias,
 } from '@autoconnect/shared';
 
 /** O preço do Essencial como a API o devolve ("197.00"): lido do catálogo, não digitado. */
@@ -17,6 +18,7 @@ import { ProvedorSimuladoDeCobranca } from '../src/modules/cobranca/provedor-sim
 import { EstadoDaLojaService } from '../src/modules/cobranca/estado-da-loja.service';
 import { VencimentosCron } from '../src/modules/cobranca/vencimentos.cron';
 import { CABECALHO_TOKEN_ASAAS } from '../src/modules/cobranca/token-webhook';
+import { EmailService } from '../src/common/email/email.service';
 import { comoApp, criarDoisTenants, type DoisTenants } from './helpers/tenant-fixture';
 
 /**
@@ -120,6 +122,7 @@ describe('Cobrança e bloqueio por vencimento (e2e)', () => {
         courtesySince: null, courtesyReason: null, courtesyGrantedBy: null,
         externalId: null, externalCustomerId: null, externalProvider: null,
         currentPeriodEnd: null, currentPeriodStart: null,
+        priceTable: null, billingCycle: 'mensal',
       });
     }
   });
@@ -445,6 +448,219 @@ describe('Cobrança e bloqueio por vencimento (e2e)', () => {
 
       expect(await dono.vehicle.count({ where: { tenantId: f.a.id } })).toBe(veiculosAntes);
       expect((await get('/vehicles', comoAdmin)).status).toBe(200);
+    });
+  });
+
+  /* ── Preço travado e ciclo anual ────────────────────────── */
+
+  describe('preço travado e ciclo anual', () => {
+    const pagar = async () => {
+      const sub = await assinaturaDe(f.a.id);
+      for (const e of provedor.simular(sub!.externalId!, 'pagar')) {
+        await webhook(e.corpo, String(e.cabecalhos[CABECALHO_TOKEN_ASAAS]));
+      }
+    };
+
+    it('a tela mostra o preço mensal e o anual de cada plano, e o teto de filiais', async () => {
+      const res = await get('/cobranca', comoAdmin);
+      expect(res.body.planos[0]).toMatchObject({
+        plano: 'essencial', precoMensal: PRECO_ESSENCIAL, precoAnual: '1970.00', limiteFiliais: 1,
+      });
+    });
+
+    it('a primeira contratação trava a tabela vigente na loja', async () => {
+      expect((await assinaturaDe(f.a.id))!.priceTable).toBeNull();
+      await post('/cobranca/contratar', comoAdmin, { plano: 'essencial', meio: 'pix' });
+      expect(await assinaturaDe(f.a.id)).toMatchObject({ priceTable: TABELA_VIGENTE, billingCycle: 'mensal' });
+    });
+
+    it('a trava sobrevive a cancelar e contratar outro plano — é assim que se muda de plano', async () => {
+      await post('/cobranca/contratar', comoAdmin, { plano: 'essencial', meio: 'pix' });
+      await post('/cobranca/cancelar', comoAdmin);
+      // Tabela antiga gravada na loja: é a que tem de continuar valendo.
+      await ajustarAssinatura(f.a.id, { priceTable: TABELA_VIGENTE });
+
+      expect((await post('/cobranca/contratar', comoAdmin, { plano: 'crescimento', meio: 'pix' })).status).toBe(201);
+      // O plano novo fica **pendente** até a primeira fatura dele ser paga; o
+      // que este teste fixa é a tabela, que sobrevive ao cancelamento.
+      expect(await assinaturaDe(f.a.id)).toMatchObject({
+        plan: 'trial', pendingPlan: 'crescimento', priceTable: TABELA_VIGENTE,
+      });
+    });
+
+    it('contratar no anual cobra 10 meses de uma vez', async () => {
+      const res = await post('/cobranca/contratar', comoAdmin, { plano: 'essencial', meio: 'pix', ciclo: 'anual' });
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ ciclo: 'anual' });
+      expect(res.body.fatura.valor).toBe('1970.00');
+      expect((await assinaturaDe(f.a.id))!.billingCycle).toBe('anual');
+    });
+
+    it('o pagamento do anual libera 365 dias, não 30', async () => {
+      await post('/cobranca/contratar', comoAdmin, { plano: 'essencial', meio: 'pix', ciclo: 'anual' });
+      const vencimento = (await dono.tenantInvoice.findFirstOrThrow({ where: { tenantId: f.a.id } })).dueDate;
+      await pagar();
+
+      const sub = await assinaturaDe(f.a.id);
+      expect(sub!.status).toBe('active');
+      const dias = (sub!.currentPeriodEnd!.getTime() - vencimento.getTime()) / 86_400_000;
+      expect(Math.round(dias)).toBe(DIAS_DO_CICLO.anual);
+    });
+
+    it('ciclo que não existe é 400', async () => {
+      const res = await post('/cobranca/contratar', comoAdmin, { plano: 'essencial', ciclo: 'semanal' });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  /* ── E-mails de cobrança ────────────────────────────────── */
+
+  describe('e-mails de cobrança', () => {
+    let email: EmailService;
+    const espioes = () => ({
+      contratada: jest.spyOn(email, 'sendAssinaturaContratada').mockResolvedValue(),
+      pago: jest.spyOn(email, 'sendPagamentoConfirmado').mockResolvedValue(),
+      cancelada: jest.spyOn(email, 'sendAssinaturaCancelada').mockResolvedValue(),
+      cortesia: jest.spyOn(email, 'sendCortesiaConcedida').mockResolvedValue(),
+      fimDaCortesia: jest.spyOn(email, 'sendCortesiaRevogada').mockResolvedValue(),
+    });
+    let e: ReturnType<typeof espioes>;
+
+    /** O e-mail sai depois da resposta, sem `await`: espera ele ser chamado. */
+    const chamado = async (espiao: jest.SpyInstance, vezes = 1) => {
+      for (let i = 0; i < 40 && espiao.mock.calls.length < vezes; i++) {
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      // Um respiro a mais para um segundo e-mail indevido ter tempo de aparecer.
+      await new Promise((r) => setTimeout(r, 100));
+      return espiao.mock.calls;
+    };
+
+    const entregar = async (acao: 'pagar' | 'vencer' | 'estornar' | 'cancelar') => {
+      const sub = await assinaturaDe(f.a.id);
+      for (const ev of provedor.simular(sub!.externalId!, acao)) {
+        await webhook(ev.corpo, String(ev.cabecalhos[CABECALHO_TOKEN_ASAAS]));
+      }
+    };
+
+    beforeAll(() => { email = app.get(EmailService, { strict: false }); });
+    beforeEach(() => { e = espioes(); });
+    afterEach(() => jest.restoreAllMocks());
+
+    it('contratar avisa a loja com plano, ciclo, valor e link de pagamento', async () => {
+      await post('/cobranca/contratar', comoAdmin, { plano: 'essencial', meio: 'pix' });
+      const chamadas = await chamado(e.contratada);
+      expect(chamadas).toHaveLength(1);
+      expect(chamadas[0]![0]).toMatchObject({
+        to: `${f.a.slug}@exemplo.test`, plano: 'Essencial', ciclo: 'mensal', valor: PRECO_ESSENCIAL,
+      });
+      expect(chamadas[0]![0].urlPagamento).toMatch(/^https:\/\//);
+    });
+
+    it('pagamento confirmado manda UM e-mail, mesmo com o gateway entregando mais de um evento', async () => {
+      await post('/cobranca/contratar', comoAdmin, { plano: 'essencial', meio: 'pix' });
+      await entregar('pagar');
+      const chamadas = await chamado(e.pago);
+      expect(chamadas).toHaveLength(1);
+      expect(chamadas[0]![0]).toMatchObject({ plano: 'Essencial', valor: PRECO_ESSENCIAL });
+    });
+
+    it('cancelar pela tela avisa uma vez — o aviso do gateway que chega depois não repete', async () => {
+      await post('/cobranca/contratar', comoAdmin, { plano: 'essencial', meio: 'pix' });
+      await post('/cobranca/cancelar', comoAdmin);
+      await entregar('cancelar');
+      const chamadas = await chamado(e.cancelada);
+      expect(chamadas).toHaveLength(1);
+      expect(chamadas[0]![0]).toMatchObject({ origem: 'loja', plano: 'Essencial' });
+    });
+
+    it('estorno encerra a assinatura e o e-mail diz que foi estorno', async () => {
+      await post('/cobranca/contratar', comoAdmin, { plano: 'essencial', meio: 'pix' });
+      await entregar('pagar');
+      await entregar('estornar');
+      const chamadas = await chamado(e.cancelada);
+      expect(chamadas).toHaveLength(1);
+      expect(chamadas[0]![0]).toMatchObject({ origem: 'estorno' });
+    });
+
+    it('conceder e revogar a cortesia avisam a loja', async () => {
+      await patch(`/admin/tenants/${f.a.id}/cortesia`, comoSuperAdmin, { motivo: 'fundadora' });
+      expect((await chamado(e.cortesia))[0]![0]).toMatchObject({ motivo: 'Loja fundadora', plano: 'Crescimento' });
+
+      await http().delete(`/api/v1/admin/tenants/${f.a.id}/cortesia`).set('Authorization', `Bearer ${comoSuperAdmin}`);
+      expect(await chamado(e.fimDaCortesia)).toHaveLength(1);
+    });
+
+    it('e-mail que falha não derruba a contratação', async () => {
+      e.contratada.mockRejectedValue(new Error('provedor de e-mail fora do ar'));
+      const res = await post('/cobranca/contratar', comoAdmin, { plano: 'essencial', meio: 'pix' });
+      expect(res.status).toBe(201);
+      await chamado(e.contratada);
+      expect((await assinaturaDe(f.a.id))!.externalId).not.toBeNull();
+    });
+  });
+
+  /* ── Filiais ────────────────────────────────────────────── */
+
+  describe('limite de filiais do plano', () => {
+    const novaFilial = (t = comoAdmin, nome = `Filial ${Date.now()}`) =>
+      post('/tenant/branch', t, { name: nome, city: 'Valinhos', state: 'SP' });
+
+    const filiaisExtras = async () => {
+      // A fixture cria uma filial por loja; tudo além dela é deste bloco.
+      await dono.dealershipBranch.deleteMany({ where: { tenantId: f.a.id, id: { not: f.a.filialId } } });
+    };
+    beforeEach(filiaisExtras);
+    afterAll(filiaisExtras);
+
+    it('no trial e no Essencial, a segunda filial é recusada com 422 e o plano que resolve', async () => {
+      const res = await novaFilial();
+      expect(res.status).toBe(422);
+      expect(res.body.message).toContain('Crescimento');
+      expect(await dono.dealershipBranch.count({ where: { tenantId: f.a.id } })).toBe(1);
+    });
+
+    it('no Crescimento cabe a segunda, e a terceira pede o Profissional', async () => {
+      await ajustarAssinatura(f.a.id, { plan: 'crescimento' });
+      const criada = await novaFilial();
+      expect(criada.status).toBe(201);
+      expect(criada.body).toMatchObject({ tenantId: f.a.id, isHeadquarters: false, city: 'Valinhos' });
+
+      const terceira = await novaFilial();
+      expect(terceira.status).toBe(422);
+      expect(terceira.body.message).toContain('Profissional');
+    });
+
+    it('a fundadora em cortesia tem o teto do Crescimento', async () => {
+      await patch(`/admin/tenants/${f.a.id}/cortesia`, comoSuperAdmin, { motivo: 'fundadora' });
+      expect((await novaFilial()).status).toBe(201);
+    });
+
+    it('descer de plano não apaga filial: só a próxima é recusada', async () => {
+      await ajustarAssinatura(f.a.id, { plan: 'crescimento' });
+      await novaFilial();
+      await ajustarAssinatura(f.a.id, { plan: 'essencial' });
+
+      expect(await dono.dealershipBranch.count({ where: { tenantId: f.a.id, isActive: true } })).toBe(2);
+      expect((await novaFilial()).status).toBe(422);
+    });
+
+    it('filial desativada não conta no teto', async () => {
+      await ajustarAssinatura(f.a.id, { plan: 'crescimento' });
+      const criada = await novaFilial();
+      await dono.dealershipBranch.update({ where: { id: criada.body.id }, data: { isActive: false } });
+      expect((await novaFilial()).status).toBe(201);
+    });
+
+    it('só o administrador da loja cria filial', async () => {
+      await ajustarAssinatura(f.a.id, { plan: 'profissional' });
+      expect((await novaFilial(comoVendedor)).status).toBe(403);
+    });
+
+    it('a nova filial nunca nasce matriz, e campo desconhecido é recusado', async () => {
+      await ajustarAssinatura(f.a.id, { plan: 'profissional' });
+      const res = await post('/tenant/branch', comoAdmin, { name: 'Outra', isHeadquarters: true });
+      expect(res.status).toBe(400);
     });
   });
 

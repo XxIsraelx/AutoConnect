@@ -306,7 +306,7 @@ export class ProvedorAsaas implements ProvedorDeCobranca {
       billingType: PARA_ASAAS[nova.meio],
       value: paraReais(nova.valorCentavos),
       nextDueDate: dataAsaas(nova.primeiroVencimento),
-      cycle: 'MONTHLY',
+      cycle: nova.ciclo === 'anual' ? 'YEARLY' : 'MONTHLY',
       description: nova.descricao,
       externalReference: nova.referencia,
     });

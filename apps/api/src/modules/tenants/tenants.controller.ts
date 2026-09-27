@@ -1,8 +1,10 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { TenantsService } from './tenants.service';
 import type { AuthenticatedRequest } from '../../common/middleware/tenant.middleware';
 import { escopoDa } from '../../common/escopo';
-import { updateTenantSchema, updateBranchSchema } from '@autoconnect/shared';
+import { novaFilialSchema, updateTenantSchema, updateBranchSchema } from '@autoconnect/shared';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { RolesGuard } from '../../common/guards/roles.guard';
 
 @Controller('tenant')
 export class TenantsController {
@@ -63,6 +65,21 @@ export class TenantsController {
    * schema, e `isHeadquarters` ficou de fora de propósito: trocar a matriz
    * merece rota própria.
    */
+  /**
+   * POST /tenant/branch — nova filial. Só o administrador da loja: é ela que
+   * mexe no plano, e o teto de filiais é do plano (1 / 2 / 5). Acima do teto,
+   * 422 dizendo qual plano comporta.
+   */
+  @Post('branch')
+  @UseGuards(RolesGuard)
+  @Roles('tenant_admin')
+  createBranch(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    return this.tenants.createBranch(req.tenantId!, novaFilialSchema.parse(body));
+  }
+
   @Patch('branch/:id')
   updateBranch(
     @Req() req: AuthenticatedRequest,

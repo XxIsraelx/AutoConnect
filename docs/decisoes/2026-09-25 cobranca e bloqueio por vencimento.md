@@ -325,7 +325,7 @@ cai em `trial`, que é o estado que não cobra ninguém por engano.
   `external_customer_id`, `payment_method`, `grace_until`, `canceled_at`,
   `last_notice_at` em `tenant_subscriptions`, cria `tenant_invoices` e
   `billing_webhook_events` com RLS
-- Migration `20260927150000_plano_pendente_de_pagamento` — `pending_plan` e
+- Migration `20260927160000_plano_pendente_de_pagamento` — `pending_plan` e
   `pending_since` em `tenant_subscriptions`, com CHECK recusando `trial`
 - `apps/api/src/modules/admin/` — as duas ações de cobrança do super admin
 - `apps/api/test/cobranca.e2e-spec.ts` — 62 casos

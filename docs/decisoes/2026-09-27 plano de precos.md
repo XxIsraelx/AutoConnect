@@ -26,14 +26,20 @@ AutoConnect ainda não tem, junto com NF-e (bloco "Lacunas frente ao mercado" da
   e revogada só pelo super admin, com motivo e autor gravados.
 - **Revogar a cortesia** devolve a loja ao trial com 7 dias para escolher um plano — nunca
   bloqueio na hora.
-- **Preço travado por tabela, não por valor** (decidido agora, implementado com a conta na
-  Asaas): quem assina no lançamento fica com a **tabela** de lançamento — se subir do Essencial
-  para o Crescimento, paga o Crescimento de lançamento (R$ 347), não o da tabela cheia.
-- **Limite de filiais** (1 / 2 / 5, decidido agora, implementado com a conta na Asaas):
-  conferido ao **criar** filial, como o teto de estoque é conferido ao publicar. Loja que já
-  tem mais filiais que o plano mantém todas; só a próxima é recusada.
+- **Preço travado por tabela, não por valor:** quem assina no lançamento fica com a **tabela**
+  de lançamento — se subir do Essencial para o Crescimento, paga o Crescimento de lançamento
+  (R$ 347), não o da tabela cheia. A trava é gravada na primeira contratação e fica **na loja**:
+  mudar de plano hoje passa por cancelar e contratar de novo, e a trava tem de sobreviver a isso.
+  Consequência aceita: a loja que cancela e volta meses depois também volta no preço de
+  lançamento.
+- **Limite de filiais** (1 / 2 / 5): conferido ao **criar** filial, como o teto de estoque é
+  conferido ao publicar. Loja que já tem mais filiais que o plano mantém todas; só a próxima é
+  recusada (422, dizendo o plano que comporta). Filial desativada não conta. Até 27/09/2026 não
+  existia como criar filial nenhuma — a matriz nascia no cadastro e era a única; o cadastro de
+  filial entrou junto com o limite (`POST /tenant/branch`, só `tenant_admin`).
 - **Tabela cheia** (sugestão de R$ 247 / R$ 447 / R$ 747) só quando houver integração com portais.
-- **Anual:** 12 meses pelo preço de 10, quando o adaptador da Asaas ganhar o ciclo anual.
+- **Anual:** 12 meses pelo preço de 10, uma cobrança só (`YEARLY` na Asaas); o pagamento cobre
+  365 dias.
 
 ## Por quê
 - R$ 197 fica abaixo de Auto Adm e Autoconf na entrada, que é onde estão as revendas pequenas
@@ -63,4 +69,10 @@ AutoConnect ainda não tem, junto com NF-e (bloco "Lacunas frente ao mercado" da
 - `cobranca.e2e-spec.ts`, bloco "cortesia".
 - Tela de plano (`/configuracoes/plano`), gaveta da loja no painel do super admin e a seção de
   planos da landing, que lê os preços do catálogo.
-- **Ainda não:** preço travado, limite de filiais e ciclo anual — dependem da conta na Asaas.
+- Preço travado e anual: `TABELAS_DE_PRECO`, `tabelaDaLoja`, `precoDoPlano` e `DIAS_DO_CICLO`
+  no shared; `price_table` e `billing_cycle` na assinatura (migration
+  `20260927150000_preco_travado_e_ciclo`); `contratar` com `ciclo`; adaptador da Asaas e
+  provedor simulado.
+- Filiais: `limiteDeFiliais` no shared, `createBranch` em `tenants.service.ts`, `Filiais.tsx` em
+  `/configuracoes`.
+- `cobranca.e2e-spec.ts`, blocos "preço travado e ciclo anual" e "limite de filiais do plano".

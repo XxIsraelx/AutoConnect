@@ -118,5 +118,9 @@ relatórios) são capturas do produto, não desenhos. Quando uma dessas telas mu
 3. Chrome headless (`--remote-debugging-port`), 1440×900 com `deviceScaleFactor: 2`, tema
    escuro e `autoconnect:notif-dismissed = 1`; o chat logado como o vendedor dono da conversa
    (senão as mensagens dele aparecem do lado do cliente); `Page.captureScreenshot` em WebP 82.
+4. As três de `apps/web/public/landing/mobile/` (leads, chat, agenda — seção "No celular")
+   saem do mesmo roteiro em 390×844, `mobile: true`, `deviceScaleFactor: 2`, logado como
+   `vendedor2` (o Diego). Na de leads, role o `<main>` até a busca, para o primeiro cartão —
+   com a etiqueta do prazo — ficar no alto da tela.
 
 Nenhum dado real aparece: nomes, telefones e e-mails são os fictícios do seed.

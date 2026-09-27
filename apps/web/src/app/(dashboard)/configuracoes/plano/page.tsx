@@ -10,8 +10,9 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import {
-  formatarBRL, MEIOS_DE_PAGAMENTO, ROTULO_FATURA, ROTULO_MEIO, ROTULO_MOTIVO_DE_CORTESIA,
-  type MeioDePagamento, type MotivoDeCortesia, type PlanoPago, type SituacaoDeCobranca, type StatusDeFatura,
+  CICLOS_DE_COBRANCA, formatarBRL, MEIOS_DE_PAGAMENTO, ROTULO_CICLO, ROTULO_FATURA, ROTULO_MEIO,
+  ROTULO_MOTIVO_DE_CORTESIA,
+  type CicloDeCobranca, type MeioDePagamento, type MotivoDeCortesia, type PlanoPago, type SituacaoDeCobranca, type StatusDeFatura,
 } from '@autoconnect/shared';
 
 /* ── Tipos (o que a API devolve em GET /cobranca) ────────── */
@@ -21,7 +22,10 @@ interface PlanoDaApi {
   nome: string;
   resumo: string;
   precoMensal: string;
+  /** Os 10 meses cobrados de uma vez no anual. */
+  precoAnual: string;
   limiteVeiculos: number | null;
+  limiteFiliais: number | null;
 }
 
 interface Fatura {
@@ -53,6 +57,9 @@ interface Resumo {
     graceUntil: string | null;
     canceledAt: string | null;
     meio: string | null;
+    ciclo: CicloDeCobranca;
+    /** A loja contratou numa tabela e paga por ela em qualquer plano. */
+    precoTravado: boolean;
     contratada: boolean;
     /** Loja isenta (fundadora ou interna). `null` = paga como qualquer outra. */
     cortesia: { desde: string; motivo: MotivoDeCortesia | null } | null;
@@ -141,6 +148,7 @@ export default function PlanoECobrancaPage() {
 
   const [escolhido, setEscolhido] = useState<PlanoPago | null>(null);
   const [meio, setMeio] = useState<MeioDePagamento>('indefinido');
+  const [ciclo, setCiclo] = useState<CicloDeCobranca>('mensal');
   const [acao, setAcao] = useState<'contratar' | 'atualizar' | 'cancelar' | null>(null);
   const [erroDeAcao, setErroDeAcao] = useState('');
   const [ok, setOk] = useState('');
@@ -153,6 +161,8 @@ export default function PlanoECobrancaPage() {
       const r = await api<Resumo>('/cobranca', { token });
       setResumo(r);
       setEscolhido((atual) => atual ?? r.uso.faixaSugerida ?? r.planos[0]?.plano ?? null);
+      // Quem já assina começa vendo os preços no ciclo em que paga.
+      if (r.assinatura?.contratada) setCiclo(r.assinatura.ciclo);
     } catch (e) {
       setErroDeCarga(e);
     } finally {
@@ -170,7 +180,7 @@ export default function PlanoECobrancaPage() {
       if (qual === 'contratar') {
         if (!escolhido) return;
         await api('/cobranca/contratar', {
-          token, method: 'POST', body: JSON.stringify({ plano: escolhido, meio }),
+          token, method: 'POST', body: JSON.stringify({ plano: escolhido, meio, ciclo }),
         });
         // A frase diz o que é verdade: contratar registra a escolha, e é o
         // pagamento que troca o plano. Dizer "plano contratado" e pronto é o
@@ -262,7 +272,7 @@ export default function PlanoECobrancaPage() {
               `desde ${data(resumo.assinatura.cortesia.desde)}: sua loja não paga assinatura.`
             : resumo.aviso ??
             (resumo.assinatura?.currentPeriodEnd
-              ? `Tudo em dia. Próxima cobrança em ${data(resumo.assinatura.currentPeriodEnd)}.`
+              ? `Tudo em dia. Próxima cobrança ${resumo.assinatura.ciclo === 'anual' ? '(anual) ' : ''}em ${data(resumo.assinatura.currentPeriodEnd)}.`
               : 'Tudo em dia.')}
         </p>
         {resumo.prazoAte && (
@@ -341,6 +351,23 @@ export default function PlanoECobrancaPage() {
       {/* Loja em cortesia não contrata: a API recusaria com 409. */}
       {resumo.assinatura?.cortesia ? null : resumo.disponivel ? (
         <Section title={resumo.assinatura?.contratada ? 'Mudar de plano' : 'Escolher um plano'} icon={CreditCard}>
+          {/* Ciclo: o anual cobra 10 meses e cobre 12. */}
+          <div role="radiogroup" aria-label="Ciclo de cobrança" className="inline-flex rounded-xl border border-slate-200 dark:border-slate-700 p-1 mb-4">
+            {CICLOS_DE_COBRANCA.map((c) => (
+              <button
+                key={c}
+                type="button"
+                role="radio"
+                aria-checked={ciclo === c}
+                onClick={() => setCiclo(c)}
+                className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition ${
+                  ciclo === c ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                {ROTULO_CICLO[c]}{c === 'anual' && <span className="ml-1 text-xs opacity-80">· 2 meses grátis</span>}
+              </button>
+            ))}
+          </div>
           <div className="grid gap-3 sm:grid-cols-3">
             {resumo.planos.map((p) => {
               const ativo = escolhido === p.plano;
@@ -371,11 +398,16 @@ export default function PlanoECobrancaPage() {
                     )}
                   </div>
                   <p className="text-lg font-bold text-slate-900 dark:text-white mt-1">
-                    {formatarBRL(p.precoMensal)}
-                    <span className="text-xs font-medium text-slate-500">/mês</span>
+                    {formatarBRL(ciclo === 'anual' ? p.precoAnual : p.precoMensal)}
+                    <span className="text-xs font-medium text-slate-500">{ciclo === 'anual' ? '/ano' : '/mês'}</span>
                   </p>
+                  {ciclo === 'anual' && (
+                    <p className="text-[11px] text-slate-500">12 meses pelo preço de 10</p>
+                  )}
                   <p className="text-xs text-slate-500 mt-1">
                     {p.limiteVeiculos === null ? 'Estoque ilimitado' : `Até ${p.limiteVeiculos} veículos`}
+                    {' · '}
+                    {p.limiteFiliais === null ? 'filiais ilimitadas' : `${p.limiteFiliais} filia${p.limiteFiliais === 1 ? 'l' : 'is'}`}
                   </p>
                   <p className="text-xs text-slate-400 mt-1.5">{p.resumo}</p>
                 </button>
@@ -383,7 +415,12 @@ export default function PlanoECobrancaPage() {
             })}
           </div>
 
-          <p className="text-xs text-slate-500 mt-4">Usuários ilimitados em todos os planos.</p>
+          <p className="text-xs text-slate-500 mt-4">
+            Usuários ilimitados em todos os planos.{' '}
+            {resumo.assinatura?.precoTravado
+              ? 'Sua loja tem o preço de lançamento travado: estes valores valem em qualquer plano, mesmo depois que a tabela subir.'
+              : 'Preço de lançamento: quem contrata agora fica com ele, em qualquer plano, mesmo depois que a tabela subir.'}
+          </p>
 
           <div className="mt-4">
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">

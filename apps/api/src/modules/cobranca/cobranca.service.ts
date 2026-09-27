@@ -6,8 +6,9 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@autoconnect/db';
 import {
   aplicarEventoDeCobranca, avaliarCobranca, CATALOGO_DE_PLANOS, deCentavos, DIAS_DE_CARENCIA,
-  ehPlanoPago, faixaParaEstoque, FAIXAS, somarDias, STATUS_QUE_CONTA_NO_LIMITE, usoDoEstoque,
-  type CabecalhosDeCobranca, type EstadoDaCobranca, type EventoDeCobranca, type FaturaDoGateway,
+  ehPlanoPago, faixaParaEstoque, FAIXAS, precoDoPlano, somarDias, STATUS_QUE_CONTA_NO_LIMITE, tabelaDaLoja,
+  usoDoEstoque,
+  type CabecalhosDeCobranca, type CicloDeCobranca, type EstadoDaCobranca, type EventoDeCobranca, type FaturaDoGateway,
   type MeioDePagamento, type PlanoPago, type ProvedorDeCobranca,
 } from '@autoconnect/shared';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -17,6 +18,7 @@ import { PROVEDOR_DE_COBRANCA } from './provedor';
 import { ProvedorSimuladoDeCobranca, type AcaoSimuladaDeCobranca } from './provedor-simulado';
 import { sha256Hex } from './token-webhook';
 import { EstadoDaLojaService } from './estado-da-loja.service';
+import { EmailService } from '../../common/email/email.service';
 
 /**
  * O evento normalizado, em JSON gravável.
@@ -79,7 +81,38 @@ export class CobrancaService {
     private readonly config: ConfigService,
     @Inject(PROVEDOR_DE_COBRANCA)
     private readonly provedor: ProvedorDeCobranca,
+    private readonly email: EmailService,
   ) {}
+
+  /**
+   * Avisa a loja por e-mail, no endereço principal dela.
+   *
+   * **Nunca derruba o que já aconteceu**: o e-mail sai depois de a contratação,
+   * o pagamento ou o cancelamento estarem gravados, sem `await` de quem chamou,
+   * e falha só vira aviso no log. Um provedor de e-mail fora do ar não pode
+   * fazer o webhook responder erro (a Asaas reentregaria) nem a contratação
+   * parecer que falhou.
+   */
+  private avisarLoja(
+    tenantId: string,
+    envio: (loja: { email: string; nome: string }) => Promise<void>,
+  ): void {
+    void (async () => {
+      try {
+        const loja = await this.prisma.withTenant(tenantId, (tx) =>
+          tx.tenant.findFirst({ where: { id: tenantId }, select: { primaryEmail: true, tradeName: true } }),
+        );
+        if (!loja?.primaryEmail) return;
+        await envio({ email: loja.primaryEmail, nome: loja.tradeName });
+      } catch (err) {
+        this.logger.warn(`E-mail de cobrança não saiu para a loja ${tenantId}: ${err}`);
+      }
+    })();
+  }
+
+  private nomeDoPlano(plano: string): string {
+    return ehPlanoPago(plano) ? CATALOGO_DE_PLANOS[plano].nome : 'Período de teste';
+  }
 
   private tenantDe(escopo: Escopo): string {
     if (ehGlobal(escopo)) {
@@ -111,14 +144,23 @@ export class CobrancaService {
     };
   }
 
-  /** O catálogo, com os preços já em string decimal (o formato que a API troca). */
-  planos() {
+  /**
+   * O catálogo, com os preços já em string decimal (o formato que a API troca).
+   *
+   * Os preços são os da **tabela da loja** — a travada na primeira contratação
+   * ou, para quem nunca contratou, a vigente. Assim a tela mostra exatamente o
+   * que `contratar` vai cobrar.
+   */
+  planos(tabelaTravada?: string | null) {
+    const tabela = tabelaDaLoja(tabelaTravada);
     return FAIXAS.map((f) => ({
       plano: f.plano,
       nome: f.nome,
       resumo: f.resumo,
-      precoMensal: deCentavos(f.precoMensalCentavos),
+      precoMensal: deCentavos(precoDoPlano(f.plano, { tabela, ciclo: 'mensal' })),
+      precoAnual: deCentavos(precoDoPlano(f.plano, { tabela, ciclo: 'anual' })),
       limiteVeiculos: f.limiteVeiculos,
+      limiteFiliais: f.limiteFiliais,
     }));
   }
 
@@ -146,7 +188,7 @@ export class CobrancaService {
 
     return {
       ...this.capacidade(),
-      planos: this.planos(),
+      planos: this.planos(dados.assinatura?.priceTable),
       assinatura: dados.assinatura
         ? {
             /** O plano **efetivo** — o que a loja tem hoje. */
@@ -163,6 +205,10 @@ export class CobrancaService {
               : null,
             canceledAt: dados.assinatura.canceledAt,
             meio: dados.assinatura.paymentMethod,
+            ciclo: dados.assinatura.billingCycle,
+            // Tabela travada: a loja contratou nela e paga por ela em qualquer
+            // plano, mesmo depois de a vigente subir.
+            precoTravado: Boolean(dados.assinatura.priceTable),
             contratada: Boolean(dados.assinatura.externalId),
           }
         : null,
@@ -230,7 +276,12 @@ export class CobrancaService {
    * não pode deixar a loja sem assinatura nenhuma. Se a loja nunca pagar o
    * plano novo, o `PAYMENT_OVERDUE` da fatura dele abre a carência normal.
    */
-  async contratar(escopo: Escopo, plano: PlanoPago, meio: MeioDePagamento) {
+  async contratar(
+    escopo: Escopo,
+    plano: PlanoPago,
+    meio: MeioDePagamento,
+    ciclo: CicloDeCobranca = 'mensal',
+  ) {
     const tenantId = this.tenantDe(escopo);
     this.exigirProvedor();
 
@@ -292,6 +343,13 @@ export class CobrancaService {
       atual.assinatura.externalCustomerId,
     );
 
+    // Preço travado por TABELA: a loja que já contratou paga pela tabela em
+    // que contratou, em qualquer plano; quem contrata pela primeira vez trava
+    // a vigente agora. Trocar de plano passa por cancelar e contratar de novo,
+    // e é por isso que a trava fica na loja e sobrevive ao cancelamento.
+    const tabela = tabelaDaLoja(atual.assinatura.priceTable);
+    const valorCentavos = precoDoPlano(plano, { tabela, ciclo });
+
     // Primeiro vencimento: hoje + 3 dias, para o boleto ter tempo de ser
     // registrado e compensado antes de o trial acabar. Quem paga por Pix paga
     // na hora e a confirmação chega antes disso.
@@ -300,10 +358,11 @@ export class CobrancaService {
     const assinatura = await this.provedor.criarAssinatura({
       idClienteExterno: cliente.idExterno,
       plano,
-      valorCentavos: faixa.precoMensalCentavos,
+      valorCentavos,
+      ciclo,
       meio,
       primeiroVencimento,
-      descricao: `AutoConnect — plano ${faixa.nome}`,
+      descricao: `AutoConnect — plano ${faixa.nome}${ciclo === 'anual' ? ' (anual)' : ''}`,
       referencia: atual.assinatura.id,
     });
 
@@ -342,6 +401,8 @@ export class CobrancaService {
           externalId: assinatura.idExterno,
           externalCustomerId: cliente.idExterno,
           paymentMethod: meio,
+          priceTable: tabela,
+          billingCycle: ciclo,
           canceledAt: null,
           // Carência até o primeiro vencimento + a carência normal: a loja que
           // contratou no último dia do trial não pode virar somente leitura
@@ -363,10 +424,22 @@ export class CobrancaService {
     this.estadoDaLoja.invalidar(tenantId);
 
     const fatura = await this.sincronizarFatura(tenantId, assinatura.idExterno, `AutoConnect — plano ${faixa.nome}`);
+
+    this.avisarLoja(tenantId, (loja) => this.email.sendAssinaturaContratada({
+      to: loja.email,
+      dealerName: loja.nome,
+      plano: faixa.nome,
+      ciclo,
+      valor: fatura?.valor ?? deCentavos(valorCentavos),
+      vencimento: fatura?.vencimento ?? primeiroVencimento,
+      urlPagamento: fatura?.urlPagamento ?? null,
+    }));
+
     return {
       contratada: true,
       /** O plano contratado. Ele **ainda não vale**: falta o pagamento. */
       plano,
+      ciclo,
       pendente: true,
       /** O que a loja tem enquanto a fatura não é paga. */
       planoEfetivo: atual.assinatura.plan,
@@ -454,7 +527,10 @@ export class CobrancaService {
     const tenantId = this.tenantDe(escopo);
 
     const assinatura = await this.prisma.withTenant(tenantId, (tx) =>
-      tx.tenantSubscription.findUnique({ where: { tenantId }, select: { externalId: true, status: true } }),
+      tx.tenantSubscription.findUnique({
+        where: { tenantId },
+        select: { externalId: true, status: true, plan: true, pendingPlan: true },
+      }),
     );
     if (!assinatura) throw new NotFoundException('Assinatura não encontrada');
     if (assinatura.status === 'canceled') return { cancelada: true };
@@ -476,6 +552,15 @@ export class CobrancaService {
       }),
     );
     this.estadoDaLoja.invalidar(tenantId);
+
+    // O `SUBSCRIPTION_DELETED` que o gateway manda depois encontra a assinatura
+    // já cancelada e não muda nada — então não gera um segundo e-mail.
+    this.avisarLoja(tenantId, (loja) => this.email.sendAssinaturaCancelada({
+      to: loja.email, dealerName: loja.nome, origem: 'loja',
+      // O plano contratado vem primeiro: quem cancela antes de pagar a primeira
+      // fatura está cancelando o plano que escolheu, não o trial.
+      plano: this.nomeDoPlano(assinatura.pendingPlan ?? assinatura.plan),
+    }));
 
     return { cancelada: true };
   }
@@ -503,6 +588,14 @@ export class CobrancaService {
     }
 
     const chave = evento.idEvento ?? sha256Hex(corpo);
+    /** O que o evento mudou, para o e-mail que sai depois da transação. */
+    // O e-mail é montado fora da transação, e precisa dos dois lados do evento:
+    // o estado que saiu dele e o que havia antes. Qual plano **nomear** depende
+    // do caso — pagamento nomeia o que passou a valer, cancelamento nomeia o que
+    // a loja tinha em mãos (inclusive o contratado e não pago).
+    const mudanca: {
+      de: { estado: EstadoDaCobranca; planoAntes: string; pendenteAntes: string | null } | null;
+    } = { de: null };
 
     const resultado = await this.prisma.withTenant(alvo.tenantId, async (tx) => {
       // Idempotência, camada 1: `(provider, event_key)` é único. A segunda
@@ -560,7 +653,10 @@ export class CobrancaService {
       // Idempotência, camada 2: a máquina de estados é pura. Mesmo que a
       // camada 1 falhasse (id de evento diferente para o mesmo fato), aplicar
       // duas vezes dá o mesmo estado.
-      const { estado, mudou } = aplicarEventoDeCobranca(atual, evento);
+      // O período pago depende do ciclo da assinatura: 30 dias no mensal,
+      // 365 no anual.
+      const ciclo: CicloDeCobranca = linha.billingCycle === 'anual' ? 'anual' : 'mensal';
+      const { estado, mudou } = aplicarEventoDeCobranca(atual, evento, DIAS_DE_CARENCIA, ciclo);
 
       if (mudou) {
         await tx.tenantSubscription.update({
@@ -587,6 +683,7 @@ export class CobrancaService {
         data: { applied: mudou },
       });
 
+      if (mudou) mudanca.de = { estado, planoAntes: linha.plan, pendenteAntes: linha.pendingPlan };
       return { aplicado: mudou, motivo: mudou ? undefined : ('sem-efeito' as const) };
     });
 
@@ -605,6 +702,36 @@ export class CobrancaService {
     // bloqueada até o cache de 30 s expirar — e 30 segundos olhando para um
     // aviso de bloqueio depois de pagar é tempo de sobra para abrir um chamado.
     this.estadoDaLoja.invalidar(alvo.tenantId);
+
+    // E-mail só quando o evento **mudou** o estado: a reentrega do mesmo
+    // evento, e o `PAYMENT_RECEIVED` que chega depois do `PAYMENT_CONFIRMED`,
+    // não mudam nada — e não mandam um segundo e-mail.
+    if (mudanca.de) {
+      const { estado, planoAntes, pendenteAntes } = mudanca.de;
+      if (evento.tipo === 'pagamento_confirmado') {
+        this.avisarLoja(alvo.tenantId, (loja) => this.email.sendPagamentoConfirmado({
+          to: loja.email,
+          dealerName: loja.nome,
+          // `estado.plan`, não o de antes: é este pagamento que promove o plano
+          // contratado, e o e-mail que confirma a compra tem de nomear o que a
+          // loja acabou de ganhar — não o trial de onde ela saiu.
+          plano: this.nomeDoPlano(estado.plan),
+          valor: evento.fatura ? deCentavos(evento.fatura.valorCentavos) : null,
+          pagoEm: evento.fatura?.pagoEm ?? evento.ocorridoEm,
+          proximaCobranca: estado.currentPeriodEnd,
+        }));
+      } else if (estado.status === 'canceled') {
+        this.avisarLoja(alvo.tenantId, (loja) => this.email.sendAssinaturaCancelada({
+          to: loja.email,
+          dealerName: loja.nome,
+          // O que morreu foi o que a loja contratou. Se a primeira fatura nunca
+          // foi paga, o plano efetivo ainda é o trial — e dizer "assinatura do
+          // Período de teste cancelada" não descreveria nada do que aconteceu.
+          plano: this.nomeDoPlano(pendenteAntes ?? planoAntes),
+          origem: evento.tipo === 'reembolso' ? 'estorno' : 'gateway',
+        }));
+      }
+    }
 
     return { recebido: true, ...resultado };
   }
