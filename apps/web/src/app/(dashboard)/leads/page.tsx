@@ -6,12 +6,12 @@ import {
   XCircle, MessageSquare, ChevronDown, Loader2,
   Search, X, RefreshCw, ExternalLink, Download,
   History, UserCheck, Send, Repeat, Handshake, UserPlus,
-  AlertTriangle, Timer, Inbox,
+  AlertTriangle, Timer, Inbox, MessageCircle,
 } from 'lucide-react';
 import {
   FILTROS_DE_RESPONSAVEL, FILTROS_DE_SLA, MOTIVOS_DE_PERDA_DE_LEAD,
   rotuloDoMotivo, situacaoDoSla, type FiltroDeResponsavel, type FiltroDeSla,
-  type SlaSituacao,
+  type SlaSituacao, ehCelularBr,
 } from '@autoconnect/shared';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
@@ -967,7 +967,7 @@ function HistoryModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
 /* ── LeadCard ────────────────────────────────────────────── */
 
 function LeadCard({
-  lead, onStatusChange, onShowHistory, onChat, chatLoading, onRecarregar, slaAlerta,
+  lead, onStatusChange, onShowHistory, onChat, chatLoading, onRecarregar, slaAlerta, onWhatsApp,
 }: {
   lead: Lead;
   onStatusChange: (lead: Lead) => void;
@@ -976,6 +976,8 @@ function LeadCard({
   onChat:         (lead: Lead) => void;
   chatLoading:    boolean;
   slaAlerta:      number;
+  /** Só quando a loja tem o WhatsApp oficial conectado. */
+  onWhatsApp?:    (lead: Lead) => void;
 }) {
   const name  = lead.customer?.fullName ?? lead.contactName ?? 'Cliente';
   const email = lead.customer?.email ?? lead.contactEmail;
@@ -1111,6 +1113,20 @@ function LeadCard({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-2 border-t borda">
         <ContatoDoLead leadId={lead.id} phone={phone} email={email} compacto />
         <div className="ml-auto flex items-center gap-3 shrink-0">
+          {/* WhatsApp oficial: a conversa sai pelo número da loja e fica no
+              Chat, ligada a este lead — diferente do ícone de WhatsApp ao lado,
+              que abre o app no celular do vendedor. */}
+          {onWhatsApp && ehCelularBr(phone) && (
+            <button
+              onClick={() => onWhatsApp(lead)}
+              disabled={chatLoading}
+              className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400
+                         hover:text-emerald-500 transition-colors disabled:opacity-50"
+              title="Conversar pelo WhatsApp oficial da loja, dentro do sistema"
+            >
+              <MessageCircle size={10} /> WhatsApp da loja
+            </button>
+          )}
           {/* B11 — o botão exigia `lead.customer?.id`, e o lead da Onda 0 nasce
               sem conta por definição: o chat que o produto anuncia não existia
               justamente para o lead que ele mesmo captura. Agora a conversa
@@ -1171,6 +1187,35 @@ export default function LeadsPage() {
   const [erroChat, setErroChat] = useState<string | null>(null);
   const [novoLead, setNovoLead]           = useState(false);
   const [avisoDeDedupe, setAvisoDeDedupe] = useState(false);
+
+  /**
+   * O WhatsApp oficial está conectado? Decide se o card oferece o botão.
+   * Falha aqui só esconde o botão: o lead continua com o "Conversar" e com o
+   * WhatsApp do celular, que não dependem disto.
+   */
+  const [whatsappConectado, setWhatsappConectado] = useState(false);
+  useEffect(() => {
+    if (!token) return;
+    api<{ disponivel: boolean; conta: unknown }>('/whatsapp/capacidade', { token })
+      .then((c) => setWhatsappConectado(c.disponivel && !!c.conta))
+      // Silencioso com motivo: sem a resposta, o botão só não aparece.
+      .catch(() => setWhatsappConectado(false));
+  }, [token]);
+
+  async function openWhatsApp(lead: Lead) {
+    if (!token) return;
+    setChatLoadingId(lead.id);
+    setErroChat(null);
+    try {
+      const conv = await api<{ id: string }>('/whatsapp/conversas', {
+        method: 'POST', token, body: { leadId: lead.id },
+      });
+      router.push(`/chat?c=${conv.id}`);
+    } catch (err) {
+      setErroChat(textoDoErro(err));
+      setChatLoadingId(null);
+    }
+  }
 
   async function openChat(lead: Lead) {
     if (!token) return;
@@ -1508,7 +1553,7 @@ export default function LeadsPage() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map(lead => (
-              <LeadCard key={lead.id} lead={lead} onStatusChange={handleLeadAtualizado} onShowHistory={setHistoryLead} onChat={openChat} chatLoading={chatLoadingId === lead.id} onRecarregar={() => loadLeads(true)} slaAlerta={slaAlerta} />
+              <LeadCard key={lead.id} lead={lead} onStatusChange={handleLeadAtualizado} onShowHistory={setHistoryLead} onChat={openChat} chatLoading={chatLoadingId === lead.id} onRecarregar={() => loadLeads(true)} slaAlerta={slaAlerta} onWhatsApp={whatsappConectado ? openWhatsApp : undefined} />
             ))}
           </div>
 

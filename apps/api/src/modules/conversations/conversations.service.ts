@@ -402,6 +402,7 @@ export class ConversationsService {
         where: { id },
         data: {
           lastMessageAt: new Date(),
+          customerLastMessageAt: new Date(),
           unreadCountSalesperson: { increment: 1 },
         },
       });

@@ -115,5 +115,16 @@ process.env.GEOCODIFICACAO_DESLIGADA = '1';
 // exercitados a partir de um valor conhecido.
 process.env.ASAAS_SAQUE_TOKEN = 'token-de-saque-de-teste';
 
+// WhatsApp oficial: simulado, sobrescrevendo o `.env`. No dia em que o `.env`
+// tiver a Meta configurada, a suíte mandaria mensagem de verdade para os
+// telefones fictícios dos testes — e modelo custa. O simulado roda em memória.
+process.env.WHATSAPP_FORNECEDOR = 'simulado';
+process.env.WHATSAPP_APP_SECRET = 'segredo-do-app-whatsapp-de-teste';
+process.env.WHATSAPP_VERIFY_TOKEN = 'token-de-verificacao-de-teste';
+// E a credencial da Meta zerada: mesmo que alguém troque o fornecedor acima
+// por engano, sem token a fábrica cai no indisponível e nada sai.
+process.env.WHATSAPP_ACCESS_TOKEN = '';
+process.env.WHATSAPP_GRAPH_URL = '';
+
 /** Nome do banco de teste, para os testes afirmarem onde estão conectados. */
 export const BANCO_DE_TESTE = verificada.pathname.replace(/^\//, '');

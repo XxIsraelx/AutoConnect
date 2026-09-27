@@ -15,5 +15,8 @@ import { CrmModule } from '../crm/crm.module';
     // não sabe injetar. Uma instância por processo é exatamente o que se quer.
     { provide: LimitePorIp, useValue: new LimitePorIp() },
   ],
+  // O WhatsApp oficial (e, depois, os portais) criam lead pelo mesmo caminho
+  // do formulário público: deduplicação, rodízio e prazo num lugar só.
+  exports: [LeadsService],
 })
 export class LeadsModule {}

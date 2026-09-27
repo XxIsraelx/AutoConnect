@@ -5,12 +5,14 @@ import { ChatGateway } from './chat.gateway';
 import { ChatEventosModule } from './chat-eventos.service';
 import { DealsModule } from '../modules/deals/deals.module';
 import { PrismaModule } from '../common/prisma/prisma.module';
+import { WhatsappModule } from '../modules/whatsapp/whatsapp.module';
 
 @Module({
   imports: [
     DealsModule,
     PrismaModule,
     ChatEventosModule,
+    WhatsappModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

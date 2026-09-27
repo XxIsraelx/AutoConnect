@@ -22,6 +22,12 @@ export const ROTA_WEBHOOK_COBRANCA = '/api/v1/webhooks/cobranca';
 export const ROTA_WEBHOOK_SAQUE = '/api/v1/webhooks/asaas/saque';
 
 /**
+ * Webhook do WhatsApp oficial: a Meta assina o corpo cru com o segredo do app
+ * (`X-Hub-Signature-256`), e o JSON reserializado não bateria.
+ */
+export const ROTA_WEBHOOK_WHATSAPP = '/api/v1/webhooks/whatsapp';
+
+/**
  * Configuração da aplicação — prefixo, filtros, pipes e CORS.
  *
  * Vive fora do `bootstrap()` para que os testes subam a app com exatamente a
@@ -36,6 +42,8 @@ export function configureApp(app: INestApplication): INestApplication {
   app.use(ROTA_WEBHOOK_ASSINATURA, corpoCru(1024 * 1024));
   app.use(ROTA_WEBHOOK_COBRANCA, corpoCru(1024 * 1024));
   app.use(ROTA_WEBHOOK_SAQUE, corpoCru(1024 * 1024));
+  // 3 MB: uma entrega da Meta junta até mil eventos de várias contas.
+  app.use(ROTA_WEBHOOK_WHATSAPP, corpoCru(3 * 1024 * 1024));
 
   // Um salto de proxy (a borda do Railway). Sem isto, `req.ip` é o IP do
   // proxy para todo mundo, e o limite por IP do formulário público — cinco
