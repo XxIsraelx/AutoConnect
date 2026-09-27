@@ -61,6 +61,56 @@ export interface ServicoVerificado {
   detail?: string;
 }
 
+/**
+ * O que a aba Sistema mostra sobre o gateway de cobrança.
+ *
+ * Pura de propósito: são três respostas de regra ("não pedido", "pedido e não
+ * subiu", "montado") e uma delas é a que faltava — o gateway que tira dinheiro
+ * da conta do lojista era **o único serviço externo fora do painel**. Assinatura,
+ * consulta, e-mail, Google, Cloudinary, BrasilAPI e ViaCEP estavam lá; a cobrança,
+ * não. E com ela faltava o aviso de sandbox: a Asaas de homologação não move
+ * dinheiro nenhum, e nada na tela dizia isso.
+ *
+ * Não chama o gateway. A Asaas cobra por chamada de API, e abrir a aba não pode
+ * custar dinheiro — o mesmo critério de `verificarConsulta`.
+ */
+export function estadoDaCobrancaNoPainel(
+  gateway: { nome: string; disponivel: boolean; sandbox?: boolean },
+  pedido: string | undefined,
+): ServicoVerificado {
+  const base = { key: 'billing', label: 'Cobrança', provider: gateway.nome };
+
+  if (!gateway.disponivel) {
+    // Pedido e não montado = configuração incompleta (o motivo está no log da
+    // subida). Não pedido = desligado de propósito, e o bloqueio por vencimento
+    // continua valendo: o que some é o caminho para pagar.
+    return pedido
+      ? {
+        ...base,
+        provider: pedido,
+        status: 'down',
+        detail: `COBRANCA_FORNECEDOR=${pedido}, mas o gateway não subiu — veja o log de inicialização.`,
+      }
+      : {
+        ...base,
+        status: 'off',
+        detail: 'Sem gateway: a contratação some da tela e quem desbloqueia uma loja é o super admin, à mão.',
+      };
+  }
+
+  if (gateway.nome === 'simulado') {
+    return { ...base, status: 'up', detail: 'Simulado: nenhuma cobrança sai deste servidor.' };
+  }
+
+  return {
+    ...base,
+    status: 'up',
+    detail: gateway.sandbox
+      ? 'Sandbox: as cobranças existem no gateway, mas nada aqui é dinheiro de verdade.'
+      : undefined,
+  };
+}
+
 /** Métricas de uso por concessionária — as mesmas na lista e no detalhe. */
 export interface MetricasDaLoja {
   invoicedDeals30d: number;
@@ -1130,6 +1180,10 @@ export class AdminService {
       }),
       this.verificarDocumentos(),
       this.verificarAssinatura(),
+      Promise.resolve(estadoDaCobrancaNoPainel(
+        this.cobranca,
+        this.config.get<string>('COBRANCA_FORNECEDOR')?.trim(),
+      )),
       Promise.resolve(this.verificarConsulta()),
       Promise.resolve(this.verificarEmail()),
       Promise.resolve(this.verificarGoogle()),

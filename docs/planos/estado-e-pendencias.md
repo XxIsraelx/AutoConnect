@@ -213,7 +213,7 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
     sem endereço fixo fora da constante.
   - Encontrado em: 27/09/2026 · Claude Cowork · ao planejar o próximo passo do plano growth.
 
-- **CLAUDE.md com duas frases desatualizadas.**
+- ~~**CLAUDE.md com frases desatualizadas.**~~ — resolvidas em 27/09/2026: a do trial, as três da Asaas e a contagem de testes (1.081: 778 na API, 303 no shared).
   - Onde: `CLAUDE.md`, seção "Cadastro de loja e primeiro acesso" (linha do trial) e seção
     "Testes e CI" (contagem de testes).
   - O que é: diz "⚠ Nada acontece quando o trial vence — bloqueio é a Onda 3" (linha 451), mas
@@ -234,7 +234,7 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
   - Como testar: `grep` sem "Nada acontece quando o trial"; a contagem bate com a saída do portão.
   - Encontrado em: 27/09/2026 · Claude Code · na tarefa da seção "No celular" da landing.
 
-- **Aviso de hidratação no `<html>` em toda página, no modo dev.**
+- ~~**Aviso de hidratação no `<html>` em toda página, no modo dev.**~~ — resolvido em 27/09/2026 com `suppressHydrationWarning` no `<html>`, que é o uso previsto para script de tema.
   - Onde: `apps/web/src/app/layout.tsx` (`SCRIPT_TEMA` e `<html lang="pt-BR">`).
   - O que é: o script de tema roda antes do React e põe `class="dark"` e `style="color-scheme"`
     no `<html>`; o HTML do servidor não os tem, e o React avisa "Extra attributes from the
@@ -273,7 +273,7 @@ conserto do plano pendente de pagamento
     de teste vira lead na loja "AutoConnect".
   - Encontrado em: 27/09/2026 · Claude Code · na auditoria de pendências.
 
-- **`GET /fipe/variantes` não tem quem chame** — armadilha nº 1 do CLAUDE.md.
+- ~~**`GET /fipe/variantes` não tem quem chame**~~ — **resolvido em 27/09/2026** ligando a tela nela, e não apagando: com confiança alta a estimativa devolve `alternativas: []` de propósito, e o lojista que discordava da escolha ficava sem menu nenhum. `/veiculos/novo` ganhou "Não é este o seu carro? Ver todas as versões", que carrega a lista sob demanda (erro aparece no card, não no console).
   - Onde: `apps/api/src/modules/fipe/fipe.controller.ts:49`.
   - O que é: a rota existe, é validada por Zod e ninguém a chama — nem tela, nem teste. A
     tela de cadastro de veículo usa `/fipe/estimate`, que já devolve `alternativas` no mesmo
@@ -288,8 +288,16 @@ conserto do plano pendente de pagamento
   - Como testar: o cruzamento rota × chamada volta a ter só as 4 legítimas.
   - Encontrado em: 27/09/2026 · Claude Code · na auditoria de pendências.
 
-- **O sandbox da cobrança é invisível** — e é por isso que ninguém sabe se a fatura da
-  `autohaus` foi dinheiro de verdade.
+- ~~**O sandbox da cobrança é invisível**~~ — **resolvido em 27/09/2026**, e com uma
+  correção ao próprio achado: **o aviso no boot já existia**
+  (`cobranca/provedor.ts`, "Asaas em SANDBOX com NODE_ENV=production: nada será
+  cobrado de verdade"). O que faltava era no produto — e a ausência dele em
+  produção **prova que a chave é de produção**: a fatura da `autohaus` foi dinheiro
+  de verdade. O que entrou: a cobrança passou a aparecer na aba Sistema do
+  `/admin` (era o **único** serviço externo fora do painel, e é o que tira dinheiro
+  da conta), por `estadoDaCobrancaNoPainel`, com teste das cinco respostas; e a
+  tela do plano mostra um aviso de homologação quando o gateway é sandbox e não é
+  o simulado (que já tem seção própria).
   - Onde: `apps/api/src/modules/cobranca/provedor-asaas.ts:204` (`this.sandbox` sai da URL),
     `cobranca.service.ts:143` (vai no `GET /cobranca`) e
     `app/(dashboard)/configuracoes/plano/page.tsx:46` (`sandbox: boolean` **declarado e nunca

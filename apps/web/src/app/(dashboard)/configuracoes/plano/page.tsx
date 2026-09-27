@@ -280,6 +280,30 @@ export default function PlanoECobrancaPage() {
         )}
       </div>
 
+      {/* ── Gateway de homologação ────────────────────────── */}
+      {/* A API já devolvia `sandbox` e nenhuma tela mostrava. Cobrança de
+          homologação existe no gateway, gera link de pagamento e confirma
+          pagamento por webhook — e não move dinheiro nenhum. Sem este aviso, a
+          diferença entre "a loja pagou" e "a loja fingiu pagar" não aparece em
+          lugar nenhum do produto. A assinatura externa avisa desde sempre; a
+          cobrança passou a avisar em 27/09/2026. */}
+      {resumo.sandbox && !resumo.simulado && (
+        <div className="rounded-2xl border border-amber-200 dark:border-amber-500/30
+                        bg-amber-50 dark:bg-amber-500/10 p-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <AlertCircle size={15} className="text-amber-600 dark:text-amber-400" />
+            <span className="text-sm font-bold text-amber-900 dark:text-amber-100">
+              Gateway em homologação (sandbox)
+            </span>
+          </div>
+          <p className="text-sm text-amber-900/90 dark:text-amber-100/90 mt-2">
+            As cobranças aparecem e podem ser “pagas”, mas <strong>nada aqui é dinheiro de
+            verdade</strong>. Antes de cobrar de uma loja real, a chave de produção do gateway
+            precisa entrar no lugar da de homologação.
+          </p>
+        </div>
+      )}
+
       {/* ── Contratado, aguardando pagamento ─────────────── */}
       {/* A loja precisa ver três coisas de uma vez: que a contratação foi
           registrada (senão contrata de novo), que o plano **ainda não vale**

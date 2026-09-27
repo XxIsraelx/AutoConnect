@@ -23,7 +23,7 @@ desatualizado.
 
 | Onda | O que é | Prazo | Depende de |
 |---|---|---|---|
-| **A** | Captação ligada, dinheiro visível, casa arrumada | ~1 dia | nós |
+| **A** | Captação ligada, dinheiro visível, casa arrumada | ~1 dia | ✅ A2 e A3 em 27/09/2026; **A1 espera o Israel** |
 | **B** | Três relógios de terceiro que precisam começar a correr | 1 dia nosso + espera | advogado, Clicksign, fornecedor |
 | **C** | Onda 2 do plano de paridade: WhatsApp, portais, push | 3 a 4 semanas | decisões 2 e 3 do plano de paridade |
 | **D** | Portabilidade LGPD e costura do que ficou pela metade | ~1 semana | nós |
@@ -57,22 +57,26 @@ pedido e espera, não código.
   um pedido de teste vira lead na loja "AutoConnect".
 - **Custo:** 30 a 60 min. **Depende de:** nós.
 
-### A2. Tornar o sandbox da cobrança visível
+### A2. Tornar o sandbox da cobrança visível ✅ 27/09/2026
 
 - **O que:** `log.warn` no boot quando a URL da Asaas tem `sandbox` e
   `NODE_ENV=production`, e selo na tela do plano e na aba Sistema do `/admin`.
   O `sandbox` já vem no `GET /cobranca` e está **declarado e nunca renderizado**
   em `configuracoes/plano/page.tsx:46`.
 - **Por quê agora:** a assinatura externa avisa duas vezes quando está em
-  sandbox; a cobrança não avisa em lugar nenhum. Uma chave de sandbox em
-  produção cobraria ninguém, em silêncio — e hoje não se sabe, sem abrir o
-  Railway, se a fatura criada na `autohaus` foi dinheiro real.
+  sandbox; a cobrança avisava **só no boot**. Uma chave de sandbox em produção
+  cobraria ninguém, e nada no produto diria isso.
+- **Como ficou:** a cobrança entrou na aba Sistema do `/admin` por
+  `estadoDaCobrancaNoPainel` (pura, com teste das cinco respostas) e a tela do
+  plano mostra o aviso de homologação. De passagem, a ausência do aviso de
+  sandbox no boot de produção **respondeu a pergunta aberta**: a chave é de
+  produção, e a fatura da `autohaus` foi dinheiro de verdade.
 - **Pronto quando:** subir com `ASAAS_API_URL=https://api-sandbox.asaas.com` e
   `NODE_ENV=production` mostra o aviso no boot e o selo na tela.
 - **Custo:** 1 a 2 h. **Depende de:** nós. Copia o padrão de
   `contracts/assinatura/provedor.ts:103`.
 
-### A3. Varredura de casa arrumada
+### A3. Varredura de casa arrumada ✅ 27/09/2026
 
 Três itens pequenos que só ficam mais caros esperando:
 
