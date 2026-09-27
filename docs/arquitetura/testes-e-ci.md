@@ -67,6 +67,29 @@ bucket `documentos` de **produção** — 272 arquivos órfãos acumulados em pa
 de lojas que os testes criam e apagam. Regra geral: todo serviço externo com
 credencial no `.env` precisa ser desligado aqui.
 
+## Banco local que não morre com o processo
+
+O `docker-compose.test.yml` guarda os dados em tmpfs: o banco nasce limpo a cada
+`up`. Num Postgres do Homebrew, não — e isso já fez um teste falhar apontando
+para o lugar errado.
+
+O provedor **simulado** de cobrança zera a sequência de ids a cada processo, e a
+fatura é espelhada com `upsert` por `(provider, external_id)` — que é o que faz a
+reentrega da Asaas reencontrar a fatura em vez de duplicá-la. Na segunda execução
+da suíte, o `pay_sim_000065` recém-gerado caía na linha deixada pela execução
+anterior e atualizava a fatura **de outro tenant**; o teste do ciclo anual
+quebrava com "No TenantInvoice found", que não tem nada a ver com a causa.
+
+Desde 27/09/2026 o id simulado leva uma marca aleatória da instância
+(`pay_sim_<instância>_000065`), então execuções diferentes não se encontram mais.
+Mesmo assim: **recrie o banco quando quiser partir do zero**, e desconfie de
+falha que só aparece na segunda rodada.
+
+```bash
+psql -U postgres -d postgres -c "DROP DATABASE IF EXISTS autoconnect_test" \
+  -c "CREATE DATABASE autoconnect_test"
+```
+
 ## CI
 
 `.github/workflows/ci.yml` roda em todo push na `main` e em todo PR: instala,

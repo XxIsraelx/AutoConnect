@@ -18,7 +18,7 @@ SaaS multi-tenant para concessionárias de veículos. Objetivo: fechar o primeir
 | Upload de imagens | **Cloudinary** (direto do navegador) |
 | Geração de PDF | **pdfmake** (JS puro, sem Chromium — ver *Contrato*) |
 | Documentos privados | **Supabase Storage**, bucket `documentos` (URL assinada) |
-| Cobrança | **Asaas** (Pix, boleto e cartão numa API só) — camada neutra, adaptador não exercitado |
+| Cobrança | **Asaas** (Pix, boleto e cartão numa API só) — camada neutra; adaptador validado no sandbox e cobrando em produção desde 27/09/2026 |
 | Agendamento de jobs | `@nestjs/schedule` (cron in-process; cada execução passa por `executarEmUmaReplica`, advisory lock no Postgres) |
 | Auth | JWT (próprio) + Google OAuth |
 | Email | Resend ou Gmail SMTP (configurável por env) |
@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.076 testes (773 na API, 303 no `shared`):
+são 1.081 testes (778 na API, 303 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -448,7 +448,8 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 cadastro em autosservico.md`.
   representante ele não é emitido).
 - **Trial de 14 dias, numa constante só** (`DURACAO_DO_TRIAL_DIAS`, no shared),
   gravado em `trialEndsAt`. A home, o `/comecar` e o `/signup` citam essa
-  constante. ⚠ **Nada acontece quando o trial vence** — bloqueio é a Onda 3.
+  constante. **Trial vencido bloqueia na hora** desde a Onda 3 — a regra inteira
+  está em *Cobrança e bloqueio por vencimento*, abaixo.
 - **O dígito verificador do CNPJ é a regra dura**, conferido pelo Zod e pela
   tela com a mesma função (`cnpjValido`, no shared). A BrasilAPI é
   **enriquecimento**: preenche razão social e endereço e só recusa situação
@@ -591,8 +592,11 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 cobranca e bloqueio por venci
   `POST /webhooks/cobranca` autenticado pelo token que a Asaas devolve em
   `asaas-access-token` (comparação em tempo constante), corpo cru, idempotente
   por `(provider, event_key)` e por `aplicarEventoDeCobranca`, que é pura.
-  Único lookup privilegiado: a loja da assinatura no webhook. ⚠ **O adaptador
-  da Asaas nunca falou com a Asaas** — ver "o que falta" na decisão.
+  Único lookup privilegiado: a loja da assinatura no webhook. O adaptador foi
+  validado no sandbox em 25/09/2026 e **cobrou em produção em 27/09/2026** (plano
+  contratado e cancelado pelo `/admin`). O que o painel mostra do gateway é
+  `estadoDaCobrancaNoPainel` — inclusive o aviso de sandbox, porque cobrança de
+  homologação não move dinheiro e nada na tela dizia isso.
 - **`avaliarCobranca` (shared) decide tudo**: o guard, a faixa no painel, a tela
   de plano, o painel do super admin e o cron de avisos. Não duplique a regra.
 - **Contratar não muda o plano; o pagamento muda.** `contratar` grava
@@ -795,11 +799,11 @@ com `~~…~~` e anotar "resolvido em DD/MM/AAAA" com o commit. A resposta final 
 tarefa diz o que foi registrado.
 
 **Bloqueiam uso real:** template de contrato sem revisão jurídica, ausência de
-fornecedor de consulta veicular e **ausência de conta na Asaas** — a camada de
-cobrança está pronta e o adaptador foi validado contra o sandbox, mas a chave de
-produção depende de uma conta aprovada e da **validação de saque ativa no painel
-da Asaas**, com `ASAAS_SAQUE_TOKEN` configurado no Railway (ver
-`docs/decisoes/2026-09-25 validacao de saque na asaas.md`).
+fornecedor de consulta veicular e **Clicksign em sandbox** (o boot avisa: as
+assinaturas não têm validade). A cobrança saiu desta lista em 27/09/2026 — conta
+na Asaas ativa, as cinco variáveis no Railway e uma cobrança real emitida e
+cancelada pelo painel. A ordem de resolução do que sobrou está em
+`docs/planos/plano-resolucao-de-pendencias.md`.
 
 **Dívidas que afetam código novo:** API e banco em regiões diferentes (~0,6s por
 consulta); nenhuma infraestrutura de feature flag; o teto por IP do formulário

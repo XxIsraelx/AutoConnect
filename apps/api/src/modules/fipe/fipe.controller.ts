@@ -43,8 +43,13 @@ export class FipeController {
 
   /**
    * GET /fipe/variantes?brandName=…&modelName=…&yearModel=…
-   * As variantes do modelo que têm o ano cadastrado — a lista que a tela abre
-   * quando o lojista discorda da escolha automática.
+   * As variantes do modelo que têm o ano cadastrado.
+   *
+   * É a lista que `/veiculos/novo` abre em "Não é este o seu carro? Ver todas as
+   * versões" — o caminho para **quando a estimativa tem confiança alta**, caso em
+   * que `/fipe/estimate` devolve `alternativas: []` de propósito e o lojista que
+   * discorda ficaria sem menu nenhum. Ficou de 22/09 a 27/09/2026 sem nenhum
+   * chamador: rota pronta não é funcionalidade (armadilha nº 1 do CLAUDE.md).
    */
   @Get('variantes')
   async variantes(@Query() query: Record<string, string>) {
