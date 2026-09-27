@@ -477,4 +477,88 @@ describe('Onda 1 — rascunho de anúncio e desempenho (e2e)', () => {
       expect(res.text).toContain('Ana Vendedora');
     });
   });
+
+  /**
+   * Por que perdemos — o consolidado que faltava.
+   *
+   * O negócio grava `cancel_reason_code` desde 23/09/2026 e nenhuma tela
+   * agrupava por ele. O que se fixa aqui: a conta é do **período**, não da
+   * página; o negócio antigo sem motivo aparece em vez de sumir do total; e o
+   * vendedor conta a própria carteira.
+   */
+  describe('motivos de perda consolidados', () => {
+    beforeAll(async () => {
+      const ontem = new Date(Date.now() - 86_400_000);
+
+      // Dois perdidos por preço (um de cada vendedor), um por crédito e um
+      // antigo sem motivo — o `cancel_reason_code` nasceu depois dele.
+      const perdidos: [string, string | null][] = [
+        [vendedor1, 'preco'],
+        [vendedor2, 'preco'],
+        [vendedor1, 'credito_reprovado'],
+        [vendedor1, null],
+      ];
+
+      for (const [vendedorId, motivo] of perdidos) {
+        const carro = await criarVeiculo(f.a.id, { anuncio: 'published' });
+        await dono.$executeRaw`
+          INSERT INTO deals (tenant_id, vehicle_id, salesperson_id, status, list_price, discount,
+                             sale_value, cancel_reason_code, updated_at)
+          VALUES (${f.a.id}::uuid, ${carro}::uuid, ${vendedorId}::uuid, 'canceled',
+                  50000.00, 0, 50000.00, ${motivo}, ${ontem})`;
+      }
+    });
+
+    it('a gerência vê a contagem por motivo, do maior para o menor, com valor de tabela', async () => {
+      const res = await http()
+        .get(rota('/tenant/reports/lost-reasons?days=30'))
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(4);
+      expect(res.body.veDinheiro).toBe(true);
+
+      const motivos = res.body.motivos as {
+        codigo: string | null; rotulo: string; quantidade: number; valorDeTabela: string | null;
+      }[];
+
+      // Maior primeiro: dois por preço vêm antes dos de um.
+      expect(motivos[0]).toMatchObject({ codigo: 'preco', quantidade: 2, valorDeTabela: '100000.00' });
+      // O rótulo vem do shared, não do banco: a tela não reescreve a lista.
+      expect(motivos[0].rotulo).toBe('Não fechou no preço');
+      // Cancelado antes de o motivo existir não desaparece da conta.
+      expect(motivos.find((m) => m.codigo === null)?.rotulo).toBe('Sem motivo registrado');
+      expect(motivos.reduce((t, m) => t + m.quantidade, 0)).toBe(res.body.total);
+    });
+
+    it('o vendedor conta a carteira dele e não vê valor', async () => {
+      const res = await http()
+        .get(rota('/tenant/reports/lost-reasons?days=30'))
+        .set('Authorization', `Bearer ${tokenVendedor1}`);
+
+      expect(res.status).toBe(200);
+      // Três dos quatro são de Ana; o de Bruno fica fora.
+      expect(res.body.total).toBe(3);
+      expect(res.body.veDinheiro).toBe(false);
+      for (const m of res.body.motivos as { valorDeTabela: string | null }[]) {
+        expect(m.valorDeTabela).toBeNull();
+      }
+    });
+
+    it('a loja vizinha não vê os motivos desta', async () => {
+      const res = await http()
+        .get(rota('/tenant/reports/lost-reasons?days=30'))
+        .set('Authorization', `Bearer ${tokenAdminB}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(0);
+    });
+
+    it('período fora da faixa é 400', async () => {
+      const res = await http()
+        .get(rota('/tenant/reports/lost-reasons?days=0'))
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+      expect(res.status).toBe(400);
+    });
+  });
 });

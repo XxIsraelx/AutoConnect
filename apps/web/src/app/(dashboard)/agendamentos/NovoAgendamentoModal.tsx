@@ -7,11 +7,16 @@
  * vendedor que combinava um test drive por telefone não tinha onde registrar,
  * e o lembrete automático nunca saía. A agenda mostrava metade do dia real.
  *
- * Dois caminhos de identificação, e eles cobrem os três casos:
+ * Três caminhos de identificação:
  *
  *  - **lead existente** — a lista traz o contato pronto. Quando o lead é de um
  *    cliente com conta, o `customerUserId` vai junto e o agendamento aparece
  *    também no `/perfil` dele;
+ *  - **cliente da loja** — busca em `GET /deals/customers`, que responde pela
+ *    mesma regra da policy `cliente_relacionado`: quem tem lead, agendamento ou
+ *    conversa com esta loja. Entrou em 27/09/2026 para fechar um buraco
+ *    registrado: **o cliente com conta e sem lead nenhum não era alcançável pela
+ *    tela** — a loja tinha o histórico dele e não conseguia marcar nada;
  *  - **contato avulso** — nome e telefone digitados na hora, para quem ligou e
  *    ainda não virou lead.
  */
@@ -46,6 +51,16 @@ interface VeiculoDaLoja {
   brand: { name: string };
   model: { name: string };
 }
+interface ClienteDaLoja {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+  /** Contagens do vínculo: é o que distingue homônimos na hora de escolher. */
+  leads: number;
+  agendamentos: number;
+  conversas: number;
+}
 interface Membro { id: string; fullName: string; role: string }
 
 export default function NovoAgendamentoModal({
@@ -58,8 +73,13 @@ export default function NovoAgendamentoModal({
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
 
-  const [modo, setModo] = useState<'lead' | 'avulso'>('lead');
+  const [modo, setModo] = useState<'lead' | 'cliente' | 'avulso'>('lead');
   const [leadId, setLeadId] = useState('');
+  const [clienteId, setClienteId] = useState('');
+  const [buscaCliente, setBuscaCliente] = useState('');
+  const [clientes, setClientes] = useState<ClienteDaLoja[]>([]);
+  const [buscandoClientes, setBuscandoClientes] = useState(false);
+  const [erroClientes, setErroClientes] = useState('');
   const [nome, setNome] = useState('');
   const [telefone, setTelefone] = useState('');
   const [email, setEmail] = useState('');
@@ -94,6 +114,24 @@ export default function NovoAgendamentoModal({
       .catch((e) => setErroDasListas(textoDoErro(e)));
   }, [token]);
 
+  /**
+   * Busca do cliente, com respiro de 300ms: sem ele, cada tecla vira uma
+   * consulta a ~0,6s de distância, e as respostas voltam fora de ordem.
+   */
+  useEffect(() => {
+    if (!token || modo !== 'cliente') return;
+    const termo = buscaCliente.trim();
+    setBuscandoClientes(true);
+    const id = setTimeout(() => {
+      api<ClienteDaLoja[]>(`/deals/customers${termo ? `?q=${encodeURIComponent(termo)}` : ''}`, { token })
+        .then((lista) => { setClientes(lista); setErroClientes(''); })
+        // A falha aparece: quem digitou está esperando a lista.
+        .catch((e) => { setClientes([]); setErroClientes(textoDoErro(e)); })
+        .finally(() => setBuscandoClientes(false));
+    }, 300);
+    return () => clearTimeout(id);
+  }, [token, modo, buscaCliente]);
+
   const leadEscolhido = leads.find((l) => l.id === leadId) ?? null;
 
   async function salvar(e: React.FormEvent) {
@@ -114,6 +152,8 @@ export default function NovoAgendamentoModal({
                 // Cliente com conta: o agendamento também aparece no /perfil dele.
                 customerUserId: leadEscolhido?.customer?.id,
               }
+            : modo === 'cliente'
+            ? { customerUserId: clienteId || undefined }
             : {
                 contactName: nome.trim(),
                 contactPhone: telefone.trim(),
@@ -164,7 +204,7 @@ export default function NovoAgendamentoModal({
           <div className="p-5 space-y-3.5">
             {/* Quem */}
             <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
-              {([['lead', 'Lead / cliente'], ['avulso', 'Contato avulso']] as const).map(([v, l]) => (
+              {([['lead', 'Lead'], ['cliente', 'Cliente da loja'], ['avulso', 'Avulso']] as const).map(([v, l]) => (
                 <button key={v} type="button" onClick={() => setModo(v)}
                   className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition
                     ${modo === v ? 'bg-white dark:bg-slate-900 shadow-sm' : 'text-slate-500'}`}>
@@ -194,6 +234,57 @@ export default function NovoAgendamentoModal({
                   ))}
                 </select>
                 {errosDeCampo.leadId && <p className="text-[11px] text-rose-500 mt-1">{errosDeCampo.leadId}</p>}
+              </div>
+            ) : modo === 'cliente' ? (
+              /* Cliente que já se relacionou com a loja, com ou sem lead aberto:
+                 é o caso que não tinha caminho na tela. */
+              <div className="space-y-2">
+                <div>
+                  <label htmlFor="na-busca-cliente" className="text-[11px] font-semibold text-slate-500 block mb-1.5">
+                    Buscar cliente por nome ou e-mail
+                  </label>
+                  <input
+                    id="na-busca-cliente"
+                    value={buscaCliente}
+                    onChange={(e) => setBuscaCliente(e.target.value)}
+                    placeholder="Comece a digitar…"
+                    className={campo}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="na-cliente" className="text-[11px] font-semibold text-slate-500 block mb-1.5">
+                    Cliente
+                  </label>
+                  <select
+                    id="na-cliente"
+                    value={clienteId}
+                    required
+                    onChange={(e) => setClienteId(e.target.value)}
+                    className={`${campo} ${borda(errosDeCampo.customerUserId)}`}
+                  >
+                    <option value="">
+                      {buscandoClientes ? 'Buscando…' : 'Escolha um cliente…'}
+                    </option>
+                    {clientes.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.fullName} · {c.phone ?? c.email}
+                        {` · ${c.leads} lead(s), ${c.agendamentos} visita(s), ${c.conversas} conversa(s)`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {erroClientes && (
+                  <p className="text-[11px] text-rose-500">Não foi possível buscar: {erroClientes}</p>
+                )}
+                {!erroClientes && !buscandoClientes && clientes.length === 0 && (
+                  <p className="text-[11px] text-slate-400">
+                    {buscaCliente.trim()
+                      ? 'Nenhum cliente com esse nome se relacionou com a loja. Use "Avulso" para agendar com contato novo.'
+                      : 'A lista traz quem já tem lead, visita ou conversa com a loja.'}
+                  </p>
+                )}
               </div>
             ) : (
               <div className="space-y-3">

@@ -180,10 +180,19 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
   27/09/2026 (`2835e34`, na fase 1 da nova landing): o CTA vive em
   `components/landing/CtaFinal.tsx` e aponta para `/login`. Conferido no HTML servido em
   produção em 27/09/2026 — `/entrar` só aparece no rodapé, como "Área do cliente".
-- **Exportação dos dados da loja incompleta.**
-  - Onde: exportações que existem — `GET /leads/export/csv` e, em `relatorios.controller.ts`,
-    `salespeople.csv`, `deals.csv` e `inventory.csv`.
-  - O que é: faltam agendamentos, conversas/mensagens e clientes vinculados.
+- ~~**Exportação dos dados da loja incompleta**~~ — **resolvida em 27/09/2026**: entraram
+  `appointments.csv`, `conversations.csv` e `messages.csv` (uma linha por mensagem, com o
+  texto), todos com o recorte de carteira do resto do painel e reunidos em
+  *Configurações › Levar seus dados*, ao lado dos quatro que já existiam. O teto de 5.000
+  linhas passou a **avisar dentro do arquivo** quando corta. **Falta a lista de clientes
+  vinculados**, que sai junto com o item D2 (listagem de clientes da loja) — as duas leem a
+  mesma relação, e duas consultas diferentes discordariam. **Completado no mesmo dia:**
+  `customers.csv` entrou junto com o modo "Cliente da loja" do agendamento, os dois lendo
+  `common/clientes-relacionados.ts`.
+  - Onde: `GET /leads/export/csv` e, em `relatorios.controller.ts`, `salespeople.csv`,
+    `deals.csv`, `inventory.csv`, `appointments.csv`, `conversations.csv`, `messages.csv` e
+    `customers.csv`.
+  - Reunidas em *Configurações › Levar seus dados*.
   - Impacto: o rascunho do termo de fundador (cláusula 6) e a portabilidade da LGPD pedem que a
     loja leve todos os seus dados; hoje ela não consegue.
   - Sugestão: CSV de agendamentos e de conversas no padrão de `relatorios`, ou um ZIP único em
@@ -556,12 +565,14 @@ Dívidas que a Onda 0 deixou declaradas:
   limite efetivo vira `5 × réplicas`. Hoje a API roda em réplica única; se isso
   mudar, é a primeira coisa a revisar (mesma restrição dos crons, que já têm
   `execucao-unica.ts` para o caso deles).
-- **Não há listagem de clientes da loja.** O modal de agendamento escolhe o
-  cliente pelo lead — quando o lead tem conta, o `customerUserId` vai junto e o
-  agendamento aparece no `/perfil` dele. Um cliente com conta e **sem** lead
-  nenhum na loja não é alcançável pela tela. Resolver isso pede um endpoint
-  novo, e ele tem que respeitar a policy `cliente_relacionado` (a loja vê quem
-  tem lead, agendamento ou conversa com ela — não a base inteira).
+- ~~**Não há listagem de clientes da loja.**~~ — resolvido em 27/09/2026. O
+  endpoint já existia (`GET /deals/customers`, criado para vincular cliente ao
+  negócio) e respeitava a policy `cliente_relacionado`; **o que faltava era a
+  tela usá-lo**. O modal de agendamento ganhou o modo "Cliente da loja", com
+  busca por nome ou e-mail e as contagens do vínculo ao lado do nome (é o que
+  distingue homônimos). A consulta saiu de dentro de `deals.service` para
+  `common/clientes-relacionados.ts`, porque a exportação de portabilidade
+  responde à mesma pergunta e duas cópias divergiriam.
 - **Lead de troca fora da deduplicação**, pelo motivo registrado no plano.
 
 Dívidas que os itens 6 a 9 da Onda 1 deixaram declaradas:
@@ -580,9 +591,11 @@ Dívidas que os itens 6 a 9 da Onda 1 deixaram declaradas:
   responsável e espera alguém pegá-lo no filtro "Sem responsável"; ele não
   entra de novo no rodízio sozinho. Rodar o rodízio ali dentro faria o lead
   circular entre vendedores sem ninguém decidir nada.
-- **Só o lead tem contagem por motivo de perda.** O negócio grava
-  `cancel_reason_code`, mas nenhuma tela ainda agrupa por ele — o funil de
-  valor mostra o motivo no detalhe, não no consolidado.
+- ~~**Só o lead tem contagem por motivo de perda.**~~ — resolvido em 27/09/2026:
+  `GET /tenant/reports/lost-reasons` agrupa os terminais do período por
+  `cancel_reason_code` e o cartão "Por que perdemos" entrou em `/relatorios`. O
+  consolidado é do servidor de propósito: o funil de `/negocios` é montado com a
+  página carregada, e contar ali daria o total da página.
 
 Dívidas que os itens 10 e 11 da Onda 1 deixaram declaradas:
 

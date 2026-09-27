@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   Building2, Phone, Globe, Palette, MapPin, ChevronRight,
   Mail, Hash, Check, Loader2, AlertCircle, Save, Clock, Repeat, UsersRound,
-  Crosshair, ExternalLink,
+  Crosshair, ExternalLink, Download,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
@@ -14,6 +14,7 @@ import {
   type BusinessHours, defaultBusinessHours, hasBusinessHours, WEEKDAYS_LONG,
 } from '@/lib/businessHours';
 import { AjustesDeCrm } from './AjustesDeCrm';
+import ExportarDados from './ExportarDados';
 import Filiais from './Filiais';
 import AvisoDeEnvioDeFotos from '@/components/AvisoDeEnvioDeFotos';
 import { CATALOGO_DE_PLANOS, mascararTelefoneBr } from '@autoconnect/shared';
@@ -815,6 +816,13 @@ export default function ConfiguracoesPage() {
               Ver plano e faturas <ChevronRight size={13} />
             </Link>
           </div>
+        </Section>
+
+        {/* ── Portabilidade ──────────────────────────────────────
+            Fica em Configurações, e não em Relatórios, porque "levar meus
+            dados" é decisão do dono da loja, não leitura de indicador. */}
+        <Section title="Levar seus dados" icon={Download}>
+          <ExportarDados />
         </Section>
 
       </div>

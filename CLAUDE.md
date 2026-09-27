@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.244 testes (902 na API, 342 no `shared`):
+são 1.270 testes (928 na API, 342 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -548,6 +548,13 @@ O porquê de cada regra: `docs/decisoes/vendas-e-contrato.md`.
   contrato; interna e externa não se misturam (409). Único lookup privilegiado:
   tenant do envelope no webhook. Falta o adaptador Clicksign —
   `docs/decisoes/2026-09-22 assinatura externa.md`.
+- **Motivo de perda tem contagem nos dois lados.** O lead já tinha; o negócio
+  passou a ter em 27/09/2026 — `GET /tenant/reports/lost-reasons` faz um
+  `groupBy` por `cancel_reason_code` dos terminais do período, com o **preço de
+  tabela** como valor (negócio morto antes da negociação não tem valor de venda)
+  e o rótulo vindo de `MOTIVOS_DE_CANCELAMENTO_DE_NEGOCIO`, no shared. Cancelado
+  antes de 23/09/2026 aparece como "sem motivo registrado" em vez de sumir do
+  total.
 - **Comissão tem uma definição só:** percentual do perfil × **valor de venda**
   dos negócios faturados, pela data de fechamento. A conta é `calcularComissao`
   (shared) e `/equipe`, `/relatorios` e o negócio a consomem — duas cópias já

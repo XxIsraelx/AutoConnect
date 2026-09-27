@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { ErroAoCarregar } from '@/components/ErroAoCarregar';
 import GraficosDeVenda from './GraficosDeVenda';
 import DesempenhoVendedores from './DesempenhoVendedores';
+import MotivosDePerda from './MotivosDePerda';
 import { ROTULO_DA_ORIGEM_DE_LEAD } from '@autoconnect/shared';
 
 /* ── Tipos ─────────────────────────────────────────────── */
@@ -188,6 +189,8 @@ export default function RelatoriosPage() {
           <GraficosDeVenda />
 
           <DesempenhoVendedores days={days} />
+
+          <MotivosDePerda days={days} />
 
           {/* Leads por dia */}
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5">

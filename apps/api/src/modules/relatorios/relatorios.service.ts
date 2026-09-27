@@ -1,9 +1,15 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@autoconnect/db';
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { ehGlobal, type Escopo } from '../../common/escopo';
-import { calcularComissao, DEAL_FATURADO_STATUSES } from '@autoconnect/shared';
-import { montarCsv } from './csv';
+import {
+  calcularComissao, DEAL_FATURADO_STATUSES, DEAL_TERMINAL_STATUSES,
+  MOTIVOS_DE_CANCELAMENTO_DE_NEGOCIO,
+} from '@autoconnect/shared';
+import { montarCsv, montarCsvComTeto, TETO_DE_LINHAS_CSV } from './csv';
+import {
+  consultaDeClientesRelacionados, type ClienteRelacionado,
+} from '../../common/clientes-relacionados';
 
 /** Quem enxerga custo, margem e comissão. Mesma lista do `deals.controller`. */
 const VE_DINHEIRO = ['manager', 'tenant_admin', 'super_admin'];
@@ -252,7 +258,7 @@ export class RelatoriosService {
           ...(dinheiro ? {} : { salespersonId: quem.id }),
         },
         orderBy: { createdAt: 'desc' },
-        take: 5000,
+        take: TETO_DE_LINHAS_CSV + 1,
         select: {
           id: true, status: true, createdAt: true, closedAt: true,
           listPrice: true, discount: true, saleValue: true,
@@ -296,7 +302,7 @@ export class RelatoriosService {
       n.closedAt?.toISOString() ?? '',
     ]);
 
-    return montarCsv(cabecalho, linhas);
+    return montarCsvComTeto(cabecalho, linhas);
   }
 
   /** Estoque atual: giro por veículo, com o estado do anúncio junto. */
@@ -308,7 +314,7 @@ export class RelatoriosService {
       tx.vehicle.findMany({
         where: { tenantId, status: { notIn: ['sold', 'archived'] } },
         orderBy: { createdAt: 'asc' },
-        take: 5000,
+        take: TETO_DE_LINHAS_CSV + 1,
         select: {
           id: true, versionName: true, yearModel: true, yearMake: true,
           licensePlate: true, mileageKm: true, color: true,
@@ -354,6 +360,299 @@ export class RelatoriosService {
       ];
     });
 
-    return montarCsv(cabecalho, linhas);
+    return montarCsvComTeto(cabecalho, linhas);
+  }
+
+  /**
+   * Por que a loja perdeu — consolidado por motivo.
+   *
+   * O negócio grava `cancel_reason_code` desde 23/09/2026 e **nenhuma tela
+   * agrupava por ele**: o motivo aparecia no detalhe de cada negócio, um a um, e
+   * "por que perdemos este mês" não tinha resposta. O lead já tinha essa
+   * contagem (`/leads/stats`); o negócio, não.
+   *
+   * Um `groupBy` só, nunca um laço por motivo: a API roda a ~0,6s do banco.
+   *
+   * O valor sai de `listPrice` — o preço de tabela — porque negócio perdido cedo
+   * não tem valor de venda negociado, e somar `saleValue` faria o total despencar
+   * justamente nos que morreram antes da negociação.
+   *
+   * `codigo: null` é o negócio cancelado antes de 23/09/2026, quando o motivo
+   * não era obrigatório. Aparece como "sem motivo registrado" em vez de sumir:
+   * um total que não fecha com a lista é pior que uma linha honesta.
+   */
+  async motivosDePerda(escopo: Escopo, quem: QuemPede, days: number): Promise<{
+    periodo: { days: number; from: Date };
+    veDinheiro: boolean;
+    total: number;
+    motivos: { codigo: string | null; rotulo: string; quantidade: number; valorDeTabela: string | null }[];
+  }> {
+    const tenantId = this.tenantDe(escopo);
+    const dinheiro = this.veDinheiro(quem);
+    const from = new Date(Date.now() - days * 86_400_000);
+
+    const grupos = await this.prisma.withTenant(tenantId, (tx: ScopedClient) =>
+      tx.deal.groupBy({
+        by: ['cancelReasonCode'],
+        where: {
+          tenantId,
+          status: { in: [...DEAL_TERMINAL_STATUSES] },
+          updatedAt: { gte: from },
+          // Vendedor vê a própria carteira, como no resto do painel.
+          ...(dinheiro ? {} : { salespersonId: quem.id }),
+        },
+        _count: { _all: true },
+        _sum: { listPrice: true },
+      }),
+    );
+
+    const rotulos = new Map<string, string>(
+      MOTIVOS_DE_CANCELAMENTO_DE_NEGOCIO.map((m) => [m.codigo as string, m.rotulo]),
+    );
+
+    const motivos = grupos
+      .map((g) => ({
+        codigo: g.cancelReasonCode ?? null,
+        rotulo: g.cancelReasonCode
+          ? rotulos.get(g.cancelReasonCode) ?? g.cancelReasonCode
+          : 'Sem motivo registrado',
+        quantidade: g._count._all,
+        valorDeTabela: dinheiro ? (g._sum.listPrice?.toFixed(2) ?? '0.00') : null,
+      }))
+      .sort((a, b) => b.quantidade - a.quantidade || a.rotulo.localeCompare(b.rotulo));
+
+    return {
+      periodo: { days, from },
+      veDinheiro: dinheiro,
+      total: motivos.reduce((soma, m) => soma + m.quantidade, 0),
+      motivos,
+    };
+  }
+
+  /* ── Portabilidade: a loja leva os dados dela ───────────────────
+   *
+   * A LGPD dá ao titular o direito de levar seus dados, e o termo do programa
+   * de fundadores promete o mesmo à loja. Até 27/09/2026 saíam leads,
+   * desempenho, negócios e estoque — **agendamento, conversa e mensagem não
+   * tinham como sair**, e é neles que mora o histórico de atendimento.
+   *
+   * Todos passam por `withTenant` e pelo mesmo recorte de carteira do resto:
+   * vendedor leva o que é dele, gerência leva tudo. Nenhum deles é "exportar o
+   * banco": o teto de linhas e o filtro de período continuam valendo.
+   */
+
+  /**
+   * Agendamentos do período.
+   *
+   * O contato sai **copiado do próprio agendamento**, com o da conta como
+   * segunda opção: o visitante que agenda sem cadastro
+   * (`POST /appointments/dealer`) só existe ali, e ler do `customer` deixaria a
+   * coluna vazia justamente nesses.
+   */
+  async csvDeAgendamentos(escopo: Escopo, quem: QuemPede, days: number): Promise<string> {
+    const tenantId = this.tenantDe(escopo);
+    const todos = this.veDinheiro(quem);
+    const from = new Date(Date.now() - days * 86_400_000);
+
+    const agendamentos = await this.prisma.withTenant(tenantId, (tx: ScopedClient) =>
+      tx.appointment.findMany({
+        where: {
+          tenantId,
+          scheduledStart: { gte: from },
+          ...(todos ? {} : { salespersonId: quem.id }),
+        },
+        orderBy: { scheduledStart: 'desc' },
+        take: TETO_DE_LINHAS_CSV + 1,
+        select: {
+          id: true, type: true, status: true, scheduledStart: true, scheduledEnd: true,
+          contactName: true, contactPhone: true, contactEmail: true,
+          notes: true, cancellationReason: true, createdAt: true, leadId: true,
+          customer: { select: { fullName: true, phone: true, email: true } },
+          salesperson: { select: { fullName: true } },
+          branch: { select: { name: true } },
+          vehicle: {
+            select: {
+              versionName: true, yearModel: true,
+              brand: { select: { name: true } },
+              model: { select: { name: true } },
+            },
+          },
+        },
+      }),
+    );
+
+    const cabecalho = [
+      'ID', 'Tipo', 'Status', 'Início', 'Fim', 'Cliente', 'Telefone', 'E-mail',
+      'Veículo', 'Vendedor', 'Filial', 'Lead', 'Observações', 'Motivo do cancelamento',
+      'Criado em',
+    ];
+
+    const linhas = agendamentos.map((a) => [
+      a.id,
+      a.type,
+      a.status,
+      a.scheduledStart.toISOString(),
+      a.scheduledEnd.toISOString(),
+      a.contactName ?? a.customer?.fullName ?? '',
+      a.contactPhone ?? a.customer?.phone ?? '',
+      a.contactEmail ?? a.customer?.email ?? '',
+      a.vehicle
+        ? `${a.vehicle.brand.name} ${a.vehicle.model.name} ${a.vehicle.versionName ?? ''} ${a.vehicle.yearModel}`.trim()
+        : '',
+      a.salesperson?.fullName ?? '',
+      a.branch?.name ?? '',
+      a.leadId ?? '',
+      a.notes ?? '',
+      a.cancellationReason ?? '',
+      a.createdAt.toISOString(),
+    ]);
+
+    return montarCsvComTeto(cabecalho, linhas);
+  }
+
+  /** Conversas do período, uma por linha, com a contagem de mensagens. */
+  async csvDeConversas(escopo: Escopo, quem: QuemPede, days: number): Promise<string> {
+    const tenantId = this.tenantDe(escopo);
+    const todos = this.veDinheiro(quem);
+    const from = new Date(Date.now() - days * 86_400_000);
+
+    const conversas = await this.prisma.withTenant(tenantId, (tx: ScopedClient) =>
+      tx.conversation.findMany({
+        where: {
+          tenantId,
+          createdAt: { gte: from },
+          ...(todos ? {} : { salespersonId: quem.id }),
+        },
+        orderBy: { createdAt: 'desc' },
+        take: TETO_DE_LINHAS_CSV + 1,
+        select: {
+          id: true, status: true, createdAt: true, lastMessageAt: true,
+          contactName: true, contactPhone: true, contactEmail: true, leadId: true,
+          customer: { select: { fullName: true, phone: true, email: true } },
+          salesperson: { select: { fullName: true } },
+          vehicle: {
+            select: {
+              versionName: true, yearModel: true,
+              brand: { select: { name: true } },
+              model: { select: { name: true } },
+            },
+          },
+          _count: { select: { messages: true } },
+        },
+      }),
+    );
+
+    const cabecalho = [
+      'ID', 'Status', 'Cliente', 'Telefone', 'E-mail', 'Veículo', 'Vendedor',
+      'Lead', 'Mensagens', 'Criada em', 'Última mensagem em',
+    ];
+
+    const linhas = conversas.map((c) => [
+      c.id,
+      c.status,
+      c.contactName ?? c.customer?.fullName ?? '',
+      c.contactPhone ?? c.customer?.phone ?? '',
+      c.contactEmail ?? c.customer?.email ?? '',
+      c.vehicle
+        ? `${c.vehicle.brand.name} ${c.vehicle.model.name} ${c.vehicle.versionName ?? ''} ${c.vehicle.yearModel}`.trim()
+        : '',
+      c.salesperson?.fullName ?? '',
+      c.leadId ?? '',
+      c._count.messages,
+      c.createdAt.toISOString(),
+      c.lastMessageAt?.toISOString() ?? '',
+    ]);
+
+    return montarCsvComTeto(cabecalho, linhas);
+  }
+
+  /**
+   * Clientes vinculados à loja.
+   *
+   * "Vinculado" é a mesma definição da policy `cliente_relacionado`, e a consulta
+   * é **a mesma** que alimenta a busca de cliente das telas
+   * (`common/clientes-relacionados.ts`): a loja não leva na exportação alguém que
+   * ela não conseguiria achar na tela, nem o contrário.
+   *
+   * Só gerência exporta: a lista de clientes da loja é o ativo que sai pela porta
+   * quando um vendedor troca de emprego, e a carteira já nasce fechada no resto
+   * do produto por essa razão.
+   */
+  async csvDeClientes(escopo: Escopo, quem: QuemPede): Promise<string> {
+    const tenantId = this.tenantDe(escopo);
+    if (!this.veDinheiro(quem)) {
+      throw new ForbiddenException(
+        'A lista de clientes da loja é exportada pela gerência. ' +
+          'Você continua exportando os leads e as conversas da sua carteira.',
+      );
+    }
+
+    const clientes = await this.prisma.withTenant(tenantId, (tx: ScopedClient) =>
+      tx.$queryRaw<ClienteRelacionado[]>(
+        consultaDeClientesRelacionados(tenantId, { limite: TETO_DE_LINHAS_CSV + 1 }),
+      ),
+    );
+
+    const cabecalho = [
+      'ID', 'Nome', 'E-mail', 'Telefone', 'Leads', 'Agendamentos', 'Conversas',
+      'Primeiro contato', 'Último contato',
+    ];
+
+    const linhas = clientes.map((c) => [
+      c.id, c.fullName, c.email, c.phone ?? '',
+      c.leads, c.agendamentos, c.conversas,
+      c.primeiroContato ? new Date(c.primeiroContato).toISOString() : '',
+      c.ultimoContato ? new Date(c.ultimoContato).toISOString() : '',
+    ]);
+
+    return montarCsvComTeto(cabecalho, linhas);
+  }
+
+  /**
+   * Mensagens, uma por linha — é o conteúdo do atendimento.
+   *
+   * `senderUserId` nulo é o cliente sem conta do chat do lead anônimo: a coluna
+   * diz "cliente", e não fica vazia como se a mensagem não tivesse autor.
+   */
+  async csvDeMensagens(escopo: Escopo, quem: QuemPede, days: number): Promise<string> {
+    const tenantId = this.tenantDe(escopo);
+    const todos = this.veDinheiro(quem);
+    const from = new Date(Date.now() - days * 86_400_000);
+
+    const mensagens = await this.prisma.withTenant(tenantId, (tx: ScopedClient) =>
+      tx.message.findMany({
+        where: {
+          tenantId,
+          createdAt: { gte: from },
+          ...(todos ? {} : { conversation: { salespersonId: quem.id } }),
+        },
+        orderBy: { createdAt: 'desc' },
+        take: TETO_DE_LINHAS_CSV + 1,
+        select: {
+          id: true, conversationId: true, kind: true, body: true,
+          attachmentUrl: true, createdAt: true, readAt: true,
+          sender: { select: { fullName: true, role: true } },
+        },
+      }),
+    );
+
+    const cabecalho = [
+      'ID', 'Conversa', 'Quando', 'Autor', 'Papel do autor', 'Tipo', 'Texto',
+      'Anexo', 'Lida em',
+    ];
+
+    const linhas = mensagens.map((m) => [
+      m.id,
+      m.conversationId,
+      m.createdAt.toISOString(),
+      m.sender?.fullName ?? 'cliente',
+      m.sender?.role ?? 'sem conta',
+      m.kind,
+      m.body ?? '',
+      m.attachmentUrl ?? '',
+      m.readAt?.toISOString() ?? '',
+    ]);
+
+    return montarCsvComTeto(cabecalho, linhas);
   }
 }
