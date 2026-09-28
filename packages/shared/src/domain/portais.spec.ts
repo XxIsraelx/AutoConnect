@@ -1,5 +1,7 @@
 import {
+  codigoDaConfirmacaoNoResumo,
   codigoDeConfirmacaoDoGmail,
+  resumoDaConfirmacaoDoGmail,
   enderecoDeEntrada,
   interpretarEmailDeLead,
   leadDePortalSchema,
@@ -121,6 +123,17 @@ describe('confirmação de encaminhamento do Gmail', () => {
     expect(codigoDeConfirmacaoDoGmail({
       de: 'golpe@exemplo.com', assunto: '(#482913576) Confirmação', texto: null, html: null,
     })).toBeNull();
+  });
+});
+
+describe('o código do Gmail no resumo da entrega', () => {
+  it('quem escreve e quem lê usam o mesmo texto', () => {
+    expect(codigoDaConfirmacaoNoResumo(resumoDaConfirmacaoDoGmail('482913576'))).toBe('482913576');
+  });
+
+  it('resumo de outra entrega não tem código', () => {
+    expect(codigoDaConfirmacaoNoResumo('Maria Souza')).toBeNull();
+    expect(codigoDaConfirmacaoNoResumo(null)).toBeNull();
   });
 });
 

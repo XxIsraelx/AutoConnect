@@ -189,6 +189,20 @@ describe('Leads dos portais (e2e)', () => {
     });
   });
 
+  describe('o progresso que o passo a passo mostra', () => {
+    it('o código do Gmail, a primeira entrega e o primeiro lead, desde a conexão', async () => {
+      const r = await get('/portais', comoAdmin);
+      const olx = r.body.portais.find((p: { chave: string }) => p.chave === 'olx');
+      expect(olx.progresso).toEqual({
+        confirmacaoDoGmail: { codigo: '987654321', recebidaEm: expect.any(String) },
+        recebeuDoPortal: true,
+        recebeuLead: true,
+      });
+      const webmotors = r.body.portais.find((p: { chave: string }) => p.chave === 'webmotors');
+      expect(webmotors.progresso).toEqual({ confirmacaoDoGmail: null, recebeuDoPortal: false, recebeuLead: false });
+    });
+  });
+
   describe('reprocessar', () => {
     it('relê a entrega não entendida com o leitor de hoje', async () => {
       // Uma entrega que um leitor antigo não entendeu — o de hoje entende.

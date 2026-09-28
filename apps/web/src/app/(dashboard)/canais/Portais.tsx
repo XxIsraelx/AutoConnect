@@ -6,6 +6,7 @@ import { mascararTelefoneBr, type ChaveDoPortal } from '@autoconnect/shared';
 import { api, API_URL } from '@/lib/api';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import { cn } from '@/lib/utils';
+import PassoAPassoDoPortal, { type ProgressoDoPortal } from './PassoAPassoDoPortal';
 
 interface Entrega {
   id: string;
@@ -20,6 +21,7 @@ interface Portal {
   chave: ChaveDoPortal;
   nome: string;
   conexao: { id: string; conectadaEm: string; ultimoRecebimento: string | null } | null;
+  progresso: ProgressoDoPortal;
   mes: Partial<Record<Entrega['situacao'], number>>;
   recentes: Entrega[];
 }
@@ -109,6 +111,7 @@ export default function Portais({ token, administra }: { token: string; administ
                   token={token}
                   administra={administra}
                   simulavel={estado.simulavel}
+                  emailDisponivel={estado.emailDisponivel}
                   onMudou={carregar}
                 />
               ))}
@@ -120,11 +123,12 @@ export default function Portais({ token, administra }: { token: string; administ
   );
 }
 
-function LinhaDoPortal({ portal, token, administra, simulavel, onMudou }: {
+function LinhaDoPortal({ portal, token, administra, simulavel, emailDisponivel, onMudou }: {
   portal: Portal;
   token: string;
   administra: boolean;
   simulavel: boolean;
+  emailDisponivel: boolean;
   onMudou: () => void;
 }) {
   const [endereco, setEndereco] = useState<{ token: string; email: string | null } | null>(null);
@@ -220,7 +224,17 @@ function LinhaDoPortal({ portal, token, administra, simulavel, onMudou }: {
 
       {erro && <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">{erro}</p>}
 
-      {endereco && <EnderecoNovo endereco={endereco} portal={portal.nome} />}
+      {endereco && <EnderecoNovo endereco={endereco} />}
+
+      <PassoAPassoDoPortal
+        chave={portal.chave}
+        nome={portal.nome}
+        conectado={!!portal.conexao}
+        progresso={portal.progresso}
+        endereco={endereco}
+        emailDisponivel={emailDisponivel}
+        administra={administra}
+      />
 
       {aberto && <Entregas entregas={portal.recentes} token={token} podeReprocessar={administra} onMudou={onMudou} />}
 
@@ -255,7 +269,7 @@ function Copiavel({ rotulo, valor }: { rotulo: string; valor: string }) {
   );
 }
 
-function EnderecoNovo({ endereco, portal }: { endereco: { token: string; email: string | null }; portal: string }) {
+function EnderecoNovo({ endereco }: { endereco: { token: string; email: string | null } }) {
   const url = `${API_URL.replace(/\/+$/, '')}/api/v1/webhooks/portais/${endereco.token}`;
   return (
     <div className="rounded-xl border border-blue-200 dark:border-blue-500/30 bg-blue-50/50 dark:bg-blue-500/5 p-4 space-y-3">
@@ -264,16 +278,7 @@ function EnderecoNovo({ endereco, portal }: { endereco: { token: string; email: 
       </p>
       {endereco.email && <Copiavel rotulo="E-mail de encaminhamento" valor={endereco.email} />}
       <Copiavel rotulo="URL de webhook (formato AutoConnect)" valor={url} />
-      {endereco.email && (
-        <div className="text-xs txt-medio space-y-1">
-          <p className="font-semibold">No Gmail que recebe os leads da {portal}:</p>
-          <ol className="list-decimal pl-5 space-y-0.5">
-            <li>Configurações › Encaminhamento e POP/IMAP › Adicionar um endereço de encaminhamento — cole o e-mail acima.</li>
-            <li>O Gmail manda um código de confirmação para esse endereço: ele aparece aqui, nas entregas deste portal.</li>
-            <li>Crie um filtro com os e-mails da {portal} e marque &ldquo;Encaminhar para&rdquo; esse endereço.</li>
-          </ol>
-        </div>
-      )}
+      <p className="text-xs txt-fraco">O passo a passo logo abaixo mostra onde usar cada um.</p>
     </div>
   );
 }

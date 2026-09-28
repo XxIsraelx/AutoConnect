@@ -281,6 +281,22 @@ export function codigoDeConfirmacaoDoGmail(email: Pick<EmailDeEntrada, 'de' | 'a
   return doAssunto ?? doCorpo ?? null;
 }
 
+const PREFIXO_DA_CONFIRMACAO = 'O Gmail pediu para confirmar o encaminhamento. Código de confirmação: ';
+
+/**
+ * O resumo da entrega que traz o código do Gmail. O par abaixo existe para que
+ * quem escreve (o leitor, na API) e quem lê (o passo a passo, na tela) usem o
+ * mesmo texto — o código mora no resumo, e a tela o destaca no passo certo.
+ */
+export function resumoDaConfirmacaoDoGmail(codigo: string): string {
+  return `${PREFIXO_DA_CONFIRMACAO}${codigo}`;
+}
+
+export function codigoDaConfirmacaoNoResumo(resumo: string | null | undefined): string | null {
+  if (!resumo?.startsWith(PREFIXO_DA_CONFIRMACAO)) return null;
+  return /^\d{6,12}$/.exec(resumo.slice(PREFIXO_DA_CONFIRMACAO.length).trim())?.[0] ?? null;
+}
+
 /* ── O endereço de entrada da loja ────────────────────────── */
 
 /**
