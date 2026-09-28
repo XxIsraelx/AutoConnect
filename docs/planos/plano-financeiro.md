@@ -124,7 +124,7 @@ faz. É aqui que ele fica melhor que planilha.
   fechamento de mês, que é quando ela é apurada. A categoria e a chave de origem
   (`comissao`) já existem esperando.
 
-## Fase 4 — fluxo de caixa, DRE e fechamento (≈ 3 dias)
+## Fase 4 — fluxo de caixa, DRE e fechamento ✅ 28/09/2026
 
 - **Fluxo de caixa** diário e semanal: previsto (pelo vencimento) versus
   realizado (pela baixa), por conta e consolidado, com saldo projetado. O gráfico
@@ -133,7 +133,12 @@ faz. É aqui que ele fica melhor que planilha.
   `vehicleCostSnapshot` dos negócios faturados, despesas por grupo de categoria,
   resultado. **Conferido contra `/relatorios`:** se o faturado do mês divergir do
   relatório de margem, é bug — e vai ter teste comparando os dois.
-- **Fechamento de mês** com trava e auditoria; reabrir exige motivo.
+- **Fechamento de mês** com trava e auditoria; reabrir exige motivo. Fechar
+  também **apura a comissão**: uma conta a pagar por vendedor, com
+  `calcularComissao` (a mesma de `/equipe`, `/relatorios` e do negócio — não
+  existe uma segunda fórmula), vencendo no dia 5 do mês seguinte, que é mês
+  aberto. Idempotente pelo `documentNumber`: reabrir e fechar de novo não cria a
+  segunda comissão.
 
 ## Fase 5 — conciliação bancária (≈ 3 dias)
 

@@ -9,7 +9,7 @@ import {
   atualizarCategoriaFinanceiraSchema, atualizarContaFinanceiraSchema,
   atualizarLancamentoSchema, baixaSchema, cancelarLancamentoSchema,
   categoriaFinanceiraSchema, contaFinanceiraSchema, fecharMesSchema,
-  lancamentoSchema, listarLancamentosSchema, reabrirMesSchema,
+  lancamentoSchema, listarLancamentosSchema, reabrirMesSchema, fluxoQuerySchema,
 } from '@autoconnect/shared';
 
 interface AuthRequest {
@@ -37,6 +37,25 @@ export class FinanceiroController {
   @Get('resumo')
   resumo(@Req() req: AuthRequest): Promise<unknown> {
     return this.financeiro.resumo(escopoDa(req.user));
+  }
+
+  /**
+   * GET /financeiro/fluxo?dias=30 — o caixa dia a dia, daqui para frente.
+   *
+   * Responde "em que dia o caixa fica negativo", que é a pergunta semanal do
+   * dono e que nenhuma outra tela responde.
+   */
+  @Get('fluxo')
+  fluxo(@Req() req: AuthRequest, @Query() query: unknown): Promise<unknown> {
+    const { dias } = fluxoQuerySchema.parse(query);
+    return this.financeiro.fluxoDeCaixa(escopoDa(req.user), dias);
+  }
+
+  /** GET /financeiro/dre?year=2026&month=9 — o resultado gerencial do mês. */
+  @Get('dre')
+  dre(@Req() req: AuthRequest, @Query() query: unknown): Promise<unknown> {
+    const { year, month } = fecharMesSchema.parse(query);
+    return this.financeiro.dre(escopoDa(req.user), year, month);
   }
 
   /* ── Contas ─────────────────────────────────────────────── */
@@ -152,6 +171,6 @@ export class FinanceiroController {
   @Post('periodos/reabrir')
   reabrir(@Req() req: AuthRequest, @Body() body: unknown): Promise<unknown> {
     const { year, month, motivo } = reabrirMesSchema.parse(body);
-    return this.financeiro.reabrirMes(escopoDa(req.user), year, month, motivo);
+    return this.financeiro.reabrirMes(escopoDa(req.user), year, month, motivo, req.user);
   }
 }

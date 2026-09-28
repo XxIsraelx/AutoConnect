@@ -66,10 +66,21 @@ describe('Financeiro da loja (e2e)', () => {
   }, 90_000);
 
   afterAll(async () => {
-    await dono.financialEntry.deleteMany({ where: { tenantId: { in: [f.a.id, f.b.id] } } });
+    // **Os períodos saem primeiro.** O trigger do mês fechado vale para `DELETE`
+    // também — e é para valer: mês conferido não muda, e apagar linha dele
+    // mudaria. Descoberto aqui, na limpeza: com os lançamentos primeiro, o
+    // `afterAll` estourava, o `app.close()` nunca rodava e o jest ficava preso
+    // ("did not exit one second after the test run"), o que parecia lentidão da
+    // suíte e era erro de ordem no teste.
     await dono.financialPeriod.deleteMany({ where: { tenantId: { in: [f.a.id, f.b.id] } } });
+    await dono.financialEntry.deleteMany({ where: { tenantId: { in: [f.a.id, f.b.id] } } });
     await dono.financialCategory.deleteMany({ where: { tenantId: { in: [f.a.id, f.b.id] } } });
     await dono.financialAccount.deleteMany({ where: { tenantId: { in: [f.a.id, f.b.id] } } });
+    // Os negócios criados aqui saem antes da fixture: ela apaga veículos, e o
+    // `deals_vehicle_id_fkey` é RESTRICT — sem isto, a limpeza da fixture
+    // estoura e leva o `app.close()` junto.
+    await dono.deal.deleteMany({ where: { tenantId: { in: [f.a.id, f.b.id] } } });
+    await dono.salespersonProfile.deleteMany({ where: { tenantId: f.a.id } });
     await dono.user.deleteMany({ where: { tenantId: f.a.id, role: 'salesperson' } });
     await f?.limpar();
     await app?.close();
@@ -419,6 +430,167 @@ describe('Financeiro da loja (e2e)', () => {
       const total = entradas.reduce((t, e) => t + Number(e.value), 0);
       // 44.000 de compra + 1.200 + 800 + 150 de preparação.
       expect(total.toFixed(2)).toBe('46150.00');
+    });
+  });
+
+  /**
+   * Fase 4: as duas perguntas que nenhuma outra tela responde.
+   *
+   * "Em que dia o caixa fica negativo" e "quanto sobrou no mês". A segunda é a
+   * mais delicada do módulo: somar o custo do veículo **e** as contas a pagar da
+   * compra contaria o carro duas vezes.
+   */
+  describe('fluxo de caixa e DRE', () => {
+    it('o fluxo projeta o saldo dia a dia e aponta o dia em que ele vira', async () => {
+      const res = await get('/fluxo?dias=30');
+
+      expect(res.status).toBe(200);
+      expect(res.body.serie).toHaveLength(31);
+      expect(res.body.serie[0].dia).toBe(new Date().toISOString().slice(0, 10));
+      // O saldo de hoje é o mesmo do resumo — uma definição só de saldo.
+      const resumo = await get('/resumo');
+      expect(res.body.saldoHoje).toBe(resumo.body.saldoTotal);
+    });
+
+    it('uma conta a pagar grande no futuro faz o caixa virar, e o fluxo diz quando', async () => {
+      const daquiATresDias = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+      const antes = await get('/fluxo?dias=30');
+      const res = await post('/lancamentos', {
+        categoryId: categoriaSaida, value: '900000.00', dueDate: daquiATresDias,
+        description: 'Compra de frota (teste de fluxo)',
+      });
+      expect(res.status).toBe(201);
+
+      const depois = await get('/fluxo?dias=30');
+      const noVencimento = (depois.body.serie as { dia: string; saidas: string }[])
+        .find((d) => d.dia === daquiATresDias)!;
+      expect(Number(noVencimento.saidas)).toBeGreaterThanOrEqual(900000);
+      // O caixa vira em algum dia da janela — qual, depende do que a loja já
+      // tinha; o que se fixa aqui é que o fluxo **aponta** um dia.
+      expect(depois.body.primeiroDiaNegativo).not.toBeNull();
+
+      const saldoFinal = (serie: { saldo: string }[]) => Number(serie[serie.length - 1]!.saldo);
+      expect(saldoFinal(antes.body.serie) - saldoFinal(depois.body.serie)).toBeCloseTo(900000, 2);
+
+      // E volta quando o lançamento sai: o fluxo lê o estado, não guarda nada.
+      await post(`/lancamentos/${res.body.lancamentos[0].id}/cancelar`, { motivo: 'teste' });
+      const voltou = await get('/fluxo?dias=30');
+      expect(saldoFinal(voltou.body.serie)).toBeCloseTo(saldoFinal(antes.body.serie), 2);
+    });
+
+    it('janela fora da faixa é 400 — projeção de um ano seria mentira', async () => {
+      expect((await get('/fluxo?dias=400')).status).toBe(400);
+      expect((await get('/fluxo?dias=1')).status).toBe(400);
+    });
+
+    it('o DRE usa o custo que o negócio congelou, e não conta o carro duas vezes', async () => {
+      const agora = new Date();
+      const ano = agora.getUTCFullYear();
+      const mes = agora.getUTCMonth() + 1;
+
+      // Um negócio faturado no mês: 80.000 de venda, 71.000 de custo.
+      const carro = await dono.vehicle.findFirstOrThrow({
+        where: { tenantId: f.a.id, id: f.a.veiculoPublicoId },
+      });
+      await dono.deal.create({
+        data: {
+          tenantId: f.a.id, vehicleId: carro.id, status: 'invoiced',
+          listPrice: '85000.00', discount: '5000.00', saleValue: '80000.00',
+          vehicleCostSnapshot: '71000.00', grossMargin: '9000.00',
+          closedAt: new Date(Date.UTC(ano, mes - 1, 15)),
+        },
+      });
+
+      const res = await get(`/dre?year=${ano}&month=${mes}`);
+      expect(res.status).toBe(200);
+      expect(res.body.receitaDeVeiculos).toBe('80000.00');
+      expect(res.body.custoDosVeiculosVendidos).toBe('71000.00');
+      expect(res.body.margemBruta).toBe('9000.00');
+
+      // As contas a pagar da compra e da preparação **não** entram como despesa:
+      // elas são o caixa do mesmo carro que já está no CMV.
+      const grupos = (res.body.despesasPorGrupo as { grupo: string }[]).map((g) => g.grupo);
+      expect(grupos).not.toContain('veiculos');
+    });
+
+    it('despesa de operação paga no mês entra no resultado', async () => {
+      const agora = new Date();
+      const ano = agora.getUTCFullYear();
+      const mes = agora.getUTCMonth() + 1;
+
+      const operacao = (await get('/categorias')).body as { id: string; name: string; direction: string }[];
+      const aluguel = operacao.find((c) => c.name === 'Aluguel' && c.direction === 'saida')!;
+
+      const criado = await post('/lancamentos', {
+        categoryId: aluguel.id, value: '4000.00',
+        dueDate: new Date().toISOString().slice(0, 10), description: 'Aluguel do mês',
+        accountId: contaId, paidAt: new Date().toISOString().slice(0, 10),
+      });
+      expect(criado.status).toBe(201);
+
+      const res = await get(`/dre?year=${ano}&month=${mes}`);
+      const operacional = (res.body.despesasPorGrupo as { grupo: string; valor: string }[])
+        .find((g) => g.grupo === 'operacao');
+      expect(Number(operacional?.valor)).toBeGreaterThanOrEqual(4000);
+    });
+  });
+
+  describe('fechamento apura a comissão', () => {
+    it('fechar o mês gera a conta a pagar da comissão, e refechar não duplica', async () => {
+      const agora = new Date();
+      // Um mês que nenhum outro teste fecha, e no passado.
+      const ano = agora.getUTCFullYear();
+      const mes = agora.getUTCMonth() === 0 ? 12 : agora.getUTCMonth();
+      const anoDoMes = agora.getUTCMonth() === 0 ? ano - 1 : ano;
+
+      const vendedor = await dono.user.create({
+        data: {
+          tenantId: f.a.id, email: `comissionado-${Date.now()}@exemplo.test`,
+          fullName: 'Vendedor Comissionado', role: 'salesperson', passwordHash: 'x',
+        },
+      });
+      await dono.salespersonProfile.create({
+        data: { userId: vendedor.id, tenantId: f.a.id, commissionPct: '2.00' },
+      });
+      await dono.deal.create({
+        data: {
+          tenantId: f.a.id, vehicleId: f.a.veiculoPrivadoId, status: 'invoiced',
+          salespersonId: vendedor.id,
+          listPrice: '50000.00', discount: '0', saleValue: '50000.00',
+          vehicleCostSnapshot: '40000.00', grossMargin: '10000.00',
+          closedAt: new Date(Date.UTC(anoDoMes, mes - 1, 10)),
+        },
+      });
+
+      const fechou = await post('/periodos/fechar', { year: anoDoMes, month: mes });
+      expect(fechou.status).toBe(201);
+      expect(fechou.body.comissoesGeradas).toBe(1);
+
+      // 2% de 50.000 = 1.000 — a mesma conta de /equipe e /relatorios.
+      const comissao = await dono.financialEntry.findFirstOrThrow({
+        where: { tenantId: f.a.id, documentNumber: { startsWith: 'comissao:' } },
+      });
+      expect(comissao.value.toFixed(2)).toBe('1000.00');
+      // Vence no mês seguinte: nasceria travada se vencesse no mês que fechou.
+      expect(comissao.dueDate.getUTCDate()).toBe(5);
+
+      // Reabrir e fechar de novo não cria a segunda.
+      await post('/periodos/reabrir', { year: anoDoMes, month: mes, motivo: 'conferência' });
+      const segundo = await post('/periodos/fechar', { year: anoDoMes, month: mes });
+      expect(segundo.body.comissoesGeradas).toBe(0);
+      expect(await dono.financialEntry.count({
+        where: { tenantId: f.a.id, documentNumber: { startsWith: 'comissao:' } },
+      })).toBe(1);
+    });
+
+    it('fechar e reabrir deixam rastro na auditoria', async () => {
+      const acoes = await dono.auditLog.findMany({
+        where: { tenantId: f.a.id, entityType: 'financial_period' },
+        select: { action: true },
+      });
+      expect(acoes.map((a) => a.action)).toEqual(
+        expect.arrayContaining(['financial_period_closed', 'financial_period_reopened']),
+      );
     });
   });
 

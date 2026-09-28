@@ -59,6 +59,33 @@ export interface PaginaDeLancamentos {
   somaSaidas: string;
 }
 
+export interface FluxoDeCaixa {
+  saldoHoje: string;
+  dias: number;
+  /** `null` quando o caixa não fica negativo na janela — a boa notícia. */
+  primeiroDiaNegativo: string | null;
+  serie: { dia: string; entradas: string; saidas: string; saldo: string }[];
+}
+
+export interface Dre {
+  periodo: { year: number; month: number };
+  negociosFaturados: number;
+  receitaDeVeiculos: string;
+  custoDosVeiculosVendidos: string;
+  margemBruta: string;
+  outrasReceitas: string;
+  despesasPorGrupo: { grupo: string; valor: string }[];
+  totalDeDespesas: string;
+  resultado: string;
+}
+
+export interface PeriodoFechado {
+  id: string;
+  year: number;
+  month: number;
+  closedAt: string;
+}
+
 export interface ResumoFinanceiro {
   saldoTotal: string;
   contas: { contaId: string; nome: string; kind: string; saldo: string }[];
@@ -107,10 +134,21 @@ export const darBaixa = (token: string, id: string, body: unknown) =>
 export const cancelarLancamento = (token: string, id: string, motivo: string) =>
   api<Lancamento>(`/financeiro/lancamentos/${id}/cancelar`, { method: 'POST', token, body: { motivo } });
 
-/*
- * Fechar e reabrir mês **não** têm helper aqui ainda, e é de propósito: a API
- * tem as rotas desde a Fase 1 e a tela chega na Fase 4. Um helper exportado que
- * ninguém chama é código morto que o `noUnusedLocals` não pega — e fez
- * `corpos-do-web.spec.ts` acusar chamada sem tela, que é exatamente a armadilha
- * nº 1 do CLAUDE.md pelo avesso.
- */
+export const buscarFluxo = (token: string, dias: number) =>
+  api<FluxoDeCaixa>(`/financeiro/fluxo?dias=${dias}`, { token });
+
+export const buscarDre = (token: string, year: number, month: number) =>
+  api<Dre>(`/financeiro/dre?year=${year}&month=${month}`, { token });
+
+export const buscarPeriodos = (token: string) =>
+  api<PeriodoFechado[]>('/financeiro/periodos', { token });
+
+export const fecharMes = (token: string, year: number, month: number) =>
+  api<{ year: number; month: number; pendentesNoMes: number; comissoesGeradas: number }>(
+    '/financeiro/periodos/fechar', { method: 'POST', token, body: { year, month } },
+  );
+
+export const reabrirMes = (token: string, year: number, month: number, motivo: string) =>
+  api<{ reaberto: boolean }>(
+    '/financeiro/periodos/reabrir', { method: 'POST', token, body: { year, month, motivo } },
+  );

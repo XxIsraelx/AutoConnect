@@ -420,6 +420,23 @@ conserto do plano pendente de pagamento
   - Como testar: o aviso some do log do serviço web depois do deploy.
   - Encontrado em: 27/09/2026 · Claude Code (sessão 2) · ao verificar o deploy da Onda C.
 
+**Encontradas em 28/09/2026** — Claude Code, na Fase 4 do financeiro
+
+- **A suíte da API não encerra sozinha: "Jest did not exit one second after the test run".**
+  - Onde: `pnpm exec turbo run test` no `@autoconnect/api`, ao fim da execução completa.
+  - O que é: algo fica aberto depois dos testes (conexão, timer ou servidor). Os 66 suites
+    passam e o turbo sai com 0 — o jest é que fica pendurado por alguns segundos até morrer.
+  - Evidência: a mensagem aparece nos logs de execução completa desde 27/09/2026, **antes** do
+    módulo financeiro existir (`scratchpad/gate.txt` daquele dia), e continua em 28/09.
+  - Impacto: some tempo de CI em toda rodada e, pior, **mascara o sintoma de um `afterAll` que
+    estourou** — foi exatamente o que aconteceu comigo na Fase 4: a limpeza falhava, o
+    `app.close()` não rodava e eu interpretei a espera como lentidão da suíte por quase uma
+    hora.
+  - Sugestão: rodar com `--detectOpenHandles` uma vez e fechar o que aparecer; se for do
+    Prisma, um `$disconnect` no `afterAll` do helper resolve para todos os arquivos.
+  - Como testar: a execução completa termina sem a mensagem.
+  - Encontrado em: 28/09/2026 · Claude Code · na Fase 4 do financeiro.
+
 **Lacunas frente ao mercado** — Claude Cowork, 27/09/2026, na pesquisa de preços
 ([plano de preços](https://claude.ai/code/artifact/daf7ac7d-5114-4621-9028-3759dbb07be8)).
 O que os concorrentes com preço público entregam e o AutoConnect não. Várias já estão num
