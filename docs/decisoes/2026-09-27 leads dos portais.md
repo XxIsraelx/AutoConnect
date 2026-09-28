@@ -71,6 +71,25 @@ O leitor específico de cada portal entra quando houver amostra real.
   e-mail sem loja é 200 com descarte (a mensagem é autêntica, e reenviar não a
   faria achar dono).
 
+## O passo a passo para o lojista (28/09/2026)
+
+Cada portal, em Canais, tem um **passo a passo** para o lojista conectar
+sozinho — **um só para os quatro portais**, porque o processo é o mesmo (o
+portal avisa por e-mail, a caixa da loja encaminha a cópia). O que varia é o
+**provedor de e-mail da loja**: o Gmail exige confirmar o endereço com um
+código, o Outlook não, e cada um tem o seu caminho de filtro/regra. A
+integração ("Outro portal ou integração") tem o seu, porque é outro processo:
+a URL de webhook e o formato AutoConnect.
+
+- As etapas **se marcam sozinhas** pelo que chegou desde a conexão
+  (`progresso` em `GET /portais`): o código de confirmação do Gmail aparece
+  **na etapa em que é pedido**, não só na lista de entregas.
+- O **remetente de cada portal não é citado**: ele muda sem aviso, e um
+  endereço errado no guia faria o filtro nunca pegar nada. O passo manda copiar
+  o remetente de um e-mail de lead real.
+- O guia manda filtrar pelo remetente **exato** dos avisos de lead, não pelo
+  domínio: com o domínio, propaganda e aviso de plano do portal também viriam.
+
 ## Descartado
 
 - **Ler a caixa da loja por IMAP**: exigiria guardar a senha do e-mail da loja.

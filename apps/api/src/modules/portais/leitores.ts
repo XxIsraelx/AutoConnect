@@ -4,6 +4,7 @@ import {
   interpretarEmailDeLead,
   leadDePortalSchema,
   leadDePortalUtilizavel,
+  resumoDaConfirmacaoDoGmail,
   type ChaveDoPortal,
   type EmailDeEntrada,
   type LeadDePortal,
@@ -36,10 +37,7 @@ function resumoDosLeads(leads: LeadDePortal[]): string {
 export function lerEmail(portal: ChaveDoPortal, email: EmailDeEntrada): Leitura {
   const codigo = codigoDeConfirmacaoDoGmail(email);
   if (codigo) {
-    return {
-      tipo: 'ignorado',
-      resumo: `O Gmail pediu para confirmar o encaminhamento. Código de confirmação: ${codigo}`,
-    };
+    return { tipo: 'ignorado', resumo: resumoDaConfirmacaoDoGmail(codigo) };
   }
   const leitor = LEITORES_DE_EMAIL[portal] ?? interpretarEmailDeLead;
   const lead = leitor(email);
