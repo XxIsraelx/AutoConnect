@@ -432,6 +432,18 @@ conserto do plano pendente de pagamento
 
 **Encontradas em 28/09/2026** — Claude Code, na Fase 4 do financeiro
 
+- **`cobranca.e2e-spec.ts` falhou uma vez com "socket hang up".**
+  - Onde: `Cobrança e bloqueio por vencimento (e2e) › contratação e pagamento › cancelar leva a
+    somente leitura sem apagar nada`, na execução completa de 28/09/2026.
+  - O que é: a conexão HTTP caiu no meio da requisição. Rodando o arquivo sozinho (81 testes) e
+    a suíte inteira de novo (963 testes), passou nas duas — é intermitente.
+  - Impacto: CI vermelho sem causa aparente, que é o tipo de vermelho que ensina a equipe a
+    reapertar "re-run" sem ler. Some junto com o item do `did not exit` se a causa for a mesma
+    (algo do servidor de teste não fechando entre arquivos).
+  - Sugestão: investigar junto com o `--detectOpenHandles`; se voltar, capturar o log do Nest
+    no momento da queda.
+  - Encontrado em: 28/09/2026 · Claude Code · no portão da Fase 4 do financeiro.
+
 - **A suíte da API não encerra sozinha: "Jest did not exit one second after the test run".**
   - Onde: `pnpm exec turbo run test` no `@autoconnect/api`, ao fim da execução completa.
   - O que é: algo fica aberto depois dos testes (conexão, timer ou servidor). Os 66 suites
