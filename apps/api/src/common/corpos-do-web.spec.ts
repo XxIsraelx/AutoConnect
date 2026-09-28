@@ -48,6 +48,8 @@ import {
   cancelarLancamentoSchema,
   fecharMesSchema,
   reabrirMesSchema,
+  importarOfxSchema,
+  conciliarSchema,
 } from '@autoconnect/shared';
 import { acceptInviteSchema } from '../modules/invitations/invitations.controller';
 import { anularSchema, assinarSchema } from '../modules/contracts/contracts.controller';
@@ -224,6 +226,9 @@ const ROTAS: Record<string, Declaracao> = {
   'POST /financeiro/lancamentos': { schema: lancamentoSchema },
   'POST /financeiro/lancamentos/:p/baixa': { schema: baixaSchema },
   'POST /financeiro/lancamentos/:p/cancelar': { schema: cancelarLancamentoSchema },
+  'POST /financeiro/contas/:p/ofx': { schema: importarOfxSchema },
+  'POST /financeiro/conciliacoes': { schema: conciliarSchema },
+  'POST /financeiro/conciliacoes/:p/ignorar': { semCorpo: true },
   'POST /financeiro/periodos/fechar': { schema: fecharMesSchema },
   'POST /financeiro/periodos/reabrir': { schema: reabrirMesSchema },
 

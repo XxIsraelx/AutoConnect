@@ -72,6 +72,7 @@ describe('Financeiro da loja (e2e)', () => {
     // `afterAll` estourava, o `app.close()` nunca rodava e o jest ficava preso
     // ("did not exit one second after the test run"), o que parecia lentidão da
     // suíte e era erro de ordem no teste.
+    await dono.bankTransaction.deleteMany({ where: { tenantId: { in: [f.a.id, f.b.id] } } });
     await dono.financialPeriod.deleteMany({ where: { tenantId: { in: [f.a.id, f.b.id] } } });
     await dono.financialEntry.deleteMany({ where: { tenantId: { in: [f.a.id, f.b.id] } } });
     await dono.financialCategory.deleteMany({ where: { tenantId: { in: [f.a.id, f.b.id] } } });
@@ -591,6 +592,147 @@ describe('Financeiro da loja (e2e)', () => {
       expect(acoes.map((a) => a.action)).toEqual(
         expect.arrayContaining(['financial_period_closed', 'financial_period_reopened']),
       );
+    });
+  });
+
+  /**
+   * Fase 5: o extrato do banco encontra os lançamentos.
+   *
+   * O que se fixa aqui é a confiança no número: importar duas vezes não
+   * duplica, a sugestão não concilia sozinha, e conciliar dá baixa — porque a
+   * linha do extrato é a prova de que o dinheiro se moveu.
+   */
+  describe('conciliação bancária', () => {
+    const ofx = (linhas: { fitid: string; data: string; valor: string; memo: string }[]) => `
+OFXHEADER:100
+<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKTRANLIST>
+${linhas.map((l) => `<STMTTRN>
+<DTPOSTED>${l.data}
+<TRNAMT>${l.valor}
+<FITID>${l.fitid}
+<MEMO>${l.memo}
+</STMTTRN>`).join('\n')}
+</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>`;
+
+    const hoje = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    let lancamentoId: string;
+
+    beforeAll(async () => {
+      const res = await post('/lancamentos', {
+        categoryId: categoriaSaida, value: '2750.00',
+        dueDate: new Date().toISOString().slice(0, 10),
+        description: 'Fornecedor de peças (conciliação)',
+      });
+      lancamentoId = res.body.lancamentos[0].id;
+    });
+
+    it('importa o extrato e conta o que não deu para ler', async () => {
+      const arquivo = ofx([
+        { fitid: 'TX-1', data: hoje, valor: '-2750.00', memo: 'PAGTO FORNECEDOR' },
+        { fitid: 'TX-2', data: hoje, valor: '-99.90', memo: 'TARIFA PACOTE' },
+      ]);
+
+      const res = await post(`/contas/${contaId}/ofx`, { conteudo: arquivo });
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ lidas: 2, importadas: 2, jaExistiam: 0, ignoradas: 0 });
+    });
+
+    it('reimportar o mesmo extrato não duplica — é o caso comum, não a exceção', async () => {
+      // O arquivo seguinte do banco se sobrepõe ao anterior em alguns dias.
+      const arquivo = ofx([
+        { fitid: 'TX-1', data: hoje, valor: '-2750.00', memo: 'PAGTO FORNECEDOR' },
+        { fitid: 'TX-3', data: hoje, valor: '-500.00', memo: 'OUTRO PAGAMENTO' },
+      ]);
+
+      const res = await post(`/contas/${contaId}/ofx`, { conteudo: arquivo });
+      expect(res.body).toMatchObject({ lidas: 2, importadas: 1, jaExistiam: 1 });
+    });
+
+    it('arquivo que não é extrato é 400, com o que fazer', async () => {
+      const res = await post(`/contas/${contaId}/ofx`, { conteudo: '{"isso": "não é um OFX, mas tem tamanho"}' });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('OFX');
+    });
+
+    it('a sugestão aparece, e não concilia sozinha', async () => {
+      const res = await get(`/contas/${contaId}/conciliacao`);
+      expect(res.status).toBe(200);
+
+      const comSugestao = (res.body.transacoes as { fitid: string; sugestao: { lancamentoId: string; confianca: string } | null }[])
+        .find((t) => t.fitid === 'TX-1');
+      expect(comSugestao!.sugestao).toMatchObject({ lancamentoId, confianca: 'alta' });
+
+      // A tarifa não tem par: aparece sobrando, não some.
+      const semPar = (res.body.transacoes as { fitid: string; sugestao: unknown }[])
+        .find((t) => t.fitid === 'TX-2');
+      expect(semPar!.sugestao).toBeNull();
+
+      // E o lançamento continua previsto: sugerir não é conciliar.
+      const lancamento = await dono.financialEntry.findUniqueOrThrow({ where: { id: lancamentoId } });
+      expect(lancamento.status).toBe('previsto');
+    });
+
+    it('conciliar dá baixa na data do extrato e na conta dele', async () => {
+      const pend = await get(`/contas/${contaId}/conciliacao`);
+      const tx1 = (pend.body.transacoes as { id: string; fitid: string }[]).find((t) => t.fitid === 'TX-1')!;
+
+      const res = await post('/conciliacoes', { transacaoId: tx1.id, lancamentoId });
+      expect(res.status).toBe(201);
+      expect(res.body).toEqual({ conciliado: true, deuBaixa: true });
+
+      const lancamento = await dono.financialEntry.findUniqueOrThrow({ where: { id: lancamentoId } });
+      expect(lancamento.status).toBe('pago');
+      expect(lancamento.accountId).toBe(contaId);
+    });
+
+    it('valor diferente não concilia — é o começo de um caixa que não fecha', async () => {
+      const outro = await post('/lancamentos', {
+        categoryId: categoriaSaida, value: '77.70',
+        dueDate: new Date().toISOString().slice(0, 10), description: 'Lançamento de valor diferente',
+      });
+
+      const pend = await get(`/contas/${contaId}/conciliacao`);
+      const tarifa = (pend.body.transacoes as { id: string; fitid: string }[]).find((t) => t.fitid === 'TX-2')!;
+
+      const errado = await post('/conciliacoes', {
+        transacaoId: tarifa.id, lancamentoId: outro.body.lancamentos[0].id,
+      });
+      expect(errado.status).toBe(400);
+      expect(errado.body.message).toContain('não batem');
+
+      // E a linha já conciliada some das pendências.
+      expect((pend.body.transacoes as { fitid: string }[]).map((t) => t.fitid)).not.toContain('TX-1');
+    });
+
+    it('o lançamento já conciliado não aceita uma segunda linha do extrato', async () => {
+      const pend = await get(`/contas/${contaId}/conciliacao`);
+      const tarifa = (pend.body.transacoes as { id: string; fitid: string }[]).find((t) => t.fitid === 'TX-2')!;
+
+      const res = await post('/conciliacoes', { transacaoId: tarifa.id, lancamentoId });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('já foi conciliado');
+    });
+
+    it('"não é da loja" tira a linha da lista sem inventar lançamento', async () => {
+      const pend = await get(`/contas/${contaId}/conciliacao`);
+      const tarifa = (pend.body.transacoes as { id: string; fitid: string }[]).find((t) => t.fitid === 'TX-2')!;
+
+      expect((await post(`/conciliacoes/${tarifa.id}/ignorar`, {})).status).toBe(201);
+
+      const depois = await get(`/contas/${contaId}/conciliacao`);
+      expect((depois.body.transacoes as { fitid: string }[]).map((t) => t.fitid)).not.toContain('TX-2');
+      // Nenhum lançamento nasceu disso: ignorar é dizer "não é meu".
+      expect(await dono.financialEntry.count({
+        where: { tenantId: f.a.id, description: { contains: 'TARIFA' } },
+      })).toBe(0);
+    });
+
+    it('o extrato de uma loja não aparece na conciliação da outra', async () => {
+      const res = await http()
+        .get(rota(`/contas/${contaId}/conciliacao`))
+        .set('Authorization', `Bearer ${comoOutraLoja}`);
+      // A conta é da loja A: para a B ela não existe.
+      expect(res.status).toBe(404);
     });
   });
 

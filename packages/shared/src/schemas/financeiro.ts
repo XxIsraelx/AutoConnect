@@ -144,3 +144,20 @@ export const reabrirMesSchema = fecharMesSchema.extend({
 export const fluxoQuerySchema = z.object({
   dias: z.coerce.number().int().min(7).max(180).default(30),
 }).strict();
+
+/**
+ * Importação do extrato.
+ *
+ * O arquivo chega como **texto no corpo**, e não como upload multipart: OFX é
+ * texto, o navegador já o lê com `FileReader`, e um multipart exigiria
+ * middleware novo para resolver o mesmo problema. Teto de 2 MB porque extrato de
+ * um mês tem dezenas de KB — 2 MB já é arquivo errado.
+ */
+export const importarOfxSchema = z.object({
+  conteudo: z.string().min(20, 'Arquivo vazio').max(2_000_000, 'Arquivo grande demais para um extrato'),
+}).strict();
+
+export const conciliarSchema = z.object({
+  transacaoId: z.string().uuid(),
+  lancamentoId: z.string().uuid(),
+}).strict();

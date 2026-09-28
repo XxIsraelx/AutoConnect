@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { FinanceiroController } from './financeiro.controller';
 import { FinanceiroService } from './financeiro.service';
 import { GeracaoFinanceiraService } from './geracao.service';
+import { ConciliacaoService } from './conciliacao.service';
 
 /**
  * `GeracaoFinanceiraService` é exportado porque o módulo de negócios o chama:
@@ -11,7 +12,7 @@ import { GeracaoFinanceiraService } from './geracao.service';
  */
 @Module({
   controllers: [FinanceiroController],
-  providers: [FinanceiroService, GeracaoFinanceiraService],
+  providers: [FinanceiroService, GeracaoFinanceiraService, ConciliacaoService],
   exports: [GeracaoFinanceiraService],
 })
 export class FinanceiroModule {}

@@ -140,7 +140,7 @@ faz. É aqui que ele fica melhor que planilha.
   aberto. Idempotente pelo `documentNumber`: reabrir e fechar de novo não cria a
   segunda comissão.
 
-## Fase 5 — conciliação bancária (≈ 3 dias)
+## Fase 5 — conciliação bancária ✅ 28/09/2026
 
 - **Importação OFX** (o formato que todo banco brasileiro exporta) para
   `bank_transactions`, idempotente por `(accountId, fitid)` — o mesmo desenho de

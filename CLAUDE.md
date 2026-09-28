@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.328 testes (963 na API, 365 no `shared`):
+são 1.350 testes (972 na API, 378 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -706,6 +706,17 @@ em 6 fases: `docs/planos/plano-financeiro.md`.
 - **Fechar o mês apura a comissão** — uma conta a pagar por vendedor, por
   `calcularComissao`, vencendo no dia 5 do mês seguinte (mês aberto, senão
   nasceria travada pelo próprio fechamento). Idempotente pelo `documentNumber`.
+- **Conciliação por OFX, não por Open Finance.** Todo banco brasileiro exporta
+  OFX hoje, sem certificado e sem contrato; Open Finance resolve 100% com dez
+  vezes o custo e entra quando houver cliente pedindo. `(conta, fitid)` é único —
+  é isso que faz **reimportar não duplicar**, e o caso comum não é o arquivo
+  repetido, é o arquivo seguinte se sobrepondo ao anterior.
+- **A sugestão de conciliação nunca concilia sozinha**, e só casa com **valor
+  igual** (nunca aproximado) dentro de 5 dias. Conciliar por aproximação é
+  inventar que R$ 1.199,90 é R$ 1.200,00 — e, uma vez aceito, o lojista para de
+  conferir. A regra é `sugerirConciliacao`, pura, no shared.
+- **Conciliar dá baixa** na data e na conta do extrato: a linha do banco é a
+  prova de que o dinheiro se moveu.
 - ⚠ **Nada do financeiro foi revisado por contador.** Mesmo aviso do template de
   contrato sem advogado; entra na mesma revisão.
 
@@ -777,7 +788,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
   foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
   migrations (ver *Testes e CI*).
-- Migrations atuais (31): `init`, `trade_in_and_dealer_setting`,
+- Migrations atuais (32): `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
   `add_announcements_invites_alerts_searches_goals`,
   `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`,
@@ -790,7 +801,8 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   `filial_do_veiculo_geocodificacao_e_chat_sem_conta`, `loja_de_demonstracao`,
   `cortesia_de_cobranca`, `preco_travado_e_ciclo`,
   `plano_pendente_de_pagamento`, `whatsapp_oficial`, `leads_dos_portais`,
-  `push_do_vendedor`, `financeiro_gerencial`, `financeiro_origem`.
+  `push_do_vendedor`, `financeiro_gerencial`, `financeiro_origem`,
+  `conciliacao_ofx`.
 
 ---
 

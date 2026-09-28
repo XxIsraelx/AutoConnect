@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/auth';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import { cn } from '@/lib/utils';
 import Categorias from './Categorias';
+import Conciliacao from './Conciliacao';
 import Contas from './Contas';
 import Dre from './Dre';
 import Fluxo from './Fluxo';
@@ -20,7 +21,7 @@ import {
   type CategoriaFinanceira, type ContaFinanceira, type ResumoFinanceiro,
 } from './dados';
 
-type Aba = 'visao' | 'fluxo' | 'dre' | 'pagar' | 'receber' | 'todos' | 'contas' | 'categorias';
+type Aba = 'visao' | 'fluxo' | 'dre' | 'pagar' | 'receber' | 'todos' | 'conciliacao' | 'contas' | 'categorias';
 
 const ABAS: { chave: Aba; rotulo: string }[] = [
   { chave: 'visao', rotulo: 'Visão' },
@@ -29,6 +30,7 @@ const ABAS: { chave: Aba; rotulo: string }[] = [
   { chave: 'pagar', rotulo: 'A pagar' },
   { chave: 'receber', rotulo: 'A receber' },
   { chave: 'todos', rotulo: 'Lançamentos' },
+  { chave: 'conciliacao', rotulo: 'Conciliação' },
   { chave: 'contas', rotulo: 'Contas' },
   { chave: 'categorias', rotulo: 'Categorias' },
 ];
@@ -235,6 +237,7 @@ export default function FinanceiroPage() {
       {aba === 'todos' && (
         <ListaDeLancamentos contas={contas} recarregarResumo={carregar} />
       )}
+      {aba === 'conciliacao' && <Conciliacao contas={contas} />}
       {aba === 'contas' && <Contas contas={contas} onMudou={carregar} />}
       {aba === 'categorias' && <Categorias categorias={categorias} onMudou={carregar} />}
 
