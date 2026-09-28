@@ -5,6 +5,7 @@ import { DealsService } from './deals.service';
 import { PropostaChatService } from './proposta-chat.service';
 import { ContractsModule } from '../contracts/contracts.module';
 import { DealEstadoModule } from './deal-estado.module';
+import { FinanceiroModule } from '../financeiro/financeiro.module';
 
 @Module({
   // Declarado nos imports para que atravessar concessionárias apareça no diff.
@@ -12,7 +13,7 @@ import { DealEstadoModule } from './deal-estado.module';
   // assinatura externa.
   // DealEstadoModule: a máquina de estados e a margem vivem num módulo folha
   // porque a emissão do contrato também precisa delas — ver o comentário lá.
-  imports: [PrivilegedPrismaModule, ContractsModule, DealEstadoModule],
+  imports: [PrivilegedPrismaModule, ContractsModule, DealEstadoModule, FinanceiroModule],
   controllers: [DealsController, VehicleCostController],
   providers: [DealsService, PropostaChatService],
   // O gateway do chat usa o PropostaChatService para transformar a proposta

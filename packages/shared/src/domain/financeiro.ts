@@ -49,6 +49,21 @@ export const ROTULO_DO_GRUPO: Record<FinancialCategoryGroupValue, string> = {
 /* ── Plano de contas mínimo ─────────────────────────────────── */
 
 /**
+ * As categorias que o **sistema** precisa encontrar para gerar lançamento
+ * sozinho: a venda que virou conta a receber, a compra do carro, a preparação e
+ * a comissão do vendedor.
+ *
+ * A busca é por esta chave, nunca pelo nome: a loja renomeia "Compra de veículo"
+ * para "Aquisição" no primeiro dia, e uma geração que procura por nome pararia de
+ * achar em silêncio — o pior dos dois mundos, porque o dinheiro simplesmente não
+ * apareceria no caixa.
+ */
+export const CHAVES_DE_ORIGEM = [
+  'venda_de_veiculo', 'compra_de_veiculo', 'preparacao', 'comissao',
+] as const;
+export type ChaveDeOrigem = (typeof CHAVES_DE_ORIGEM)[number];
+
+/**
  * O plano de contas com que a loja começa.
  *
  * Existe porque a alternativa é pior: uma tela de financeiro que abre vazia e
@@ -64,20 +79,22 @@ export const CATEGORIAS_PADRAO: readonly {
   direction: FinancialDirectionValue;
   group: FinancialCategoryGroupValue;
   name: string;
+  /** Presente nas quatro que a geração automática procura. */
+  origemKey?: ChaveDeOrigem;
 }[] = [
-  { direction: 'entrada', group: 'veiculos', name: 'Venda de veículo' },
+  { direction: 'entrada', group: 'veiculos', name: 'Venda de veículo', origemKey: 'venda_de_veiculo' },
   { direction: 'entrada', group: 'veiculos', name: 'Entrada de troca' },
   { direction: 'entrada', group: 'financeiro', name: 'Comissão de financiamento' },
   { direction: 'entrada', group: 'outros', name: 'Outras receitas' },
 
-  { direction: 'saida', group: 'veiculos', name: 'Compra de veículo' },
-  { direction: 'saida', group: 'veiculos', name: 'Preparação e funilaria' },
+  { direction: 'saida', group: 'veiculos', name: 'Compra de veículo', origemKey: 'compra_de_veiculo' },
+  { direction: 'saida', group: 'veiculos', name: 'Preparação e funilaria', origemKey: 'preparacao' },
   { direction: 'saida', group: 'veiculos', name: 'Documentação e transferência' },
   { direction: 'saida', group: 'operacao', name: 'Aluguel' },
   { direction: 'saida', group: 'operacao', name: 'Energia, água e internet' },
   { direction: 'saida', group: 'operacao', name: 'Marketing e anúncios' },
   { direction: 'saida', group: 'pessoal', name: 'Salários' },
-  { direction: 'saida', group: 'pessoal', name: 'Comissão de vendedor' },
+  { direction: 'saida', group: 'pessoal', name: 'Comissão de vendedor', origemKey: 'comissao' },
   { direction: 'saida', group: 'impostos', name: 'Impostos e taxas' },
   { direction: 'saida', group: 'financeiro', name: 'Tarifas bancárias e maquininha' },
   { direction: 'saida', group: 'outros', name: 'Outras despesas' },

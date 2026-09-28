@@ -1478,8 +1478,10 @@ model VehicleAcquisition {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
-  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle        Vehicle         @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  /// A conta a pagar que esta compra gerou — uma só, por construção.
+  financialEntry FinancialEntry?
 
   @@index([tenantId])
   @@map("vehicle_acquisitions")
@@ -1499,8 +1501,10 @@ model VehicleCost {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
-  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle        Vehicle         @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  /// A conta a pagar deste item de preparação.
+  financialEntry FinancialEntry?
 
   @@index([tenantId])
   @@index([vehicleId])
@@ -2091,6 +2095,11 @@ model FinancialCategory {
   group     FinancialCategoryGroup
   name      String
   active    Boolean                @default(true)
+  /// Chave estável das categorias que a **geração automática** procura
+  /// (`venda_de_veiculo`, `compra_de_veiculo`, `preparacao`, `comissao`). A busca
+  /// é por ela e nunca pelo nome: a loja renomeia, e buscar por nome pararia de
+  /// achar em silêncio — o lançamento simplesmente não apareceria.
+  originKey String?                @map("origin_key")
   createdAt DateTime               @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime               @updatedAt @map("updated_at") @db.Timestamptz()
 
@@ -2098,6 +2107,7 @@ model FinancialCategory {
   entries FinancialEntry[]
 
   @@unique([tenantId, direction, name])
+  @@unique([tenantId, originKey])
   @@index([tenantId])
   @@map("financial_categories")
 }
@@ -2129,10 +2139,16 @@ model FinancialEntry {
   branchId   String? @map("branch_id") @db.Uuid
 
   /// Origem: quando o lançamento nasceu de algo que a loja já fez no sistema.
-  dealId        String? @map("deal_id") @db.Uuid
-  vehicleId     String? @map("vehicle_id") @db.Uuid
+  dealId               String? @map("deal_id") @db.Uuid
+  vehicleId            String? @map("vehicle_id") @db.Uuid
   /// Único: a parcela do negócio gera **um** lançamento, e regerar não duplica.
-  dealPaymentId String? @unique @map("deal_payment_id") @db.Uuid
+  dealPaymentId        String? @unique @map("deal_payment_id") @db.Uuid
+  /// Idem para a compra do veículo e para cada item de preparação. São FKs
+  /// explícitas, e não um par `origem_tabela`/`origem_id` genérico, porque é a
+  /// unicidade da coluna que torna a geração idempotente **por construção** —
+  /// rodar duas vezes não cria a segunda conta a pagar.
+  vehicleAcquisitionId String? @unique @map("vehicle_acquisition_id") @db.Uuid
+  vehicleCostId        String? @unique @map("vehicle_cost_id") @db.Uuid
 
   /// Mesma série de uma repetição (aluguel, salário). Sem tabela própria: a
   /// série só precisa ser reconhecível para editar ou cancelar as futuras.
@@ -2145,14 +2161,16 @@ model FinancialEntry {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
-  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  account     FinancialAccount? @relation(fields: [accountId], references: [id])
-  category    FinancialCategory @relation(fields: [categoryId], references: [id])
-  branch      DealershipBranch? @relation(fields: [branchId], references: [id])
-  deal        Deal?             @relation(fields: [dealId], references: [id], onDelete: SetNull)
-  vehicle     Vehicle?          @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
-  dealPayment DealPayment?      @relation(fields: [dealPaymentId], references: [id], onDelete: SetNull)
-  autor       User?             @relation(fields: [createdBy], references: [id])
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account     FinancialAccount?   @relation(fields: [accountId], references: [id])
+  category    FinancialCategory   @relation(fields: [categoryId], references: [id])
+  branch      DealershipBranch?   @relation(fields: [branchId], references: [id])
+  deal        Deal?               @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  vehicle     Vehicle?            @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  dealPayment DealPayment?        @relation(fields: [dealPaymentId], references: [id], onDelete: SetNull)
+  aquisicao   VehicleAcquisition? @relation(fields: [vehicleAcquisitionId], references: [id], onDelete: SetNull)
+  custo       VehicleCost?        @relation(fields: [vehicleCostId], references: [id], onDelete: SetNull)
+  autor       User?               @relation(fields: [createdBy], references: [id])
 
   @@index([tenantId, dueDate])
   @@index([tenantId, status, dueDate])

@@ -7,6 +7,7 @@ import {
 import { Prisma, type DealStatus } from '@autoconnect/db';
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
+import { GeracaoFinanceiraService } from '../financeiro/geracao.service';
 import { ehGlobal, type Escopo } from '../../common/escopo';
 import {
   consultaDeClientesRelacionados, type ClienteRelacionado,
@@ -75,6 +76,8 @@ export class DealsService {
     private readonly estado: DealStateService,
     private readonly margem: MarginService,
     private readonly contratos: ContractsService,
+    /** Compra e preparação viram conta a pagar — ver `geracao.service.ts`. */
+    private readonly geracao: GeracaoFinanceiraService,
   ) {}
 
   /**
@@ -492,7 +495,7 @@ export class DealsService {
       });
       if (!veiculo) throw new NotFoundException('Veículo não encontrado');
 
-      return tx.vehicleAcquisition.upsert({
+      const aquisicao = await tx.vehicleAcquisition.upsert({
         where: { vehicleId },
         create: {
           tenantId,
@@ -513,6 +516,12 @@ export class DealsService {
           notes: input.notes,
         },
       });
+
+      // A compra do carro é a maior saída de caixa de uma revenda: ela nasce
+      // como conta a pagar ao fornecedor, no vencimento da entrada do veículo.
+      await this.geracao.aoRegistrarAquisicao(tx, aquisicao);
+
+      return aquisicao;
     });
   }
 
@@ -525,7 +534,7 @@ export class DealsService {
       });
       if (!veiculo) throw new NotFoundException('Veículo não encontrado');
 
-      return tx.vehicleCost.create({
+      const custo = await tx.vehicleCost.create({
         data: {
           tenantId,
           vehicleId,
@@ -536,6 +545,12 @@ export class DealsService {
           incurredAt: input.incurredAt,
         },
       });
+
+      // Cada item de preparação é uma conta a pagar com o fornecedor que a loja
+      // já digitou aqui — o financeiro aponta para o custo, não copia o valor.
+      await this.geracao.aoLancarCusto(tx, custo);
+
+      return custo;
     });
   }
 

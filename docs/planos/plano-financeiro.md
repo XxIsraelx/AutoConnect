@@ -107,7 +107,7 @@ proteger.
 - Falha de carga com `ErroAoCarregar`, falha de ação inline, formulário que edita
   dado existente não renderiza se a carga falhou — o padrão do projeto.
 
-## Fase 3 — o dinheiro que o negócio já gerou (≈ 2 dias)
+## Fase 3 — o dinheiro que o negócio já gerou ✅ 28/09/2026
 
 **Entrega:** o financeiro para de ser digitação e passa a nascer do que a loja já
 faz. É aqui que ele fica melhor que planilha.
@@ -120,8 +120,9 @@ faz. É aqui que ele fica melhor que planilha.
   é digitado hoje.
 - **Sem dupla contagem:** o lançamento gerado **aponta** para a linha de origem.
   A tela que mostrar as duas coisas junta pela origem, não soma duas vezes.
-- **Comissão do vendedor → conta a pagar** no fechamento do mês, com
-  `calcularComissao` — a mesma função das outras três telas.
+- ⏸ **Comissão do vendedor → conta a pagar**: fica para a Fase 4, junto do
+  fechamento de mês, que é quando ela é apurada. A categoria e a chave de origem
+  (`comissao`) já existem esperando.
 
 ## Fase 4 — fluxo de caixa, DRE e fechamento (≈ 3 dias)
 

@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.307 testes (946 na API, 361 no `shared`):
+são 1.315 testes (952 na API, 363 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -672,8 +672,23 @@ em 6 fases: `docs/planos/plano-financeiro.md`.
   português, e um **trigger** repete no banco — a rede que não tem como escapar.
   Reabrir exige motivo.
 - **O lançamento aponta para a origem** (`deal_id`, `vehicle_id`,
-  `deal_payment_id`) em vez de copiar valor: é o que evita dupla contagem com o
-  DRE por veículo. `deal_payment_id` é único — regerar não duplica.
+  `deal_payment_id`, `vehicle_acquisition_id`, `vehicle_cost_id`) em vez de copiar
+  valor: é o que evita dupla contagem com o DRE por veículo. As três últimas são
+  **únicas**, e é isso que torna a geração idempotente por construção — não um
+  `if` que alguém pode errar.
+- **O lançamento nasce da operação**: negócio faturado gera conta a receber (uma
+  por forma de pagamento, não por parcela de financiamento — quem recebe as 48 é
+  o banco), compra do veículo e cada item de preparação geram conta a pagar. A
+  geração **nunca derruba a operação**: erro ali é aviso no log, porque dinheiro
+  invisível é ruim e venda travada é pior.
+- **A categoria da geração é achada por `origin_key`, nunca pelo nome.** A loja
+  renomeia "Compra de veículo" no primeiro dia, e buscar por nome pararia de achar
+  em silêncio. Sem a categoria, ela é criada a partir de `CATEGORIAS_PADRAO`.
+- **Data em mês fechado cai para hoje**, com o porquê na observação: violar o
+  fechamento mudaria um mês conferido, e não gerar faria o dinheiro sumir por
+  causa de uma data.
+- **Baixa na conta a receber confirma o pagamento no negócio** (idempotente pelo
+  `where`): quem recebeu dá baixa uma vez, no lugar em que está olhando.
 - **Financeiro é de gerência** (`manager`, `tenant_admin`, `super_admin`).
   Vendedor não vê o caixa, pela mesma razão da carteira fechada por padrão.
 - **Dinheiro no corpo é `valorMonetario`** (`"1234.56"`), o mesmo do negócio —
@@ -750,7 +765,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
   foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
   migrations (ver *Testes e CI*).
-- Migrations atuais (29): `init`, `trade_in_and_dealer_setting`,
+- Migrations atuais (31): `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
   `add_announcements_invites_alerts_searches_goals`,
   `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`,
@@ -763,7 +778,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   `filial_do_veiculo_geocodificacao_e_chat_sem_conta`, `loja_de_demonstracao`,
   `cortesia_de_cobranca`, `preco_travado_e_ciclo`,
   `plano_pendente_de_pagamento`, `whatsapp_oficial`, `leads_dos_portais`,
-  `push_do_vendedor`, `financeiro_gerencial`.
+  `push_do_vendedor`, `financeiro_gerencial`, `financeiro_origem`.
 
 ---
 

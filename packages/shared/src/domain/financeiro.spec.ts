@@ -1,5 +1,5 @@
 import {
-  CATEGORIAS_PADRAO, diasDeAtraso, estaAtrasado, mesEstaFechado, podeAlterar,
+  CATEGORIAS_PADRAO, CHAVES_DE_ORIGEM, diasDeAtraso, estaAtrasado, mesEstaFechado, podeAlterar,
   saldoDaConta, saldoPrevisto, somarLancamentos,
   type LancamentoParaRegra,
 } from './financeiro';
@@ -142,5 +142,25 @@ describe('plano de contas padrão', () => {
     const saidas = CATEGORIAS_PADRAO.filter((c) => c.direction === 'saida').map((c) => c.name);
     expect(saidas).toContain('Compra de veículo');
     expect(saidas).toContain('Preparação e funilaria');
+  });
+});
+
+describe('chaves de origem', () => {
+  it('as quatro chaves existem no plano padrão, uma vez cada', () => {
+    // A geração automática procura por chave, nunca por nome: a loja renomeia
+    // "Compra de veículo" no primeiro dia, e buscar por nome pararia de achar
+    // em silêncio — o dinheiro não apareceria no caixa e ninguém saberia por quê.
+    for (const chave of CHAVES_DE_ORIGEM) {
+      const achadas = CATEGORIAS_PADRAO.filter((c) => c.origemKey === chave);
+      expect(achadas).toHaveLength(1);
+    }
+  });
+
+  it('a venda é entrada; compra, preparação e comissão são saída', () => {
+    const porChave = (k: string) => CATEGORIAS_PADRAO.find((c) => c.origemKey === k)!;
+    expect(porChave('venda_de_veiculo').direction).toBe('entrada');
+    for (const k of ['compra_de_veiculo', 'preparacao', 'comissao']) {
+      expect(porChave(k).direction).toBe('saida');
+    }
   });
 });
