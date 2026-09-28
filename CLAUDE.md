@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.315 testes (952 na API, 363 no `shared`):
+são 1.328 testes (963 na API, 365 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -694,6 +694,18 @@ em 6 fases: `docs/planos/plano-financeiro.md`.
 - **Dinheiro no corpo é `valorMonetario`** (`"1234.56"`), o mesmo do negócio —
   quem formata e desformata é a tela. Duas gramáticas de dinheiro na API seria a
   próxima divergência esperando acontecer.
+- **DRE é gerencial e por competência da venda**, e é a conta mais fácil de ler
+  errado: receita e CMV vêm do **negócio faturado** (a `vehicleCostSnapshot` que a
+  margem congela), e as despesas do mês **excluem o grupo `veiculos`** — as contas
+  a pagar de compra e preparação são o caixa do mesmo carro que já está no CMV, e
+  somar as duas contaria o veículo duas vezes. Caixa do mês é outra pergunta, e
+  quem responde é o fluxo.
+- **O fluxo de caixa responde "em que dia o caixa fica negativo"**, com o
+  atrasado entrando no primeiro dia: quem não pagou ainda deve, e um fluxo que
+  ignora o vencido promete um caixa que não existe.
+- **Fechar o mês apura a comissão** — uma conta a pagar por vendedor, por
+  `calcularComissao`, vencendo no dia 5 do mês seguinte (mês aberto, senão
+  nasceria travada pelo próprio fechamento). Idempotente pelo `documentNumber`.
 - ⚠ **Nada do financeiro foi revisado por contador.** Mesmo aviso do template de
   contrato sem advogado; entra na mesma revisão.
 

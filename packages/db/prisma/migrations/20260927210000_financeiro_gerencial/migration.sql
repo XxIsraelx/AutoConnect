@@ -234,6 +234,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- `DELETE` entra na trava junto com `INSERT` e `UPDATE`, de propósito: mês
+-- conferido não muda, e apagar uma linha dele muda. Manutenção legítima passa
+-- por reabrir o mês — que é ação explícita, com motivo e auditoria.
 CREATE TRIGGER financial_entries_mes_fechado
   BEFORE INSERT OR UPDATE OR DELETE ON "financial_entries"
   FOR EACH ROW EXECUTE FUNCTION financeiro_mes_fechado();

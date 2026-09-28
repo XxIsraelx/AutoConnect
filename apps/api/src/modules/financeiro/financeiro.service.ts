@@ -5,10 +5,11 @@ import { Prisma } from '@autoconnect/db';
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { ehGlobal, type Escopo } from '../../common/escopo';
 import {
-  CATEGORIAS_PADRAO, mesEstaFechado,
+  calcularComissao, CATEGORIAS_PADRAO, DEAL_FATURADO_STATUSES, mesEstaFechado,
   type CategoriaFinanceiraInput, type ContaFinanceiraInput,
   type LancamentoInput, type ListarLancamentosInput,
 } from '@autoconnect/shared';
+import { GeracaoFinanceiraService } from './geracao.service';
 
 /** Quem opera o financeiro. Vendedor não vê o caixa da loja. */
 export const PAPEIS_DO_FINANCEIRO = ['manager', 'tenant_admin', 'super_admin'];
@@ -35,7 +36,11 @@ interface QuemPede { id: string; role: string }
  */
 @Injectable()
 export class FinanceiroService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    /** A comissão do mês fechado vira conta a pagar — ver `fecharMes`. */
+    private readonly geracao: GeracaoFinanceiraService,
+  ) {}
 
   private tenantDe(escopo: Escopo): string {
     if (ehGlobal(escopo)) {
@@ -649,6 +654,175 @@ export class FinanceiroService {
     });
   }
 
+  /* ── Fluxo de caixa ─────────────────────────────────────── */
+
+  /**
+   * O caixa dia a dia, daqui para frente.
+   *
+   * Responde a pergunta que o dono faz toda semana e que nenhuma outra tela
+   * responde: **em que dia o caixa fica negativo**. O saldo de hoje vem dos
+   * lançamentos pagos; a partir daí, cada dia soma o que vence nele.
+   *
+   * O **atrasado entra no primeiro dia**, e não some: quem não pagou ainda deve,
+   * e um fluxo que ignora o vencido promete um caixa que não existe.
+   *
+   * A soma acontece em memória, sobre a janela pedida (no máximo 180 dias),
+   * porque `groupBy` não agrupa por dia truncado — e uma janela dessas é da
+   * ordem de centenas de linhas, não de milhares.
+   */
+  async fluxoDeCaixa(escopo: Escopo, dias: number) {
+    const tenantId = this.tenantDe(escopo);
+    const hoje = diaDe(new Date());
+    const fim = new Date(hoje.getTime() + dias * 86_400_000);
+
+    return this.prisma.withTenant(tenantId, async (tx: ScopedClient) => {
+      const [contas, pagos, previstos] = await Promise.all([
+        tx.financialAccount.findMany({
+          where: { tenantId, active: true },
+          select: { openingBalance: true },
+        }),
+        tx.financialEntry.groupBy({
+          by: ['direction'],
+          where: { tenantId, status: 'pago' },
+          _sum: { value: true },
+        }),
+        tx.financialEntry.findMany({
+          where: { tenantId, status: 'previsto', dueDate: { lte: fim } },
+          select: { direction: true, value: true, dueDate: true },
+          orderBy: { dueDate: 'asc' },
+        }),
+      ]);
+
+      const inicial = contas.reduce((t, c) => t.plus(c.openingBalance), new Prisma.Decimal(0));
+      const entrou = pagos.find((p) => p.direction === 'entrada')?._sum.value ?? new Prisma.Decimal(0);
+      const saiu = pagos.find((p) => p.direction === 'saida')?._sum.value ?? new Prisma.Decimal(0);
+      const saldoHoje = inicial.plus(entrou).minus(saiu);
+
+      const porDia = new Map<string, { entradas: Prisma.Decimal; saidas: Prisma.Decimal }>();
+      for (const p of previstos) {
+        // Vencido entra no primeiro dia da série: ele já devia ter acontecido.
+        const dia = diaDe(p.dueDate) < hoje ? hoje : diaDe(p.dueDate);
+        const chave = dia.toISOString().slice(0, 10);
+        const atual = porDia.get(chave)
+          ?? { entradas: new Prisma.Decimal(0), saidas: new Prisma.Decimal(0) };
+        if (p.direction === 'entrada') atual.entradas = atual.entradas.plus(p.value);
+        else atual.saidas = atual.saidas.plus(p.value);
+        porDia.set(chave, atual);
+      }
+
+      let saldo = saldoHoje;
+      let primeiroDiaNegativo: string | null = null;
+      const serie: {
+        dia: string; entradas: string; saidas: string; saldo: string;
+      }[] = [];
+
+      for (let i = 0; i <= dias; i++) {
+        const chave = new Date(hoje.getTime() + i * 86_400_000).toISOString().slice(0, 10);
+        const doDia = porDia.get(chave) ?? { entradas: new Prisma.Decimal(0), saidas: new Prisma.Decimal(0) };
+        saldo = saldo.plus(doDia.entradas).minus(doDia.saidas);
+        if (primeiroDiaNegativo === null && saldo.lessThan(0)) primeiroDiaNegativo = chave;
+        serie.push({
+          dia: chave,
+          entradas: doDia.entradas.toFixed(2),
+          saidas: doDia.saidas.toFixed(2),
+          saldo: saldo.toFixed(2),
+        });
+      }
+
+      return {
+        saldoHoje: saldoHoje.toFixed(2),
+        dias,
+        /** `null` quando o caixa não fica negativo na janela — a boa notícia. */
+        primeiroDiaNegativo,
+        serie,
+      };
+    });
+  }
+
+  /* ── DRE gerencial ──────────────────────────────────────── */
+
+  /**
+   * O resultado do mês, no critério que a revenda entende.
+   *
+   * **Aqui mora a decisão mais delicada do módulo: o que somar sem contar duas
+   * vezes.** A receita e o custo do veículo vêm do **negócio faturado** (a mesma
+   * `vehicleCostSnapshot` que a margem congela), e não dos lançamentos de compra
+   * e preparação — que são o *caixa* da mesma coisa. Somar os dois seria contar o
+   * carro duas vezes.
+   *
+   * Por isso as despesas do mês excluem o grupo `veiculos`: o que sobra é a
+   * operação (aluguel, pessoal, marketing, impostos, tarifas), que não está em
+   * lugar nenhum do negócio.
+   *
+   * É gerencial e por **competência da venda**: a linha do mês é a venda que
+   * fechou nele, mesmo que o dinheiro entre em três parcelas. Quem quiser o
+   * caixa do mês olha o fluxo, que é a outra pergunta.
+   */
+  async dre(escopo: Escopo, year: number, month: number) {
+    const tenantId = this.tenantDe(escopo);
+    const inicio = new Date(Date.UTC(year, month - 1, 1));
+    const fim = new Date(Date.UTC(year, month, 1));
+
+    return this.prisma.withTenant(tenantId, async (tx: ScopedClient) => {
+      const [vendas, despesas, outrasReceitas] = await Promise.all([
+        tx.deal.aggregate({
+          where: {
+            tenantId,
+            status: { in: [...DEAL_FATURADO_STATUSES] as never[] },
+            closedAt: { gte: inicio, lt: fim },
+          },
+          _sum: { saleValue: true, vehicleCostSnapshot: true },
+          _count: { _all: true },
+        }),
+        tx.financialEntry.findMany({
+          where: {
+            tenantId, direction: 'saida', status: 'pago',
+            paidAt: { gte: inicio, lt: fim },
+            category: { group: { not: 'veiculos' } },
+          },
+          select: { value: true, category: { select: { group: true, name: true } } },
+        }),
+        tx.financialEntry.aggregate({
+          where: {
+            tenantId, direction: 'entrada', status: 'pago',
+            paidAt: { gte: inicio, lt: fim },
+            category: { originKey: { not: 'venda_de_veiculo' } },
+          },
+          _sum: { value: true },
+        }),
+      ]);
+
+      const receita = vendas._sum.saleValue ?? new Prisma.Decimal(0);
+      const cmv = vendas._sum.vehicleCostSnapshot ?? new Prisma.Decimal(0);
+      const outras = outrasReceitas._sum.value ?? new Prisma.Decimal(0);
+
+      const porGrupo = new Map<string, Prisma.Decimal>();
+      for (const d of despesas) {
+        const grupo = d.category.group;
+        porGrupo.set(grupo, (porGrupo.get(grupo) ?? new Prisma.Decimal(0)).plus(d.value));
+      }
+      const totalDespesas = [...porGrupo.values()]
+        .reduce((t, v) => t.plus(v), new Prisma.Decimal(0));
+
+      const margemBruta = receita.minus(cmv);
+      const resultado = margemBruta.plus(outras).minus(totalDespesas);
+
+      return {
+        periodo: { year, month },
+        negociosFaturados: vendas._count._all,
+        receitaDeVeiculos: receita.toFixed(2),
+        custoDosVeiculosVendidos: cmv.toFixed(2),
+        margemBruta: margemBruta.toFixed(2),
+        outrasReceitas: outras.toFixed(2),
+        despesasPorGrupo: [...porGrupo.entries()]
+          .map(([grupo, valor]) => ({ grupo, valor: valor.toFixed(2) }))
+          .sort((a, b) => Number(b.valor) - Number(a.valor)),
+        totalDeDespesas: totalDespesas.toFixed(2),
+        resultado: resultado.toFixed(2),
+      };
+    });
+  }
+
   /* ── Fechamento de mês ──────────────────────────────────── */
 
   async listarPeriodos(escopo: Escopo) {
@@ -683,6 +857,11 @@ export class FinanceiroService {
         },
       });
 
+      // A comissão do mês é apurada **antes** da trava: ela vence no mês
+      // seguinte, mas nasce do que foi faturado neste. Fechar o mês é o momento
+      // em que a loja sabe quanto deve a cada vendedor.
+      const comissoes = await this.gerarComissoesDoMes(tx, tenantId, year, month);
+
       const periodo = aberto
         ? await tx.financialPeriod.update({
           where: { id: aberto.id },
@@ -692,11 +871,27 @@ export class FinanceiroService {
           data: { tenantId, year, month, closedBy: quem.id },
         });
 
-      return { id: periodo.id, year, month, closedAt: periodo.closedAt.toISOString(), pendentesNoMes: pendentes };
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          actorUserId: quem.id,
+          action: 'financial_period_closed',
+          entityType: 'financial_period',
+          entityId: periodo.id,
+          diff: { year, month, pendentesNoMes: pendentes, comissoesGeradas: comissoes },
+        },
+      });
+
+      return {
+        id: periodo.id, year, month,
+        closedAt: periodo.closedAt.toISOString(),
+        pendentesNoMes: pendentes,
+        comissoesGeradas: comissoes,
+      };
     });
   }
 
-  async reabrirMes(escopo: Escopo, year: number, month: number, motivo: string) {
+  async reabrirMes(escopo: Escopo, year: number, month: number, motivo: string, quem: QuemPede) {
     const tenantId = this.tenantDe(escopo);
 
     return this.prisma.withTenant(tenantId, async (tx: ScopedClient) => {
@@ -708,8 +903,105 @@ export class FinanceiroService {
         where: { id: periodo.id },
         data: { reopenedAt: new Date(), reopenReason: motivo },
       });
+
+      // Reabrir mês fechado é a ação que mais precisa de rastro: alguém vai
+      // perguntar, meses depois, por que o resultado de março mudou.
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          actorUserId: quem.id,
+          action: 'financial_period_reopened',
+          entityType: 'financial_period',
+          entityId: periodo.id,
+          diff: { year, month, motivo },
+        },
+      });
+
       return { reaberto: true, year, month };
     });
+  }
+
+  /**
+   * A comissão do mês vira conta a pagar, uma por vendedor.
+   *
+   * **A conta é `calcularComissao`, a mesma de `/equipe`, `/relatorios` e do
+   * detalhe do negócio.** Não há uma segunda fórmula aqui: duas cópias já deram
+   * R$ 1.950,00 numa tela e R$ 147,50 na outra para a mesma pessoa, e o
+   * financeiro seria a terceira.
+   *
+   * Vence no dia 5 do mês seguinte — mês aberto, portanto, senão o lançamento
+   * nasceria travado pelo próprio fechamento que o gerou.
+   *
+   * Idempotente pelo `documentNumber`: fechar o mesmo mês de novo (depois de
+   * reabrir) não cria a segunda comissão do mesmo vendedor.
+   */
+  private async gerarComissoesDoMes(
+    tx: ScopedClient,
+    tenantId: string,
+    year: number,
+    month: number,
+  ): Promise<number> {
+    const inicio = new Date(Date.UTC(year, month - 1, 1));
+    const fim = new Date(Date.UTC(year, month, 1));
+
+    const negocios = await tx.deal.findMany({
+      where: {
+        tenantId,
+        status: { in: [...DEAL_FATURADO_STATUSES] as never[] },
+        closedAt: { gte: inicio, lt: fim },
+        salespersonId: { not: null },
+      },
+      select: { salespersonId: true, saleValue: true },
+    });
+    if (negocios.length === 0) return 0;
+
+    const porVendedor = new Map<string, Prisma.Decimal>();
+    for (const n of negocios) {
+      const id = n.salespersonId!;
+      porVendedor.set(id, (porVendedor.get(id) ?? new Prisma.Decimal(0)).plus(n.saleValue));
+    }
+
+    const perfis = await tx.salespersonProfile.findMany({
+      where: { userId: { in: [...porVendedor.keys()] } },
+      select: { userId: true, commissionPct: true, user: { select: { fullName: true } } },
+    });
+
+    const categoryId = await this.geracao.categoriaDe(tx, tenantId, 'comissao');
+    const vencimento = new Date(Date.UTC(year, month, 5));
+    let criadas = 0;
+
+    for (const perfil of perfis) {
+      const base = porVendedor.get(perfil.userId);
+      const valor = base ? calcularComissao(base.toFixed(2), perfil.commissionPct?.toFixed(2) ?? null) : null;
+      // Sem percentual no perfil não há comissão a pagar — e "ninguém informou
+      // quanto ela ganha" não é zero, é ausência. Não se inventa lançamento.
+      if (!valor || Number(valor) === 0) continue;
+
+      const documento = `comissao:${year}-${String(month).padStart(2, '0')}:${perfil.userId}`;
+      const jaExiste = await tx.financialEntry.findFirst({
+        where: { tenantId, documentNumber: documento },
+        select: { id: true },
+      });
+      if (jaExiste) continue;
+
+      await tx.financialEntry.create({
+        data: {
+          tenantId,
+          direction: 'saida',
+          status: 'previsto',
+          value: new Prisma.Decimal(valor),
+          dueDate: vencimento,
+          description: `Comissão de ${perfil.user.fullName} — ${String(month).padStart(2, '0')}/${year}`,
+          supplierName: perfil.user.fullName,
+          documentNumber: documento,
+          notes: `Percentual do perfil sobre ${base!.toFixed(2)} de vendas faturadas no mês.`,
+          categoryId,
+        },
+      });
+      criadas += 1;
+    }
+
+    return criadas;
   }
 }
 

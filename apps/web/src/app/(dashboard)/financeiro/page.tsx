@@ -11,6 +11,8 @@ import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
 import { cn } from '@/lib/utils';
 import Categorias from './Categorias';
 import Contas from './Contas';
+import Dre from './Dre';
+import Fluxo from './Fluxo';
 import ListaDeLancamentos from './ListaDeLancamentos';
 import NovoLancamentoModal from './NovoLancamentoModal';
 import {
@@ -18,10 +20,12 @@ import {
   type CategoriaFinanceira, type ContaFinanceira, type ResumoFinanceiro,
 } from './dados';
 
-type Aba = 'visao' | 'pagar' | 'receber' | 'todos' | 'contas' | 'categorias';
+type Aba = 'visao' | 'fluxo' | 'dre' | 'pagar' | 'receber' | 'todos' | 'contas' | 'categorias';
 
 const ABAS: { chave: Aba; rotulo: string }[] = [
   { chave: 'visao', rotulo: 'Visão' },
+  { chave: 'fluxo', rotulo: 'Fluxo de caixa' },
+  { chave: 'dre', rotulo: 'Resultado do mês' },
   { chave: 'pagar', rotulo: 'A pagar' },
   { chave: 'receber', rotulo: 'A receber' },
   { chave: 'todos', rotulo: 'Lançamentos' },
@@ -220,6 +224,8 @@ export default function FinanceiroPage() {
         </div>
       )}
 
+      {aba === 'fluxo' && <Fluxo />}
+      {aba === 'dre' && <Dre />}
       {aba === 'pagar' && (
         <ListaDeLancamentos direction="saida" contas={contas} recarregarResumo={carregar} />
       )}

@@ -133,3 +133,14 @@ export const fecharMesSchema = z.object({
 export const reabrirMesSchema = fecharMesSchema.extend({
   motivo: z.string().trim().min(3, 'Diga por que está reabrindo').max(300),
 }).strict();
+
+/**
+ * Janela do fluxo de caixa.
+ *
+ * Teto de 180 dias porque a soma acontece em memória sobre as linhas da janela:
+ * projeção de um ano seria lenta e, pior, mentirosa — ninguém sabe o que vence
+ * em agosto do ano que vem.
+ */
+export const fluxoQuerySchema = z.object({
+  dias: z.coerce.number().int().min(7).max(180).default(30),
+}).strict();
