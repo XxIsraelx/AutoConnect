@@ -3,12 +3,13 @@
  *
  * Monta UMA concessionária fictícia completa — equipe, estoque com foto,
  * leads distribuídos pelo rodízio, agenda, negócios em todos os estágios,
- * contrato emitido e assinado, chat com proposta aceita — para ser mostrada no
- * celular a um dono de revenda.
+ * contrato emitido e assinado, chat com proposta aceita e o financeiro que
+ * nasce disso tudo — para ser mostrada no celular a um dono de revenda.
  *
  *   pnpm --filter @autoconnect/db run demo                  # cria (ou pula, se já existe)
  *   DEMO_RESET=1  pnpm --filter @autoconnect/db run demo    # apaga e recria com as datas de hoje
  *   DEMO_APAGAR=1 pnpm --filter @autoconnect/db run demo    # só apaga
+ *   DEMO_FINANCEIRO=1 pnpm --filter @autoconnect/db run demo  # refaz só o financeiro da loja que existe
  *
  * ## Por que existe, separado do `seed.ts`
  *
@@ -82,11 +83,16 @@ import {
   type TransmissionType,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { randomUUID } from 'crypto';
 
 // O shared não é dependência do @autoconnect/db (seria ciclo: o shared já
 // depende deste pacote). Como isto é script, e não código publicado, o import
 // é pelo caminho do fonte — o tsx transpila na hora.
 import { calcularPrazoDeResposta, type Expediente } from '../../shared/src/domain/sla';
+import { CATEGORIAS_PADRAO } from '../../shared/src/domain/financeiro';
+import { calcularComissao } from '../../shared/src/domain/comissao';
+import { DEAL_FATURADO_STATUSES } from '../../shared/src/domain/deal';
+import type { MotivoDeCortesia } from '../../shared/src/domain/cobranca';
 import { normalizarTelefoneBr } from '../../shared/src/domain/telefone';
 import { qualificarComprador, qualificarVendedor, formatarCpf } from '../../shared/src/schemas/deal';
 
@@ -106,7 +112,14 @@ const SENHA_DOS_CLIENTES = 'Cliente@2026';
 const DOMINIO = 'example.com';
 const PREFIXO_CLIENTE = 'demo.cliente.';
 
-const AGORA = new Date();
+/**
+ * O "agora" da loja inteira. `DEMO_AGORA` (ISO, com fuso) só existe para
+ * capturar telas fora do expediente: gerada às 3h da manhã, a demonstração tem
+ * "Boa tarde!" à 01:30 e test drive "hoje à 01:14". Nunca em produção — lá a
+ * loja tem que viver no relógio de verdade.
+ */
+const AGORA = process.env.DEMO_AGORA ? new Date(process.env.DEMO_AGORA) : new Date();
+if (Number.isNaN(AGORA.getTime())) throw new Error(`DEMO_AGORA inválido: ${process.env.DEMO_AGORA}`);
 
 /* ════════════════════════════════════════════════════════════════════════
    Utilitários
@@ -1049,8 +1062,10 @@ const CONVERSAS: ConversaDaDemo[] = [
       { de: 'vendedor', texto: 'Boa tarde, Marcelo! É sim, único dono e com todas as revisões na concessionária. Posso te mandar o histórico.', hAtras: 49 },
       { de: 'cliente', texto: 'Perfeito. E se eu der 35 mil de entrada, fica em quanto por mês?', hAtras: 48, lidaPeloVendedor: true },
       { de: 'vendedor', texto: 'Montei uma simulação para você:', hAtras: 47, proposta: { preco: 122_000, entradaFracao: 0.287, parcelas: 48, status: 'accepted' } },
-      { de: 'cliente', texto: 'Fechado! Pode preparar. Consigo passar aí amanhã no fim da tarde.', hAtras: 44, lidaPeloVendedor: true },
-      { de: 'vendedor', texto: 'Combinado. Já deixei o test drive marcado para hoje às 17h e a documentação separada.', hAtras: 43 },
+      // Hoje, e não dois dias atrás: o test drive das 17h está na agenda de hoje,
+      // e "amanhã" dito anteontem não cabia com o "hoje às 17h" da resposta.
+      { de: 'cliente', texto: 'Fechado! Pode preparar. Consigo passar aí hoje no fim da tarde.', hAtras: 4, lidaPeloVendedor: true },
+      { de: 'vendedor', texto: 'Combinado. Já deixei o test drive marcado para hoje às 17h e a documentação separada.', hAtras: 3 },
     ],
   },
   {
@@ -1119,6 +1134,9 @@ async function apagar(): Promise<boolean> {
   const tenant = await prisma.tenant.findUnique({ where: { slug: SLUG }, select: { id: true } });
 
   if (tenant) {
+    // Mês fechado tranca os lançamentos dele por trigger — inclusive contra a
+    // cascata. Sem abrir antes, a loja em que alguém fechou um mês não se apaga.
+    await prisma.financialPeriod.deleteMany({ where: { tenantId: tenant.id } });
     await prisma.tenant.delete({ where: { id: tenant.id } });
   }
 
@@ -1132,6 +1150,10 @@ async function criarLoja(tx: Tx) {
   const tenant = await tx.tenant.create({
     data: {
       slug: LOJA.slug,
+      // Fora da busca, do mapa, das buscas salvas e dos alertas; a vitrine
+      // avisa que é demonstração (migration `loja_de_demonstracao`). Sem isto,
+      // um `DEMO_RESET` em produção devolvia a loja fictícia à busca pública.
+      isDemo: true,
       legalName: LOJA.legalName,
       tradeName: LOJA.tradeName,
       taxId: LOJA.taxId,
@@ -1150,8 +1172,14 @@ async function criarLoja(tx: Tx) {
       createdAt: diasAtras(720, 9),
       subscription: {
         create: {
-          plan: 'pro',
+          // Cortesia de loja interna: nenhum prazo bloqueia a demonstração e o
+          // cron de vencimentos não manda aviso para os e-mails fictícios. O
+          // plano é o da cortesia (`PLANO_DA_CORTESIA`) — era `pro`, que deixou
+          // de existir na troca de planos de 25/09/2026 e fazia a criação quebrar.
+          plan: 'crescimento',
           status: 'active',
+          courtesySince: AGORA,
+          courtesyReason: 'interna' satisfies MotivoDeCortesia,
           seatsLimit: 10,
           currentPeriodStart: new Date(AGORA.getFullYear(), AGORA.getMonth(), 1),
           currentPeriodEnd: new Date(AGORA.getFullYear(), AGORA.getMonth() + 1, 1),
@@ -1336,6 +1364,10 @@ async function criarEstoque(
     const entrada = diasAtras(diasNoEstoque, 9, rng.int(0, 59));
     const preco = D(e.preco);
 
+    // O fornecedor sai da origem: sorteados em separado, o carro de leilão
+    // vinha de "Troca de cliente" — e o financeiro mostra os dois lado a lado.
+    const origin = rng.pick(['direct_purchase', 'trade_in', 'auction', 'direct_purchase'] as const);
+
     const usarFoto = !rascunho?.semFoto;
     const imagens = usarFoto
       ? fotos.fotos.map((f, pos) => ({
@@ -1385,12 +1417,8 @@ async function criarEstoque(
         acquisition: {
           create: {
             tenantId: ctx.tenantId,
-            origin: rng.pick(['direct_purchase', 'trade_in', 'auction', 'direct_purchase'] as const),
-            supplierName: rng.pick([
-              'Leilão Pátio Central (demonstração)',
-              'Compra direta de particular',
-              'Troca de cliente',
-            ]),
+            origin,
+            supplierName: FORNECEDOR_DA_ORIGEM[origin],
             purchaseValue: D(e.compra),
             enteredAt: entrada,
             notes: 'Dado de demonstração.',
@@ -1412,6 +1440,12 @@ async function criarEstoque(
 
   return veiculos;
 }
+
+const FORNECEDOR_DA_ORIGEM: Record<string, string> = {
+  direct_purchase: 'Compra direta de particular',
+  trade_in: 'Troca de cliente',
+  auction: 'Leilão Pátio Central (demonstração)',
+};
 
 /* ── Leads ──────────────────────────────────────────────────────────────── */
 
@@ -2194,12 +2228,505 @@ async function criarEngajamento(tx: Tx, ctx: Contexto) {
 }
 
 /* ════════════════════════════════════════════════════════════════════════
+   Financeiro
+   ════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * O caixa da loja de demonstração.
+ *
+ * O grosso **nasce do que a loja já fez**, do mesmo jeito que numa loja de
+ * verdade (`GeracaoFinanceiraService`): a compra de cada carro e cada item de
+ * preparação viram conta a pagar, e cada forma de pagamento dos negócios
+ * faturados vira conta a receber — apontando para a origem
+ * (`vehicle_acquisition_id`, `vehicle_cost_id`, `deal_payment_id`), e não
+ * copiando o valor. Em volta disso, o que toda revenda paga todo mês: aluguel,
+ * folha, energia, anúncios e o DAS. A comissão da equipe nasce do **fechamento**
+ * do mês, como no sistema (`FinanceiroService.fecharMes`): o mês passado vem
+ * fechado quando não sobrou promessa nele; o corrente fica aberto, para quem
+ * estiver vendo fechá-lo e ver as comissões aparecerem.
+ *
+ * **Lido do banco, não do `Contexto`**, porque `DEMO_FINANCEIRO=1` refaz só o
+ * financeiro de uma loja demo que já existe — a de produção foi montada antes
+ * de o módulo existir — sem apagar os leads, o chat e os negócios dela. As
+ * datas saem do que está gravado (entrada do carro, fechamento do negócio) e,
+ * para as despesas do mês, de hoje.
+ *
+ * O "começo" do financeiro é o dia 1º do mês anterior: é quando a loja fictícia
+ * passou a usar o módulo, no meio da vida dela — e é por isso que a conta tem
+ * **saldo inicial**. A compra de carro tem janela própria, mais curta
+ * (`JANELA_DAS_COMPRAS_DIAS`).
+ *
+ * O que a tela precisa mostrar, e por isso fica garantido aqui:
+ *  - saldo positivo nas três contas — o saldo inicial do banco é calculado para
+ *    o caixa não ficar negativo em nenhum dia do caminho;
+ *  - algo para os próximos 7 dias e algo atrasado dos dois lados;
+ *  - um lançamento cancelado, com motivo, porque nada se apaga;
+ *  - o extrato da conta corrente conciliado até dois dias atrás, e três linhas
+ *    esperando a conciliação — uma delas dá baixa num repasse atrasado.
+ *
+ * A **troca** não vira conta a receber: o carro do cliente não é dinheiro
+ * entrando. A geração da API ainda cria esse lançamento — está registrado em
+ * `docs/planos/estado-e-pendencias.md`.
+ */
+
+const CONTAS_DA_DEMO = [
+  { chave: 'banco', kind: 'banco', name: 'Conta corrente', bankName: 'Banco Demonstração S.A.' },
+  { chave: 'caixa', kind: 'caixa', name: 'Caixa da loja', bankName: null },
+  { chave: 'maquininha', kind: 'adquirente', name: 'Maquininha', bankName: 'Adquirente Demonstração' },
+] as const;
+type ChaveDaConta = (typeof CONTAS_DA_DEMO)[number]['chave'];
+
+/**
+ * Só os carros que entraram nestes últimos dias têm a compra no financeiro.
+ *
+ * O estoque da demonstração entrou quase todo nos últimos 90 dias — é o que
+ * dá conteúdo ao gráfico de giro. Lançar a compra de todos faria a loja
+ * fictícia pagar mais de R$ 1 milhão em carros contra R$ 300 mil de vendas em
+ * dois meses, e a demonstração abriria com um resultado de −R$ 600 mil no mês.
+ * Duas semanas bastam para mostrar o que importa — a conta a pagar nascendo
+ * da entrada do carro — sem desenhar uma loja quebrada.
+ */
+const JANELA_DAS_COMPRAS_DIAS = 15;
+
+/** O dinheiro que o caixa físico tinha no dia em que a loja começou. */
+const SALDO_INICIAL_DO_CAIXA = '3800.00';
+
+interface DespesaFixa {
+  categoria: string;
+  descricao: string;
+  fornecedor: string | null;
+  /** Dia do vencimento no mês. */
+  dia: number;
+  /** Faixa em reais; valor fixo quando as duas pontas são iguais. */
+  valor: readonly [number, number];
+}
+
+/**
+ * O fixo de uma loja de uns 25 carros no interior. Não é enfeite: com três
+ * vendas no mês e margem de ~R$ 10 mil por carro, um fixo de loja grande põe o
+ * "Resultado do mês" (DRE) no vermelho, e a demonstração abriria com prejuízo.
+ */
+const DESPESAS_FIXAS: DespesaFixa[] = [
+  { categoria: 'Tarifas bancárias e maquininha', descricao: 'Pacote de tarifas da conta', fornecedor: 'Banco Demonstração S.A.', dia: 1, valor: [89.9, 89.9] },
+  { categoria: 'Aluguel', descricao: 'Aluguel do salão e do pátio', fornecedor: 'Imobiliária Demonstração Ltda.', dia: 5, valor: [7_800, 7_800] },
+  { categoria: 'Salários', descricao: 'Folha da equipe (salário fixo)', fornecedor: null, dia: 5, valor: [8_400, 8_400] },
+  { categoria: 'Energia, água e internet', descricao: 'Energia elétrica', fornecedor: 'Distribuidora de energia (demonstração)', dia: 12, valor: [780, 1_020] },
+  { categoria: 'Energia, água e internet', descricao: 'Internet e telefone', fornecedor: 'Provedor de internet (demonstração)', dia: 12, valor: [289.9, 289.9] },
+  { categoria: 'Marketing e anúncios', descricao: 'Planos de anúncio nos portais', fornecedor: 'Portais de veículos (demonstração)', dia: 15, valor: [1_990, 1_990] },
+  { categoria: 'Marketing e anúncios', descricao: 'Impulsionamento no Instagram', fornecedor: null, dia: 18, valor: [400, 700] },
+  { categoria: 'Impostos e taxas', descricao: 'Simples Nacional — DAS', fornecedor: 'Receita Federal', dia: 20, valor: [3_100, 3_900] },
+];
+
+const FORNECEDOR_DO_CUSTO: Record<string, string> = {
+  preparation: 'Estética automotiva (demonstração)',
+  mechanical: 'Oficina parceira (demonstração)',
+  documentation: 'Despachante (demonstração)',
+};
+
+const FORMA_EM_PALAVRAS: Record<string, string> = {
+  cash: 'à vista',
+  down_payment: 'entrada',
+  financing: 'financiamento',
+  consortium: 'consórcio',
+  other: 'outra forma',
+};
+
+/** Dia `dia` do mês `meses` à frente (negativo = atrás), ao meio-dia. */
+function noDiaDoMes(meses: number, dia: number): Date {
+  return new Date(AGORA.getFullYear(), AGORA.getMonth() + meses, dia, 12, 0, 0, 0);
+}
+
+const somarDias = (d: Date, dias: number) => new Date(d.getTime() + dias * 86_400_000);
+const reais = (v: number) => D(v.toFixed(2));
+
+/** Apaga o financeiro da loja — o mês fechado primeiro, senão o trigger recusa. */
+async function apagarFinanceiro(tx: Tx, tenantId: string) {
+  await tx.financialPeriod.deleteMany({ where: { tenantId } });
+  await tx.bankTransaction.deleteMany({ where: { tenantId } });
+  await tx.financialEntry.deleteMany({ where: { tenantId } });
+  await tx.financialAccount.deleteMany({ where: { tenantId } });
+  await tx.financialCategory.deleteMany({ where: { tenantId } });
+}
+
+async function criarFinanceiro(tx: Tx, tenantId: string) {
+  // PRNG próprio: o financeiro sai igual rodando junto com a loja ou sozinho.
+  const sorte = rngDe('autoconnect-demo-financeiro-v1');
+  const inicio = noDiaDoMes(-1, 1);
+  inicio.setHours(0, 0, 0, 0);
+
+  /* Plano de contas: o padrão do shared, com as chaves da geração. */
+  await tx.financialCategory.createMany({
+    data: CATEGORIAS_PADRAO.map((c) => ({
+      tenantId,
+      direction: c.direction,
+      group: c.group,
+      name: c.name,
+      originKey: c.origemKey ?? null,
+    })),
+  });
+  const categorias = await tx.financialCategory.findMany({
+    where: { tenantId }, select: { id: true, name: true, originKey: true },
+  });
+  const categoria = (nome: string) => {
+    const c = categorias.find((x) => x.name === nome);
+    if (!c) throw new Error(`Categoria "${nome}" não está em CATEGORIAS_PADRAO.`);
+    return c.id;
+  };
+  const daOrigem = (chave: string) => categorias.find((x) => x.originKey === chave)!.id;
+
+  const dono = await tx.user.findFirst({
+    where: { tenantId, role: 'tenant_admin' }, orderBy: { createdAt: 'asc' }, select: { id: true },
+  });
+
+  /* O que a loja já fez: estoque com compra e preparação, negócios faturados. */
+  const veiculos = await tx.vehicle.findMany({
+    where: { tenantId },
+    select: {
+      id: true,
+      brand: { select: { name: true } },
+      model: { select: { name: true } },
+      acquisition: { select: { id: true, origin: true, purchaseValue: true, supplierName: true, enteredAt: true } },
+      costs: { select: { id: true, kind: true, value: true, description: true, supplierName: true, incurredAt: true } },
+    },
+  });
+  const nomeDoCarro = new Map(veiculos.map((v) => [v.id, `${v.brand.name} ${v.model.name}`]));
+
+  const negocios = await tx.deal.findMany({
+    where: { tenantId, status: { in: [...DEAL_FATURADO_STATUSES] }, closedAt: { not: null } },
+    orderBy: { closedAt: 'asc' },
+    select: {
+      id: true, vehicleId: true, closedAt: true, saleValue: true,
+      salesperson: { select: { id: true, fullName: true, salespersonProfile: { select: { commissionPct: true } } } },
+      payments: { select: { id: true, kind: true, value: true, institution: true, status: true } },
+    },
+  });
+
+  type Lancamento = Prisma.FinancialEntryCreateManyInput & { conta?: ChaveDaConta };
+  const lancamentos: Lancamento[] = [];
+
+  /** Pago se já venceu (com `atraso` dias de folga para o dinheiro cair); senão, previsto. */
+  const baixa = (vence: Date, conta: ChaveDaConta, atraso = 0) => {
+    const pagoEm = somarDias(vence, atraso);
+    return pagoEm <= AGORA
+      ? { status: 'pago' as const, paidAt: pagoEm, conta }
+      : { status: 'previsto' as const, paidAt: null };
+  };
+
+  /* Compra dos carros das duas últimas semanas — ver `JANELA_DAS_COMPRAS_DIAS`.
+     Leilão paga o boleto em 3 dias; compra direta paga na transferência. A
+     troca não sai do caixa: o carro entrou como parte de uma venda. */
+  const comprasDesde = somarDias(AGORA, -JANELA_DAS_COMPRAS_DIAS);
+  for (const v of veiculos) {
+    const aq = v.acquisition;
+    if (!aq || aq.enteredAt < comprasDesde) continue;
+    if (aq.origin === 'trade_in' || aq.origin === 'consignment') continue;
+    const vence = somarDias(aq.enteredAt, aq.origin === 'auction' ? 3 : 7);
+    lancamentos.push({
+      tenantId, direction: 'saida', value: aq.purchaseValue, dueDate: vence,
+      description: 'Compra do veículo', supplierName: FORNECEDOR_DA_ORIGEM[aq.origin] ?? aq.supplierName,
+      categoryId: daOrigem('compra_de_veiculo'), vehicleId: v.id, vehicleAcquisitionId: aq.id,
+      ...baixa(vence, 'banco'),
+    });
+  }
+
+  /* Cada item de preparação, pago na semana em que foi feito. */
+  for (const v of veiculos) {
+    for (const c of v.costs) {
+      if (c.incurredAt < inicio) continue;
+      lancamentos.push({
+        tenantId, direction: 'saida', value: c.value, dueDate: c.incurredAt,
+        description: c.description?.trim() || `Preparação — ${c.kind}`,
+        supplierName: c.supplierName ?? FORNECEDOR_DO_CUSTO[c.kind] ?? 'Oficina parceira (demonstração)',
+        categoryId: daOrigem('preparacao'), vehicleId: v.id, vehicleCostId: c.id,
+        ...baixa(c.incurredAt, 'banco', sorte.int(0, 3)),
+      });
+    }
+  }
+
+  /* Negócios faturados: uma conta a receber por forma de pagamento em dinheiro.
+     Entrada e à vista caem por Pix no dia; o repasse do banco, dias depois. */
+  for (const n of negocios) {
+    const fechado = n.closedAt!;
+    const carro = nomeDoCarro.get(n.vehicleId) ?? 'veículo';
+    for (const p of n.payments) {
+      if (p.kind === 'trade_in') continue; // carro não é dinheiro — ver o cabeçalho
+      const repasse = p.kind === 'financing' || p.kind === 'consortium';
+      const situacao = baixa(fechado, 'banco', repasse ? 5 : 0);
+      lancamentos.push({
+        tenantId, direction: 'entrada', value: p.value, dueDate: fechado,
+        description: `Venda do ${carro} — ${FORMA_EM_PALAVRAS[p.kind] ?? p.kind}${p.institution ? ` (${p.institution})` : ''}`,
+        notes: situacao.status === 'previsto'
+          ? 'Repasse do banco ainda não caiu na conta. Dê baixa escolhendo a conta que recebeu.'
+          : null,
+        categoryId: daOrigem('venda_de_veiculo'), dealId: n.id, vehicleId: n.vehicleId, dealPaymentId: p.id,
+        ...situacao,
+      });
+      // O banco devolve à loja uma parte do financiado ("retorno"), no mês seguinte.
+      if (p.kind === 'financing') {
+        const vence = somarDias(fechado, 30);
+        lancamentos.push({
+          tenantId, direction: 'entrada', value: p.value.times(D('0.02')).toDecimalPlaces(2),
+          dueDate: vence, description: `Retorno do financiamento — ${carro}`,
+          supplierName: p.institution, categoryId: categoria('Comissão de financiamento'),
+          // Sem `dealId`: quem lança o retorno é a loja, à mão, e a tela chama
+          // de "Gerado pelo sistema" tudo o que aponta para negócio ou veículo.
+          createdBy: dono?.id ?? null, ...baixa(vence, 'banco'),
+        });
+      }
+    }
+  }
+
+  /* Despesas do mês: do mês passado ao próximo, cada uma na sua série. */
+  for (const d of DESPESAS_FIXAS) {
+    const serie = randomUUID();
+    for (const meses of [-1, 0, 1]) {
+      const vence = noDiaDoMes(meses, d.dia);
+      if (vence < inicio || vence > somarDias(AGORA, 35)) continue;
+      const [min, max] = d.valor;
+      const valor = min === max ? min : min + sorte.int(0, Math.round((max - min) / 10)) * 10;
+      lancamentos.push({
+        tenantId, direction: 'saida', value: reais(valor), dueDate: vence,
+        description: d.descricao, supplierName: d.fornecedor,
+        categoryId: categoria(d.categoria), recurrenceId: serie, createdBy: dono?.id ?? null,
+        ...baixa(vence, 'banco'),
+      });
+    }
+  }
+
+  /* O caixa físico: lavagem e combustível do test drive, toda semana. */
+  for (let dia = new Date(inicio); dia <= AGORA; dia = somarDias(dia, 7)) {
+    const vence = somarDias(dia, 2);
+    if (vence > AGORA) break;
+    lancamentos.push({
+      tenantId, direction: 'saida', value: reais(sorte.int(14, 32) * 10), dueDate: vence,
+      description: 'Lavagem e combustível dos test drives', supplierName: 'Posto do bairro (demonstração)',
+      categoryId: categoria('Outras despesas'), createdBy: dono?.id ?? null,
+      ...baixa(vence, 'caixa'),
+    });
+  }
+
+  /* A maquininha: acessório vendido no cartão, com a taxa descontada na hora. */
+  for (const [dias, valor, oque] of [
+    [26, 1_290, 'película e multimídia'],
+    [16, 480, 'tapetes e película'],
+    [9, 890, 'engate e sensor de ré'],
+  ] as const) {
+    const quando = somarDias(AGORA, -dias);
+    lancamentos.push(
+      {
+        tenantId, direction: 'entrada', value: reais(valor), dueDate: quando,
+        description: `Venda de acessórios — ${oque}`, categoryId: categoria('Outras receitas'),
+        createdBy: dono?.id ?? null, ...baixa(quando, 'maquininha'),
+      },
+      {
+        tenantId, direction: 'saida', value: reais(valor * 0.0299), dueDate: quando,
+        description: `Taxa do cartão — ${oque}`, supplierName: 'Adquirente Demonstração',
+        categoryId: categoria('Tarifas bancárias e maquininha'), createdBy: dono?.id ?? null,
+        ...baixa(quando, 'maquininha'),
+      },
+    );
+  }
+
+  /* Os estados que a tela precisa ter para mostrar: atrasado, a vencer, cancelado. */
+  const recente = negocios[negocios.length - 1];
+  lancamentos.push(
+    {
+      tenantId, direction: 'saida', value: reais(680), dueDate: somarDias(AGORA, -4),
+      description: 'Conserto do portão do pátio', supplierName: 'Serralheria (demonstração)',
+      categoryId: categoria('Outras despesas'), createdBy: dono?.id ?? null,
+      status: 'previsto', paidAt: null,
+    },
+    {
+      tenantId, direction: 'saida', value: reais(420), dueDate: somarDias(AGORA, 3),
+      description: recente
+        ? `Transferência do ${nomeDoCarro.get(recente.vehicleId) ?? 'veículo'} — despachante`
+        : 'Transferência de veículo — despachante',
+      supplierName: 'Despachante (demonstração)', categoryId: categoria('Documentação e transferência'),
+      createdBy: dono?.id ?? null,
+      status: 'previsto', paidAt: null,
+    },
+    {
+      tenantId, direction: 'saida', value: reais(1_200), dueDate: somarDias(AGORA, -20),
+      description: 'Anúncio no jornal do bairro', supplierName: 'Jornal local (demonstração)',
+      categoryId: categoria('Marketing e anúncios'), createdBy: dono?.id ?? null,
+      status: 'cancelado', paidAt: null, canceledAt: somarDias(AGORA, -24),
+      cancelReason: 'Trocado pelo impulsionamento no Instagram, que traz lead com telefone.',
+    },
+  );
+
+  /* O mês passado fecha se não sobrou promessa nele — e o fechamento é o que
+     apura a comissão, como em `FinanceiroService.fecharMes`: mesmo documento
+     (`comissao:AAAA-MM:<vendedor>`), mesma descrição, vence no dia 5. Assim,
+     fechar o mês corrente ao vivo na demonstração gera as comissões dele sem
+     duplicar as do mês que já estava fechado. */
+  const anoFechado = new Date(Date.UTC(AGORA.getUTCFullYear(), AGORA.getUTCMonth() - 1, 1)).getUTCFullYear();
+  const mesFechado = new Date(Date.UTC(AGORA.getUTCFullYear(), AGORA.getUTCMonth() - 1, 1)).getUTCMonth() + 1;
+  const doMesFechado = (d: Date) => d.getUTCFullYear() === anoFechado && d.getUTCMonth() + 1 === mesFechado;
+  const fecharMesPassado = !lancamentos.some((l) => l.status === 'previsto' && doMesFechado(new Date(l.dueDate)));
+  if (fecharMesPassado) {
+    const porVendedor = new Map<string, { nome: string; pct: string | null; base: Prisma.Decimal; userId: string }>();
+    for (const n of negocios) {
+      if (!n.salesperson || !doMesFechado(n.closedAt!)) continue;
+      const atual = porVendedor.get(n.salesperson.id) ?? {
+        nome: n.salesperson.fullName, userId: n.salesperson.id, base: D(0),
+        pct: n.salesperson.salespersonProfile?.commissionPct?.toFixed(2) ?? null,
+      };
+      atual.base = atual.base.plus(n.saleValue);
+      porVendedor.set(n.salesperson.id, atual);
+    }
+    const mm = String(mesFechado).padStart(2, '0');
+    const vence = new Date(Date.UTC(anoFechado, mesFechado, 5));
+    for (const c of porVendedor.values()) {
+      const valor = calcularComissao(c.base.toFixed(2), c.pct);
+      if (!valor || Number(valor) === 0) continue;
+      lancamentos.push({
+        tenantId, direction: 'saida', value: D(valor), dueDate: vence,
+        description: `Comissão de ${c.nome} — ${mm}/${anoFechado}`, supplierName: c.nome,
+        documentNumber: `comissao:${anoFechado}-${mm}:${c.userId}`,
+        notes: `Percentual do perfil sobre ${c.base.toFixed(2)} de vendas faturadas no mês.`,
+        categoryId: daOrigem('comissao'), ...baixa(vence, 'banco'),
+      });
+    }
+  }
+
+  /* Contas: o saldo inicial do banco é o que impede o caixa de ficar negativo. */
+  let menor = 0;
+  let corrente = 0;
+  for (const l of lancamentos
+    .filter((x) => x.status === 'pago' && x.conta === 'banco')
+    .sort((a, b) => +new Date(a.paidAt as Date) - +new Date(b.paidAt as Date))) {
+    corrente += (l.direction === 'entrada' ? 1 : -1) * Number(l.value);
+    menor = Math.min(menor, corrente);
+  }
+  const saldoInicialDoBanco = Math.max(150_000, Math.ceil((80_000 - menor) / 10_000) * 10_000);
+
+  const contas: Record<ChaveDaConta, string> = { banco: '', caixa: '', maquininha: '' };
+  for (const c of CONTAS_DA_DEMO) {
+    const criada = await tx.financialAccount.create({
+      data: {
+        tenantId, kind: c.kind, name: c.name, bankName: c.bankName,
+        openingBalance: c.chave === 'banco' ? reais(saldoInicialDoBanco)
+          : c.chave === 'caixa' ? D(SALDO_INICIAL_DO_CAIXA) : D(0),
+        createdAt: inicio,
+      },
+      select: { id: true },
+    });
+    contas[c.chave] = criada.id;
+  }
+
+  const criados = await tx.financialEntry.createManyAndReturn({
+    data: lancamentos.map(({ conta, ...l }) => ({
+      ...l,
+      accountId: l.status === 'pago' && conta ? contas[conta] : null,
+      createdAt: l.dueDate < AGORA ? l.dueDate : AGORA,
+    })),
+    select: {
+      id: true, direction: true, status: true, value: true, dueDate: true, paidAt: true,
+      accountId: true, dealPaymentId: true, description: true, categoryId: true,
+    },
+  });
+
+  /* O extrato do banco, como se a loja importasse o OFX toda semana: cada
+     lançamento pago na conta corrente tem a sua linha, já conciliada — senão a
+     tela de conciliação abriria com dois meses de "sem extrato". Ficam três
+     coisas para a conciliação mostrar ao vivo: o que caiu nos dois últimos dias
+     e ninguém confirmou, o repasse do banco que caiu ontem (o lançamento ainda
+     está previsto e atrasado — conciliar dá baixa) e uma tarifa que a loja
+     nunca lançou. */
+  const nomeDaCategoria = new Map(categorias.map((c) => [c.id, c.name]));
+  const diaDoBanco = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const recentes = somarDias(AGORA, -2);
+  const extrato: Prisma.BankTransactionCreateManyInput[] = [];
+  const linha = (
+    data: Date, direction: 'entrada' | 'saida', amount: Prisma.Decimal | string, memo: string, entryId: string | null,
+  ) => extrato.push({
+    tenantId, accountId: contas.banco, fitid: `DEMO${String(extrato.length + 1).padStart(8, '0')}`,
+    postedAt: diaDoBanco(data), amount, direction, memo, entryId,
+    importedAt: somarDias(data, 1) < AGORA ? somarDias(data, 1) : AGORA,
+  });
+
+  for (const l of [...criados].sort((a, b) => +(a.paidAt ?? 0) - +(b.paidAt ?? 0))) {
+    if (l.status !== 'pago' || l.accountId !== contas.banco || !l.paidAt) continue;
+    const memo = memoDoExtrato(nomeDaCategoria.get(l.categoryId) ?? '', l.direction, l.description);
+    linha(l.paidAt, l.direction, l.value, memo, l.paidAt < recentes ? l.id : null);
+  }
+  const repassePendente = criados.find(
+    (l) => l.status === 'previsto' && l.direction === 'entrada' && l.dealPaymentId && l.dueDate < AGORA,
+  );
+  if (repassePendente) {
+    linha(somarDias(AGORA, -1), 'entrada', repassePendente.value, 'TED RECEBIDA BANCO DEMONSTRACAO SA', null);
+  }
+  linha(somarDias(AGORA, -2), 'saida', '12.90', 'TARIFA PIX COBRANCA', null);
+  await tx.bankTransaction.createMany({ data: extrato });
+
+  if (fecharMesPassado) {
+    await tx.financialPeriod.create({
+      data: {
+        tenantId, year: anoFechado, month: mesFechado, closedBy: dono?.id ?? null,
+        // Fechado no começo do mês seguinte, depois da conferência — nunca no futuro.
+        closedAt: new Date(Math.min(AGORA.getTime(), Date.UTC(AGORA.getUTCFullYear(), AGORA.getUTCMonth(), 3, 21))),
+      },
+    });
+  }
+
+  return {
+    lancamentos: lancamentos.length,
+    pagos: lancamentos.filter((l) => l.status === 'pago').length,
+    previstos: lancamentos.filter((l) => l.status === 'previsto').length,
+    extrato: extrato.length,
+    mesFechado: fecharMesPassado ? `${String(mesFechado).padStart(2, '0')}/${anoFechado}` : null,
+  };
+}
+
+/** A descrição que o banco escreve no extrato — curta, maiúscula e sem acento. */
+function memoDoExtrato(categoria: string, direcao: string, descricao: string): string {
+  if (direcao === 'entrada') {
+    if (/financiamento/i.test(categoria) || /financiamento/i.test(descricao)) return 'TED RECEBIDA BANCO DEMONSTRACAO SA';
+    return 'PIX RECEBIDO';
+  }
+  const porCategoria: Record<string, string> = {
+    'Compra de veículo': 'PIX ENVIADO COMPRA DE VEICULO',
+    'Preparação e funilaria': 'PIX ENVIADO FORNECEDOR',
+    'Aluguel': 'PAGTO BOLETO ALUGUEL',
+    'Energia, água e internet': 'PAGTO BOLETO CONSUMO',
+    'Marketing e anúncios': 'PAGTO BOLETO ANUNCIOS',
+    'Salários': 'PIX ENVIADO FOLHA DE PAGAMENTO',
+    'Comissão de vendedor': 'PIX ENVIADO COMISSAO',
+    'Impostos e taxas': 'PAGTO DAS SIMPLES NACIONAL',
+    'Tarifas bancárias e maquininha': 'TARIFA PACOTE DE SERVICOS',
+  };
+  return porCategoria[categoria] ?? 'PAGTO DIVERSOS';
+}
+
+/* ════════════════════════════════════════════════════════════════════════
    main
    ════════════════════════════════════════════════════════════════════════ */
 
 async function main() {
   const apagarSomente = process.env.DEMO_APAGAR === '1';
   const recriar = process.env.DEMO_RESET === '1';
+  const soFinanceiro = process.env.DEMO_FINANCEIRO === '1';
+
+  if (soFinanceiro) {
+    const loja = await prisma.tenant.findUnique({ where: { slug: SLUG }, select: { id: true } });
+    if (!loja) {
+      console.log(`⏭  Não há loja "${SLUG}" — rode sem DEMO_FINANCEIRO para criá-la inteira.`);
+      return;
+    }
+    const r = await prisma.$transaction(
+      async (tx) => {
+        await apagarFinanceiro(tx, loja.id);
+        return criarFinanceiro(tx, loja.id);
+      },
+      { maxWait: 20_000, timeout: 120_000 },
+    );
+    console.log(
+      `✅  Financeiro de "${LOJA.tradeName}" refeito: ${r.lancamentos} lançamentos ` +
+        `(${r.pagos} pagos, ${r.previstos} previstos), ${r.extrato} linhas de extrato` +
+        `${r.mesFechado ? `, ${r.mesFechado} fechado` : ''}. O resto da loja ficou como estava.`,
+    );
+    return;
+  }
 
   if (apagarSomente) {
     const existia = await apagar();
@@ -2252,8 +2779,9 @@ async function main() {
       const negocios = await criarNegocios(tx, ctx);
       await criarConversas(tx, ctx);
       const engajamento = await criarEngajamento(tx, ctx);
+      const financeiro = await criarFinanceiro(tx, tenantId);
 
-      return { ...negocios, ...engajamento, tenantId };
+      return { ...negocios, ...engajamento, financeiro, tenantId };
     },
     { maxWait: 20_000, timeout: 300_000 },
   );
@@ -2264,7 +2792,8 @@ async function main() {
       `${LEADS.length} leads, ${AGENDA.length} agendamentos,\n` +
       `   ${NEGOCIOS.length} negócios (${resumo.faturados} faturados, ${resumo.contratos} com contrato), ` +
       `${CONVERSAS.length} conversas,\n` +
-      `   ${resumo.views} visualizações e ${resumo.favoritos} favoritos.\n\n` +
+      `   ${resumo.views} visualizações e ${resumo.favoritos} favoritos,\n` +
+      `   ${resumo.financeiro.lancamentos} lançamentos no financeiro.\n\n` +
       `   Loja pública: /c/${SLUG}\n` +
       // A página de catálogo é endereçada pelo id do tenant, que muda a cada
       // execução — daí ela sair impressa aqui, e não no roteiro.

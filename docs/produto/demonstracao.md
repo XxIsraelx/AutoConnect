@@ -192,6 +192,9 @@ Entre como **dono** (ou já tenha a aba aberta).
 | "E a conversa?" | `/chat` | A proposta aceita pelo Marcelo, dentro do chat, que virou negócio |
 | "Vocês avaliam meu usado?" | `/leads`, lead da Letícia | Oferta de troca com a avaliação registrada |
 | "Perdi uma venda, por quê?" | `/leads`, faixa de motivos | Perdas agrupadas por motivo |
+| "E o dinheiro da loja?" | `/financeiro` (dono ou gerente) | *Fluxo de caixa*: "o caixa não fica negativo nos próximos 30 dias". Em *A pagar*, filtro **Previsto**: a preparação e a compra do carro com "Gerado pelo sistema" — ninguém digitou de novo |
+| "E o extrato do banco?" | `/financeiro` › *Conciliação*, conta **Conta corrente** | O repasse do financiamento que caiu ontem já tem par sugerido: conciliar dá baixa no lançamento, que sai do "atrasado" |
+| "E o fechamento do mês?" | `/financeiro` › *Resultado do mês* | O mês passado já fechado; fechar o corrente ao vivo gera a comissão de cada vendedor |
 
 ## O que **não** mostrar
 
@@ -216,6 +219,8 @@ pnpm --filter @autoconnect/db run demo
 | *(nenhuma)* | Cria a loja. Se `demo` já existe, **não faz nada** |
 | `DEMO_RESET=1` | Apaga e recria, com as datas recalculadas a partir de hoje |
 | `DEMO_APAGAR=1` | Só apaga |
+| `DEMO_FINANCEIRO=1` | Refaz **só o financeiro** da loja que já existe, sem apagar leads, chat e negócios |
+| `DEMO_AGORA=2026-09-28T15:40:00-03:00` | Gera a loja como se fosse esse instante — só para capturar tela fora do expediente (ver o [plano da landing](../planos/plano-nova-landing.md)). **Nunca em produção** |
 
 O script imprime, no fim, o link do catálogo e os dois logins principais.
 
@@ -248,6 +253,19 @@ dela:
 - **3 conversas de chat**, uma com proposta aceita e uma com mensagem não lida.
 - Avaliação de troca em dois lugares: um lead de troca avaliado e um usado
   aceito dentro de um negócio faturado.
+- **Financeiro** desde o dia 1º do mês anterior: três contas (banco, caixa e
+  maquininha) e ~110 lançamentos. O grosso nasce do que a loja fez, apontando
+  para a origem — venda faturada (entrada, à vista, repasse do financiamento),
+  preparação de cada carro e a compra dos carros das duas últimas semanas —, e
+  em volta disso o fixo de uma loja desse tamanho (aluguel, folha, energia,
+  anúncios, DAS), o retorno do banco e o caixa do dia a dia. O mês passado vem
+  **fechado**, com a comissão que o fechamento apura; o corrente fica aberto. A
+  conta corrente tem o **extrato** conciliado até dois dias atrás e três linhas
+  esperando conciliação. Sempre há algo vencendo na semana, algo atrasado dos
+  dois lados e um lançamento cancelado com motivo. O porquê de cada escolha está
+  no cabeçalho de `criarFinanceiro`.
+- A loja nasce com `is_demo` (fora da busca e do mapa) e em **cortesia**
+  interna, para nenhum prazo de cobrança bloqueá-la.
 
 ### As fotos
 
@@ -282,3 +300,11 @@ Antes de rodar em produção, confira que:
 - ninguém depende dos e-mails `demo.*@example.com`.
 
 `DEMO_APAGAR=1` remove a loja inteira por cascata. É irreversível.
+
+**Loja de produção montada antes do financeiro** (27/09/2026): em vez de
+`DEMO_RESET=1` — que recria tudo e troca o id da loja —, rode
+`DEMO_FINANCEIRO=1`. Ele apaga e recria só o financeiro da loja `demo` —
+contas, categorias, lançamentos, extrato e mês fechado —, numa transação, e não
+toca no resto. Rodar de novo
+dá o mesmo resultado. Exporte a `DATABASE_URL` de produção para a execução, e
+**nunca** junto com `DEMO_AGORA`.

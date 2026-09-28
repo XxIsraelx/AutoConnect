@@ -430,6 +430,77 @@ conserto do plano pendente de pagamento
   - Como testar: o aviso some do log do serviço web depois do deploy.
   - Encontrado em: 27/09/2026 · Claude Code (sessão 2) · ao verificar o deploy da Onda C.
 
+**Encontradas em 28/09/2026** — Claude Code (sessão 2), ao alimentar o financeiro da loja
+de demonstração
+
+- **A geração do financeiro cria conta a receber para o carro dado na troca.**
+  - Onde: `apps/api/src/modules/financeiro/geracao.service.ts` (`aoFaturarNegocio`, que lê
+    os `deal_payments` com `status in (pending, confirmed)` sem olhar o `kind`).
+  - O que é: a forma de pagamento `trade_in` é o usado que o cliente entregou, não dinheiro.
+    Ela vira um lançamento de **entrada** "Venda do … — trade_in", previsto, na categoria de
+    venda — e nunca vai cair em conta nenhuma.
+  - Evidência: o `findMany` de `aoFaturarNegocio` não filtra `kind`; na demo, o Nissan Kicks
+    (troca de R$ 44.898 + financiamento) geraria R$ 44.898 a receber que não existem.
+  - Impacto: "A receber" e "Atrasado" inflados em toda venda com troca — que é a venda comum
+    de seminovo —, e a baixa pede uma conta onde o dinheiro nunca entrou. A contrapartida
+    (a compra do usado da troca, `vehicle_acquisitions.origin = trade_in`) também vira
+    conta a pagar em `aoRegistrarAquisicao`, então os dois lados mentem juntos.
+  - Sugestão: pular `trade_in` na geração da venda e não gerar conta a pagar para aquisição
+    de origem `trade_in` — ou registrar a troca como par entrada/saída já **pago** na
+    categoria "Entrada de troca", sem conta de caixa, se a loja quiser ver a troca no DRE da
+    Fase 4. É decisão do módulo (sessão 1). A demo já pula a troca dos dois lados
+    (`criarFinanceiro`, `packages/db/prisma/demo.ts`).
+  - Como testar: e2e — faturar negócio com troca + financiamento gera **um** lançamento (o
+    financiamento), não dois.
+  - Encontrado em: 28/09/2026 · Claude Code (sessão 2) · ao alimentar o financeiro da demo.
+
+- **O lançamento gerado pela venda escreve a forma de pagamento em inglês.**
+  - Onde: `apps/api/src/modules/financeiro/geracao.service.ts` (`aoFaturarNegocio`,
+    a descrição é montada como "Venda do ${nomeDoCarro} — ${p.kind}").
+  - O que é: o `kind` cru do enum vai para a descrição: "Venda do Nissan Kicks — financing",
+    "— down_payment", "— cash".
+  - Evidência: o template da descrição acima; o shared não tem rótulo em português para
+    `PAYMENT_KINDS`.
+  - Impacto: é a linha que o dono lê na lista de contas a receber e no extrato.
+  - Sugestão: um `ROTULO_DA_FORMA_DE_PAGAMENTO` no `domain/deal.ts` (sessão 1), usado pela
+    geração e pela tela do negócio. A demo escreve "entrada", "à vista", "financiamento".
+  - Como testar: faturar negócio com entrada + financiamento → descrições "— entrada" e
+    "— financiamento (Banco …)".
+  - Encontrado em: 28/09/2026 · Claude Code (sessão 2) · ao alimentar o financeiro da demo.
+
+- **O gerador da loja demo não passa por typecheck nem por teste — e estava quebrado.**
+  - Onde: `packages/db/prisma/demo.ts` (o `tsconfig` do `@autoconnect/db` inclui só `src/`).
+  - O que é: o arquivo fica fora do portão. Duas quebras passaram sem ninguém ver, ambas
+    **corrigidas nesta tarefa**: criava a assinatura com o plano `pro`, que não existe desde
+    a troca de planos de 25/09/2026 (o `DEMO_RESET=1` falhava ao criar a loja), e não gravava
+    `is_demo` (a loja recriada voltaria à busca e ao mapa públicos). O que fica pendente é a
+    causa: a próxima mudança de schema quebra o gerador do mesmo jeito.
+  - Evidência: `tsc` com um `tsconfig` que inclui o arquivo apontou
+    `Type '"pro"' is not assignable to type 'SubscriptionPlan'`; o resto são ~50 avisos de
+    `noUncheckedIndexedAccess` em acesso a tabela fixa.
+  - Impacto: a demonstração é o que o Israel mostra ao lojista; descobrir na véspera de uma
+    reunião que o `DEMO_RESET` não roda é o pior momento.
+  - Sugestão: um e2e que roda `criarLoja` … `criarFinanceiro` contra o banco de teste (a
+    suíte já sobe o Postgres) — pega schema, constraint e RLS de uma vez; ou incluir
+    `prisma/*.ts` num `typecheck` com `noUncheckedIndexedAccess` desligado só para ele.
+  - Como testar: mudar um enum usado pela demo e ver o portão ficar vermelho.
+  - Encontrado em: 28/09/2026 · Claude Code (sessão 2) · ao alimentar o financeiro da demo.
+
+- **A loja demo de produção pode estar bloqueada por vencimento — a verificar.**
+  - Onde: `tenant_subscriptions` da loja `demo` em produção.
+  - O que é: ela foi montada com o plano `pro` e `current_period_end` no dia 1º do mês
+    seguinte, **sem cortesia** (o gerador não a concedia). A migration `cobranca_asaas`
+    trocou `pro` por `crescimento`; um plano pago sem gateway e com o período vencido cai na
+    carência e depois em somente leitura, pela regra de `avaliarCobranca`.
+  - Evidência: o `criarLoja` anterior a esta tarefa (`plan: 'pro'`, `status: 'active'`, sem
+    `courtesySince`); não consultei a produção.
+  - Impacto: em somente leitura, "publicar um carro ao vivo" do roteiro de demonstração
+    responde 402 na frente do lojista.
+  - Sugestão: conceder cortesia **interna** à loja `demo` em `/admin › Concessionárias`. O
+    gerador passou a nascer com ela, mas a loja de produção só a recebe num `DEMO_RESET`.
+  - Como testar: `/admin` mostra a loja demo com a situação `cortesia`.
+  - Encontrado em: 28/09/2026 · Claude Code (sessão 2) · ao alimentar o financeiro da demo.
+
 **Encontradas em 28/09/2026** — Claude Code, na Fase 4 do financeiro
 
 - **`cobranca.e2e-spec.ts` falhou uma vez com "socket hang up".**

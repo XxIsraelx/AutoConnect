@@ -107,20 +107,40 @@ Fechadas em 27/09/2026: o Raio-X é a porta principal do hero e o cadastro a sec
 
 ## Telas do sistema na landing — como refazer
 
-As cinco imagens de `apps/web/public/landing/sistema/` (leads, chat, agenda, negócio,
-relatórios) são capturas do produto, não desenhos. Quando uma dessas telas mudar, refaça:
+As seis imagens de `apps/web/public/landing/sistema/` (leads, chat, agenda, negócio,
+financeiro, relatórios) são capturas do produto, não desenhos. Desde 28/09/2026 saem da
+**loja de demonstração** (Aurora Seminovos, `packages/db/prisma/demo.ts`) — a mesma da
+vitrine ao vivo que a landing linka —, e não mais do seed. Quando uma dessas telas mudar,
+refaça:
 
-1. Banco local de teste com `db:seed`, API e web locais.
-2. Dados da loja "Auto Sul" do seed: quatro leads novos pela rota pública (um no prazo, um
-   vencendo, um estourado, um já contatado — ajuste `first_response_due_at` para "agora"), uma
-   conversa de chat criada por `POST /conversations/from-lead` + mensagens do visitante pela
-   rota pública, comissão de 1,5% nos perfis de vendedor e horários em expediente.
+1. Banco local **próprio** (nunca o `_test` das suítes, nunca produção), com as duas URLs
+   exportadas para ele, e a demo gerada com um relógio de tarde:
+   `DEMO_AGORA=2026-09-28T15:40:00-03:00 pnpm --filter @autoconnect/db run demo`. Gerada de
+   madrugada, a demo tem "Boa tarde!" à 01:30 e test drive "hoje à 01:14". Use um instante
+   **no futuro**: com um no passado, o cron de prazo da API local estoura os leads "no prazo".
+2. API local contra esse banco (`node apps/api/dist/main.js` com `DATABASE_URL`, `PORT=4000`,
+   `JWT_SECRET` de rascunho e `NODE_ENV=development`) e o web em dev.
 3. Chrome headless (`--remote-debugging-port`), 1440×900 com `deviceScaleFactor: 2`, tema
-   escuro e `autoconnect:notif-dismissed = 1`; o chat logado como o vendedor dono da conversa
-   (senão as mensagens dele aparecem do lado do cliente); `Page.captureScreenshot` em WebP 82.
+   escuro e `autoconnect:notif-dismissed = 1`; o relógio da página adiantado para o mesmo
+   `DEMO_AGORA` (`Page.addScriptToEvaluateOnNewDocument` trocando `Date` por um que soma o
+   desvio) — senão "1min atrás" e "Hoje" saem pela hora real. `Page.captureScreenshot` em
+   WebP 82. Quem entra em cada uma: leads e agenda como `demo.gerente`; negócio (o **Kicks**,
+   com troca e financiamento), relatórios e financeiro como `demo.dono`; o chat como
+   `demo.ana`, dona da conversa do Marcelo (logado como outro, as mensagens dela aparecem do
+   lado do cliente). No financeiro: aba **Fluxo de caixa**, 30 dias.
 4. As três de `apps/web/public/landing/mobile/` (leads, chat, agenda — seção "No celular")
-   saem do mesmo roteiro em 390×844, `mobile: true`, `deviceScaleFactor: 2`, logado como
-   `vendedor2` (o Diego). Na de leads, role o `<main>` até a busca, para o primeiro cartão —
-   com a etiqueta do prazo — ficar no alto da tela.
+   saem do mesmo roteiro em 390×844, `mobile: true`, `deviceScaleFactor: 2`. Leads como
+   `demo.rogerio`, que tem o lead novo com a etiqueta do prazo (a carteira da Ana não tem),
+   rolando até a busca — o primeiro cartão fica no alto; chat e agenda como `demo.ana`.
+5. O arquivo novo **substitui** o antigo com o mesmo nome. Em produção cada deploy começa
+   com o cache de imagem vazio; no `next dev` local, apague `apps/web/.next/cache/images`
+   para ver a troca.
 
-Nenhum dado real aparece: nomes, telefones e e-mails são os fictícios do seed.
+Nenhum dado real aparece: nomes, telefones e e-mails são os fictícios da demo
+(`@example.com`, celulares `(16) 90000-00xx`).
+
+**Canais fica fora da landing, de propósito**: numa API local o cartão dos portais mostra o
+simulador e o aviso de "e-mail de entrada desligado", que não existem em produção, e o do
+WhatsApp diz que ele ainda não está ligado — verdade hoje, mas não é o que a vitrine do
+produto deve mostrar. Os portais aparecem na legenda de Leads; a notificação, na seção do
+celular.

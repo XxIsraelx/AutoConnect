@@ -8,9 +8,9 @@ import { SECOES, waLink } from './config';
 
 /**
  * O sistema de verdade, no lugar da maquete. São telas do painel capturadas
- * do produto rodando com os dados fictícios do seed (loja "Auto Sul"), não
- * desenhos: se uma tela mudar, a captura se refaz — o roteiro está no plano
- * da landing.
+ * do produto rodando com a loja de demonstração (a "Aurora Seminovos" do
+ * `demo.ts`, a mesma da vitrine ao vivo), não desenhos: se uma tela mudar, a
+ * captura se refaz — o roteiro está no plano da landing.
  *
  * As capturas entram num MacBook desenhado aqui — moldura, câmera, base e uma
  * janela de navegador com o endereço da tela —, para o visitante ler "é o
@@ -24,7 +24,7 @@ const TELAS = [
     chave: 'leads',
     rota: '/leads',
     rotulo: 'Leads',
-    legenda: 'Cada lead chega com o vendedor da vez e o prazo de primeiro contato correndo — no prazo, vencendo ou estourado.',
+    legenda: 'Do site ou encaminhado dos portais, cada lead chega com o vendedor da vez e o prazo de primeiro contato correndo — no prazo, vencendo ou estourado.',
   },
   {
     chave: 'chat',
@@ -43,6 +43,12 @@ const TELAS = [
     rota: '/negocios',
     rotulo: 'Negócio',
     legenda: 'Valor de venda, desconto, custo, margem e comissão de cada carro vendido.',
+  },
+  {
+    chave: 'financeiro',
+    rota: '/financeiro',
+    rotulo: 'Financeiro',
+    legenda: 'O caixa dos próximos 30 dias, dia a dia, com o aviso se ele ficar negativo — e as contas nascem sozinhas da compra, da preparação e da venda do carro.',
   },
   {
     chave: 'relatorios',

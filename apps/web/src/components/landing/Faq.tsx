@@ -19,11 +19,13 @@ const PERGUNTAS = [
     r: 'Dá para começar em paralelo. O estoque sobe de uma planilha CSV, e os leads novos passam a entrar no painel com prazo e vendedor. O sistema antigo fica para consulta até você não precisar mais dele.',
   },
   {
-    // Exportação que existe hoje: leads, estoque, negócios e desempenho em
-    // CSV. Agendamentos e conversas ainda não (pendência de 27/09/2026) — a
-    // resposta não pode dizer "todos os seus dados".
+    // Exportação que existe hoje (`configuracoes/ExportarDados.tsx`): leads,
+    // agendamentos, conversas, mensagens, clientes, negócios, estoque,
+    // financeiro e desempenho, em CSV. Agendamentos e conversas entraram em
+    // 27/09/2026 (D1) e o financeiro em 28/09 (Fase 6); até lá a resposta dizia
+    // que os dois primeiros ainda não saíam.
     p: 'E se o AutoConnect acabar?',
-    r: 'Seus dados são seus: leads, estoque, negócios e o desempenho da equipe já saem em planilha pelo próprio painel. Agendamentos e conversas ainda não têm exportação.',
+    r: 'Seus dados são seus: leads, estoque, negócios, agendamentos, conversas, clientes, o financeiro e o desempenho da equipe saem em planilha pelo próprio painel, em Configurações › Levar seus dados.',
   },
   {
     p: 'Quanto tempo leva para implantar?',
