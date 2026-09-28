@@ -5,6 +5,7 @@ import {
 } from '@autoconnect/shared';
 import type { ScopedClient } from '../../common/prisma/prisma.service';
 import { MarginService } from './margin.service';
+import { GeracaoFinanceiraService } from '../financeiro/geracao.service';
 
 /**
  * Transições de status: valida, aplica os efeitos e grava o evento.
@@ -15,7 +16,10 @@ import { MarginService } from './margin.service';
  */
 @Injectable()
 export class DealStateService {
-  constructor(private readonly margem: MarginService) {}
+  constructor(
+    private readonly margem: MarginService,
+    private readonly financeiro: GeracaoFinanceiraService,
+  ) {}
 
   async transicionar(
     tx: ScopedClient,
@@ -68,6 +72,17 @@ export class DealStateService {
       await tx.vehicle.update({
         where: { id: negocio.vehicleId },
         data: { status: 'sold', soldAt: agora },
+      });
+
+      // E o dinheiro da venda aparece no caixa como conta a receber, uma por
+      // forma de pagamento. Idempotente pela coluna única `deal_payment_id`, e
+      // incapaz de derrubar o faturamento: erro ali é aviso no log, porque
+      // dinheiro invisível é ruim e venda travada é pior.
+      await this.financeiro.aoFaturarNegocio(tx, {
+        id: negocio.id,
+        tenantId: negocio.tenantId,
+        vehicleId: negocio.vehicleId,
+        closedAt: negocio.closedAt,
       });
     }
 

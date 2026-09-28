@@ -2,6 +2,7 @@ import { ConflictException, BadRequestException } from '@nestjs/common';
 import { Prisma, type Deal } from '@autoconnect/db';
 import { DealStateService } from './deal-state.service';
 import { MarginService } from './margin.service';
+import type { GeracaoFinanceiraService } from '../financeiro/geracao.service';
 import { DEAL_STATUSES, DEAL_TRANSITIONS, type DealStatusValue } from '@autoconnect/shared';
 
 /**
@@ -13,6 +14,7 @@ import { DEAL_STATUSES, DEAL_TRANSITIONS, type DealStatusValue } from '@autoconn
  */
 describe('DealStateService', () => {
   let servico: DealStateService;
+  let geracao: { aoFaturarNegocio: jest.Mock };
 
   const negocio = (status: DealStatusValue, saleValue = '1000.00'): Deal =>
     ({
@@ -48,7 +50,15 @@ describe('DealStateService', () => {
   };
 
   beforeEach(() => {
-    servico = new DealStateService(new MarginService());
+    // A geração financeira é dublada: o que se testa aqui é a máquina de
+    // estados, e o que o faturamento gera de lançamento tem e2e próprio. O
+    // dublê registra a chamada para o teste de faturamento conferir que ela
+    // acontece — a Fase 3 do financeiro depende disso e nada mais diria.
+    geracao = { aoFaturarNegocio: jest.fn().mockResolvedValue(1) };
+    servico = new DealStateService(
+      new MarginService(),
+      geracao as unknown as GeracaoFinanceiraService,
+    );
   });
 
   it('recusa toda aresta que não existe na máquina de estados', async () => {
@@ -133,6 +143,18 @@ describe('DealStateService', () => {
     expect(data.grossMargin.toFixed(2)).toBe('250.00');
 
     expect((chamadas.vehicleUpdate[0] as { data: unknown }).data).toMatchObject({ status: 'sold' });
+
+    // E o dinheiro da venda entra no caixa: é o faturamento que gera as contas
+    // a receber (Fase 3 do financeiro). Sem esta asserção, arrancar a chamada
+    // do `deal-state` passaria verde e a loja voltaria a digitar a venda duas
+    // vezes.
+    expect(geracao.aoFaturarNegocio).toHaveBeenCalledTimes(1);
+  });
+
+  it('a geração financeira não é chamada em transição que não é faturamento', async () => {
+    const { tx } = criarTx();
+    await servico.transicionar(tx, negocio('draft'), 'proposal', 'u1');
+    expect(geracao.aoFaturarNegocio).not.toHaveBeenCalled();
   });
 
   it('cancelar devolve o veículo ao estoque', async () => {

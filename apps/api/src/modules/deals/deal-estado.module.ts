@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { DealStateService } from './deal-state.service';
 import { MarginService } from './margin.service';
+import { FinanceiroModule } from '../financeiro/financeiro.module';
 
 /**
  * A máquina de estados do negócio e o cálculo de margem, isolados num módulo
@@ -15,6 +16,9 @@ import { MarginService } from './margin.service';
  * duas coisas.
  */
 @Module({
+  // O financeiro entra aqui, e não o contrário: é o negócio faturado que gera
+  // conta a receber, e o financeiro não sabe o que é um negócio.
+  imports: [FinanceiroModule],
   providers: [DealStateService, MarginService],
   exports: [DealStateService, MarginService],
 })

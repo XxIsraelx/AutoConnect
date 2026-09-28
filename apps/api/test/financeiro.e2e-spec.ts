@@ -302,6 +302,126 @@ describe('Financeiro da loja (e2e)', () => {
     });
   });
 
+  /**
+   * Fase 3: o dinheiro que nasce do que a loja já fez.
+   *
+   * É a fase que faz valer a pena o financeiro estar aqui e não numa planilha, e
+   * o que estes testes fixam é o par: **aparece** (senão a loja digita duas
+   * vezes) e **não duplica** (senão o caixa mente para cima).
+   */
+  describe('lançamento gerado pela operação', () => {
+    let veiculoId: string;
+
+    beforeAll(async () => {
+      veiculoId = f.a.veiculoPrivadoId;
+    });
+
+    it('a compra do veículo vira conta a pagar ao fornecedor', async () => {
+      const res = await http()
+        .post(`/api/v1/vehicles/${veiculoId}/acquisition`)
+        .set('Authorization', `Bearer ${comoGerente}`)
+        .send({
+          origin: 'direct_purchase', supplierName: 'João Vendedor',
+          purchaseValue: '45000.00', enteredAt: new Date().toISOString(),
+        });
+      expect(res.status).toBe(201);
+
+      const gerado = await dono.financialEntry.findFirst({
+        where: { tenantId: f.a.id, vehicleId: veiculoId, vehicleAcquisitionId: { not: null } },
+        include: { category: true },
+      });
+      expect(gerado).not.toBeNull();
+      expect(gerado!.direction).toBe('saida');
+      expect(gerado!.value.toFixed(2)).toBe('45000.00');
+      expect(gerado!.supplierName).toBe('João Vendedor');
+      // A categoria é achada pela **chave**, não pelo nome: a loja renomeia.
+      expect(gerado!.category.originKey).toBe('compra_de_veiculo');
+    });
+
+    it('corrigir a compra corrige o lançamento ainda previsto — e não cria um segundo', async () => {
+      const res = await http()
+        .post(`/api/v1/vehicles/${veiculoId}/acquisition`)
+        .set('Authorization', `Bearer ${comoGerente}`)
+        .send({
+          origin: 'direct_purchase', supplierName: 'João Vendedor',
+          purchaseValue: '44000.00', enteredAt: new Date().toISOString(),
+        });
+      expect(res.status).toBe(201);
+
+      const todos = await dono.financialEntry.findMany({
+        where: { tenantId: f.a.id, vehicleAcquisitionId: { not: null } },
+      });
+      // Idempotência por construção: a coluna é única, não há `if` para errar.
+      expect(todos).toHaveLength(1);
+      expect(todos[0]!.value.toFixed(2)).toBe('44000.00');
+    });
+
+    it('cada item de preparação vira uma conta a pagar', async () => {
+      for (const [descricao, valor] of [['Funilaria', '1200.00'], ['Pneus', '800.00']] as const) {
+        const res = await http()
+          .post(`/api/v1/vehicles/${veiculoId}/costs`)
+          .set('Authorization', `Bearer ${comoGerente}`)
+          .send({
+            kind: 'mechanical', value: valor, description: descricao,
+            supplierName: 'Oficina Central', incurredAt: new Date().toISOString(),
+          });
+        expect(res.status).toBe(201);
+      }
+
+      const gerados = await dono.financialEntry.findMany({
+        where: { tenantId: f.a.id, vehicleCostId: { not: null } },
+        include: { category: true },
+        orderBy: { value: 'desc' },
+      });
+      expect(gerados).toHaveLength(2);
+      expect(gerados.map((g) => g.value.toFixed(2))).toEqual(['1200.00', '800.00']);
+      expect(gerados[0]!.description).toBe('Funilaria');
+      expect(gerados[0]!.category.originKey).toBe('preparacao');
+    });
+
+    it('a categoria é encontrada pela chave mesmo depois de a loja renomeá-la', async () => {
+      // O caso que motivou a chave: buscar por nome pararia de achar em
+      // silêncio, e o dinheiro não apareceria no caixa.
+      const categoria = await dono.financialCategory.findFirstOrThrow({
+        where: { tenantId: f.a.id, originKey: 'preparacao' },
+      });
+      await dono.financialCategory.update({
+        where: { id: categoria.id }, data: { name: 'Oficina e funilaria (nosso nome)' },
+      });
+
+      const res = await http()
+        .post(`/api/v1/vehicles/${veiculoId}/costs`)
+        .set('Authorization', `Bearer ${comoGerente}`)
+        .send({
+          kind: 'preparation', value: '150.00', description: 'Higienização',
+          incurredAt: new Date().toISOString(),
+        });
+      expect(res.status).toBe(201);
+
+      const gerado = await dono.financialEntry.findFirstOrThrow({
+        where: { tenantId: f.a.id, description: 'Higienização' },
+        include: { category: true },
+      });
+      expect(gerado.categoryId).toBe(categoria.id);
+      expect(gerado.category.name).toBe('Oficina e funilaria (nosso nome)');
+    });
+
+    it('a soma das contas a pagar do veículo bate com o custo que o negócio usa', async () => {
+      // Sem dupla contagem: o financeiro aponta para a origem, e o total das
+      // contas a pagar geradas é o mesmo custo que a margem do negócio congela.
+      const entradas = await dono.financialEntry.findMany({
+        where: {
+          tenantId: f.a.id, vehicleId: veiculoId, direction: 'saida',
+          OR: [{ vehicleCostId: { not: null } }, { vehicleAcquisitionId: { not: null } }],
+        },
+        select: { value: true },
+      });
+      const total = entradas.reduce((t, e) => t + Number(e.value), 0);
+      // 44.000 de compra + 1.200 + 800 + 150 de preparação.
+      expect(total.toFixed(2)).toBe('46150.00');
+    });
+  });
+
   describe('quem não entra', () => {
     it('o vendedor não vê o caixa da loja', async () => {
       for (const caminho of ['/resumo', '/contas', '/lancamentos', '/categorias']) {

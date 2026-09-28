@@ -186,7 +186,17 @@ export class FinanceiroService {
 
     return this.prisma.withTenant(tenantId, async (tx: ScopedClient) => {
       const { count } = await tx.financialCategory.createMany({
-        data: CATEGORIAS_PADRAO.map((c) => ({ tenantId, ...c })),
+        // Campo por campo, e não `...c`: a constante do shared usa `origemKey`
+        // (português, como o resto do domínio) e a coluna é `originKey`. Espalhar
+        // o objeto mandaria um campo que o Prisma não conhece e o semeio virava
+        // 500 — foi assim que este teste ficou vermelho.
+        data: CATEGORIAS_PADRAO.map((c) => ({
+          tenantId,
+          direction: c.direction,
+          group: c.group,
+          name: c.name,
+          originKey: c.origemKey ?? null,
+        })),
         skipDuplicates: true,
       });
       return { criadas: count };
@@ -461,6 +471,21 @@ export class FinanceiroService {
         },
         include: { category: { select: { id: true, name: true, group: true, direction: true } } },
       });
+
+      // Baixa na conta a receber confirma a forma de pagamento no negócio.
+      //
+      // O negócio é a verdade sobre a venda e o financeiro espelha — mas quem
+      // recebeu o dinheiro dá baixa **uma vez**, no lugar em que está olhando.
+      // Pedir a mesma confirmação nas duas telas é como as duas começam a
+      // divergir. A condição no `where` faz disto idempotente: já confirmado, é
+      // no-op.
+      if (atual.dealPaymentId) {
+        await tx.dealPayment.updateMany({
+          where: { id: atual.dealPaymentId, tenantId, status: 'pending' },
+          data: { status: 'confirmed', confirmedAt: pago.paidAt ?? new Date() },
+        });
+      }
+
       return this.serializarLancamento(pago, new Date());
     });
   }
