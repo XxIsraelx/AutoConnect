@@ -697,7 +697,7 @@ function StatusDropdown({
 const KIND_LABELS: Record<string, string> = {
   created: 'Lead criado', status_change: 'Status alterado',
   assignment: 'Atribuição', note: 'Nota', call: 'Ligação',
-  email: 'E-mail', whatsapp: 'WhatsApp', visit: 'Visita', other: 'Outro',
+  email: 'E-mail', whatsapp: 'WhatsApp', chat: 'Chat', visit: 'Visita', other: 'Outro',
   // Escrito pela deduplicação: o mesmo contato chegou de novo e virou
   // interação neste lead, em vez de um cartão novo no funil.
   duplicate: 'Contato repetido', trade_in_appraisal: 'Avaliação da troca',
