@@ -41,6 +41,11 @@ import {
   simularLeadDePortalSchema,
   inscricaoDePushSchema,
   removerInscricaoDePushSchema,
+  contaFinanceiraSchema,
+  categoriaFinanceiraSchema,
+  lancamentoSchema,
+  baixaSchema,
+  cancelarLancamentoSchema,
 } from '@autoconnect/shared';
 import { acceptInviteSchema } from '../modules/invitations/invitations.controller';
 import { anularSchema, assinarSchema } from '../modules/contracts/contracts.controller';
@@ -210,6 +215,17 @@ const ROTAS: Record<string, Declaracao> = {
   'POST /push/inscricoes': { schema: inscricaoDePushSchema },
   'POST /push/inscricoes/remover': { schema: removerInscricaoDePushSchema },
   'POST /push/teste': { semCorpo: true },
+  /* Financeiro da loja */
+  'POST /financeiro/contas': { schema: contaFinanceiraSchema },
+  'POST /financeiro/categorias': { schema: categoriaFinanceiraSchema },
+  'POST /financeiro/categorias/padrao': { semCorpo: true },
+  'POST /financeiro/lancamentos': { schema: lancamentoSchema },
+  'POST /financeiro/lancamentos/:p/baixa': { schema: baixaSchema },
+  'POST /financeiro/lancamentos/:p/cancelar': { schema: cancelarLancamentoSchema },
+  // Fechar e reabrir mês existem na API desde a Fase 1 e **a tela só chega na
+  // Fase 4**: declarar aqui antes disso faria este arquivo mentir que já há
+  // chamador — é o outro lado da armadilha nº 1.
+
   'POST /public/conversations/:p/messages': { schema: mensagemDeVisitanteSchema },
   'PATCH /conversations/:p/close': { semCorpo: true },
 };
