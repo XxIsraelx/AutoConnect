@@ -86,18 +86,24 @@ Decisões desta fase, com o padrão que vou adotar se você não disser outra co
 - **`branchId` opcional** no lançamento: a loja com duas filiais vai querer
   separar, e quem tem uma só nem vê o campo.
 
-## Fase 2 — a loja usa (≈ 3 dias)
+## Fase 2 — a loja usa ✅ 28/09/2026
 
-**Entrega:** `/financeiro` no painel, com quatro abas e a operação do dia.
+**Entregue:** `/financeiro` no painel, com seis abas — Visão, A pagar, A receber,
+Lançamentos, Contas e Categorias. O item do menu só aparece para gerência, e a API
+recusa o vendedor com 403: esconder no menu sem fechar a API é esconder, não
+proteger.
 
 - **Visão** — a pergunta do dono: saldo por conta hoje, o que vence nos próximos
   7 dias, o que está atrasado, e o resultado do mês corrente.
 - **A pagar** e **A receber** — lista filtrável por período, status, categoria e
   filial; baixa em um clique (data e conta, com padrão de hoje); atrasado em
   vermelho, e a soma sempre visível no topo.
-- **Lançamentos** — criar, editar, cancelar com motivo. Recorrência gera a série
-  com **fim definido** (12 ou 24 meses), nunca infinita: série sem fim é lixo
-  acumulando no banco.
+- **Lançamentos** — criar e cancelar com motivo (editar entra junto do fluxo de
+  caixa, na Fase 4). Recorrência de 3, 6, 12 ou 24 meses — **sempre com fim**:
+  série sem fim é lixo acumulando no banco e um fluxo de caixa que promete 2040.
+- **Contas e Categorias** — o saldo por conta e o plano de contas que a loja
+  ajusta. Uma revenda tem categoria que nenhum padrão adivinha ("despachante",
+  "leilão"), e é aqui que ela entra.
 - Falha de carga com `ErroAoCarregar`, falha de ação inline, formulário que edita
   dado existente não renderiza se a carga falhou — o padrão do projeto.
 

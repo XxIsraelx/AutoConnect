@@ -28,30 +28,9 @@ import { useEffect, useState } from 'react';
 import { Loader2, Pencil, Tag } from 'lucide-react';
 import { emCentavos, formatarBRL, subtrair } from '@autoconnect/shared';
 import { textoDoErro } from '@/components/ErroAoCarregar';
+// Saíram deste arquivo para `lib/dinheiro`: o financeiro usa as mesmas.
+import { paraApi, paraCampo } from '@/lib/dinheiro';
 import { useAtualizarValores, type DealResumo } from '../dados';
-
-/** `"12345.67"` → `12.345,67`, para o campo aceitar o que a tela exibe. */
-function paraCampo(valor: string): string {
-  return formatarBRL(valor).replace(/[^\d,.-]/g, '').trim();
-}
-
-/**
- * Aceita "12.345,67", "12345,67" e "12345.67" e devolve o formato que a API
- * exige. `null` quando não dá para ler o número — a tela diz o que esperava em
- * vez de mandar lixo e receber "Validation failed".
- */
-function paraApi(texto: string): string | null {
-  const limpo = texto.trim().replace(/\s/g, '');
-  if (!limpo) return null;
-
-  // Vírgula presente = separador decimal brasileiro; o ponto é de milhar.
-  const normalizado = limpo.includes(',')
-    ? limpo.replace(/\./g, '').replace(',', '.')
-    : limpo;
-
-  if (!/^\d+(\.\d{1,2})?$/.test(normalizado)) return null;
-  return normalizado;
-}
 
 export default function Preco({
   negocio, editavel, temContratoVivo, podeEditar,

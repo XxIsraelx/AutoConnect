@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Car, Users, MessageSquare,
   CalendarDays, Settings, LogOut, ChevronRight,
   Info, AlertTriangle, OctagonAlert, X,
-  TrendingUp, UserSquare2, Menu, Handshake, Radio,
+  TrendingUp, UserSquare2, Menu, Handshake, Radio, Wallet,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
@@ -178,6 +178,9 @@ const nav = [
   { href: '/leads',         label: 'Leads',          icon: Users,  badge: true },
   { href: '/negocios',      label: 'Negócios',       icon: Handshake        },
   { href: '/relatorios',    label: 'Relatórios',     icon: TrendingUp       },
+  // Financeiro é de gerência: o item some do menu para o vendedor, **e** a API
+  // recusa com 403. Esconder no menu sem fechar a API é esconder, não proteger.
+  { href: '/financeiro',    label: 'Financeiro',     icon: Wallet, papeis: ['manager', 'tenant_admin', 'super_admin'] },
   { href: '/agendamentos',  label: 'Agendamentos',   icon: CalendarDays     },
   { href: '/chat',          label: 'Chat',           icon: MessageSquare    },
   { href: '/canais',        label: 'Canais',         icon: Radio            },
@@ -270,7 +273,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          {nav.map(({ href, label, icon: Icon, badge: showBadge }) => {
+          {nav
+            .filter((item) => !item.papeis || item.papeis.includes(user?.role ?? ''))
+            .map(({ href, label, icon: Icon, badge: showBadge }) => {
             const active     = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
             const badgeCount = showBadge
               ? leadsNew
