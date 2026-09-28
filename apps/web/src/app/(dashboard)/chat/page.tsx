@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { Fragment, useState, useEffect, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import {
   Send, MessageSquare, Circle, Loader2,
@@ -615,50 +615,67 @@ export default function ChatPage() {
                   <AlertCircle size={24} />
                   <p className="text-xs">Nenhuma mensagem ainda</p>
                 </div>
-              ) : messages.map((msg) => {
+              ) : messages.map((msg, i) => {
                 const isMe = msg.senderUserId === user?.id;
                 const proposal = getProposal(msg.metadata);
+                // O dia aparece quando muda: só com a hora, a conversa de
+                // anteontem seguida da de hoje parecia voltar no tempo.
+                const novoDia = i === 0
+                  || new Date(messages[i - 1].createdAt).toDateString() !== new Date(msg.createdAt).toDateString();
+                const dia = novoDia && (
+                  <div className="flex justify-center">
+                    <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-slate-200/70 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                      {fmtDate(msg.createdAt)}
+                    </span>
+                  </div>
+                );
                 if (proposal) {
                   return (
-                    <div key={msg.id} className={cn('flex gap-2', isMe && 'flex-row-reverse')}>
-                      <ProposalBubble proposal={proposal} mine={isMe} canRespond={false} />
-                    </div>
+                    <Fragment key={msg.id}>
+                      {dia}
+                      <div className={cn('flex gap-2', isMe && 'flex-row-reverse')}>
+                        <ProposalBubble proposal={proposal} mine={isMe} canRespond={false} />
+                      </div>
+                    </Fragment>
                   );
                 }
                 return (
-                  <div key={msg.id} className={cn('flex gap-2', isMe && 'flex-row-reverse')}>
-                    {!isMe && (
-                      <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center shrink-0 text-xs font-bold text-slate-500">
-                        {/* `senderUserId` nulo é o visitante sem conta: quem
-                            identifica é o contato copiado na conversa. */}
-                        {(msg.sender?.fullName
-                          ?? (activeConv ? nomeDoContato(activeConv) : '?')).charAt(0).toUpperCase()}
+                  <Fragment key={msg.id}>
+                    {dia}
+                    <div className={cn('flex gap-2', isMe && 'flex-row-reverse')}>
+                      {!isMe && (
+                        <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center shrink-0 text-xs font-bold text-slate-500">
+                          {/* `senderUserId` nulo é o visitante sem conta: quem
+                              identifica é o contato copiado na conversa. */}
+                          {(msg.sender?.fullName
+                            ?? (activeConv ? nomeDoContato(activeConv) : '?')).charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div className={cn(
+                        'max-w-[75%] rounded-2xl px-3.5 py-2.5 text-sm',
+                        isMe
+                          ? 'bg-blue-600 text-white rounded-tr-sm'
+                          : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-tl-sm shadow-sm',
+                      )}>
+                        {typeof (msg.metadata as { modelo?: unknown } | undefined)?.modelo === 'string' && (
+                          <p className={cn('text-[10px] font-semibold mb-1 flex items-center gap-1', isMe ? 'text-blue-100' : 'text-slate-400')}>
+                            <FileText size={10} />
+                            Modelo: {MODELOS_DE_WHATSAPP[(msg.metadata as { modelo: ChaveDoModelo }).modelo]?.rotulo ?? 'aprovado'}
+                          </p>
+                        )}
+                        <p className="leading-relaxed break-words whitespace-pre-line">{msg.body}</p>
+                        <p className={cn('text-[10px] mt-1 flex items-center gap-1', isMe ? 'text-blue-200 justify-end' : 'text-slate-400')}>
+                          {fmtTime(msg.createdAt)}
+                          {isMe && <StatusDeEntrega msg={msg} />}
+                        </p>
+                        {msg.deliveryStatus === 'falhou' && (
+                          <p className="text-[11px] mt-1 text-rose-100">
+                            Não chegou ao cliente{msg.failureReason ? `: ${msg.failureReason}` : '.'}
+                          </p>
+                        )}
                       </div>
-                    )}
-                    <div className={cn(
-                      'max-w-[75%] rounded-2xl px-3.5 py-2.5 text-sm',
-                      isMe
-                        ? 'bg-blue-600 text-white rounded-tr-sm'
-                        : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-tl-sm shadow-sm',
-                    )}>
-                      {typeof (msg.metadata as { modelo?: unknown } | undefined)?.modelo === 'string' && (
-                        <p className={cn('text-[10px] font-semibold mb-1 flex items-center gap-1', isMe ? 'text-blue-100' : 'text-slate-400')}>
-                          <FileText size={10} />
-                          Modelo: {MODELOS_DE_WHATSAPP[(msg.metadata as { modelo: ChaveDoModelo }).modelo]?.rotulo ?? 'aprovado'}
-                        </p>
-                      )}
-                      <p className="leading-relaxed break-words whitespace-pre-line">{msg.body}</p>
-                      <p className={cn('text-[10px] mt-1 flex items-center gap-1', isMe ? 'text-blue-200 justify-end' : 'text-slate-400')}>
-                        {fmtTime(msg.createdAt)}
-                        {isMe && <StatusDeEntrega msg={msg} />}
-                      </p>
-                      {msg.deliveryStatus === 'falhou' && (
-                        <p className="text-[11px] mt-1 text-rose-100">
-                          Não chegou ao cliente{msg.failureReason ? `: ${msg.failureReason}` : '.'}
-                        </p>
-                      )}
                     </div>
-                  </div>
+                  </Fragment>
                 );
               })}
               {isTyping && (

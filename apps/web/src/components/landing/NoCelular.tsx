@@ -3,20 +3,21 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import {
-  BatteryFull, CalendarCheck, Camera, Inbox, MessagesSquare, Signal, Smartphone, Wifi,
+  BatteryFull, BellRing, CalendarCheck, Camera, Inbox, MessagesSquare, Signal, Smartphone, Wifi,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SECOES } from './config';
 
 /**
  * O painel no celular do vendedor. Mesma regra da seção do sistema: telas
- * capturadas do produto rodando com os dados fictícios do seed (vendedor
- * "Diego", da Auto Sul), em 390 × 844, não desenhos.
+ * capturadas do produto rodando com a loja de demonstração (os vendedores da
+ * Aurora Seminovos, dados fictícios do `demo.ts`), em 390 × 844, não desenhos.
  *
  * Só entra aqui o que o código faz hoje: o clique no WhatsApp vira interação
  * no lead (`ContatoDoLead`), a foto do veículo sai da câmera (`accept="image/*"`
- * no cadastro) e o manifesto é `standalone`. Notificação com o app fechado
- * **não** existe — o aviso de lead novo é a contagem no menu, com a tela aberta.
+ * no cadastro), o manifesto é `standalone` e, desde 27/09/2026, lead novo e
+ * mensagem do cliente chegam como notificação com o app fechado (web push,
+ * que cada vendedor ativa no próprio aparelho, em Canais).
  *
  * A captura fica entre uma barra de status e uma de gestos, desenhadas aqui:
  * são elas que ficam sob os cantos arredondados da tela, e não o menu e o
@@ -121,6 +122,10 @@ export default function NoCelular() {
           </div>
 
           <ul className="lg:mt-6 grid sm:grid-cols-2 gap-3 text-sm text-slate-600 dark:text-slate-300">
+            <li className="flex gap-2.5 sm:col-span-2">
+              <BellRing size={16} className="text-brand-accent shrink-0 mt-0.5" />
+              Lead novo e mensagem do cliente chegam como notificação no celular, mesmo com o AutoConnect fechado.
+            </li>
             <li className="flex gap-2.5">
               <Camera size={16} className="text-brand-accent shrink-0 mt-0.5" />
               Carro novo no estoque: as fotos saem da câmera do celular, direto no anúncio.
