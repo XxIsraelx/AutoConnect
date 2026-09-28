@@ -496,7 +496,7 @@ existe por causa delas, e a tabela só sobe quando as duas primeiras existirem.
     Railway), como adicional ou a partir do Crescimento.
   - Como testar: `www.lojateste.com.br` abre a vitrine da loja com HTTPS válido, e o link do
     carro compartilhado usa esse domínio.
-- **Financeiro da loja (fluxo de caixa, contas a pagar e receber).**
+- ◐ **Financeiro da loja (fluxo de caixa, contas a pagar e receber)** — **decidido em 27/09/2026: entra**, como financeiro gerencial ([decisão](../decisoes/2026-09-27%20modulo%20financeiro.md), [plano em 6 fases](plano-financeiro.md)). Sai da lista de lacunas quando a Fase 2 estiver no ar.
   - Onde: não existe; há margem por negócio e custo do veículo. O
     [levantamento de vendas](levantamento-vendas-e-contratos.md), pergunta 2, recomenda parar no
     DRE por veículo e comissão, sem registro de que o Israel decidiu.

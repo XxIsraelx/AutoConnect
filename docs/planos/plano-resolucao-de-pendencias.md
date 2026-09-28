@@ -238,10 +238,13 @@ registrado para ninguém precisar redescobrir o porquê.
   produto inteiro. O que pesa a favor de voltar: Auto Adm inclui NF-e em todos
   os planos e a Autoconf põe na faixa básica de mercado, então é motivo de "não
   troco de sistema" numa loja que já emite nota.
-- **Financeiro da loja (fluxo de caixa, contas a pagar e receber).** A
-  recomendação do levantamento é parar no DRE por veículo e comissão — não virar
-  ERP. Falta só **registrar a decisão** em `docs/decisoes/`, que é meia hora e
-  fecha o assunto.
+- ~~**Financeiro da loja (fluxo de caixa, contas a pagar e receber).**~~ —
+  **decidido em 27/09/2026, e ao contrário da recomendação: o financeiro entra.**
+  Escopo de financeiro **gerencial** completo (a pagar, a receber, caixa, DRE
+  mensal, fechamento, conciliação por OFX, exportação para o contador); fiscal e
+  folha seguem fora. Porquê em
+  [módulo financeiro](../decisoes/2026-09-27%20modulo%20financeiro.md), plano em
+  6 fases em [plano-financeiro](plano-financeiro.md).
 
 ---
 

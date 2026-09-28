@@ -26,6 +26,7 @@ import { TeamModule } from './modules/team/team.module';
 import { FipeModule } from './modules/fipe/fipe.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { RelatoriosModule } from './modules/relatorios/relatorios.module';
+import { FinanceiroModule } from './modules/financeiro/financeiro.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { CobrancaModule } from './modules/cobranca/cobranca.module';
 import { SaquesModule } from './modules/saques/saques.module';
@@ -63,6 +64,7 @@ import { PushModule } from './modules/users/push/push.module';
     FipeModule,
     TasksModule,
     RelatoriosModule,
+    FinanceiroModule,
     CrmModule,
     CobrancaModule,
     SaquesModule,
