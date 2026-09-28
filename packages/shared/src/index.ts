@@ -30,3 +30,4 @@ export * from './schemas/portais';
 export * from './domain/push';
 export * from './domain/financeiro';
 export * from './schemas/financeiro';
+export * from './domain/ofx';

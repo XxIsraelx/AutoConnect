@@ -2,6 +2,7 @@ import {
   Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards,
 } from '@nestjs/common';
 import { FinanceiroService, PAPEIS_DO_FINANCEIRO } from './financeiro.service';
+import { ConciliacaoService } from './conciliacao.service';
 import { escopoDa } from '../../common/escopo';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -10,6 +11,7 @@ import {
   atualizarLancamentoSchema, baixaSchema, cancelarLancamentoSchema,
   categoriaFinanceiraSchema, contaFinanceiraSchema, fecharMesSchema,
   lancamentoSchema, listarLancamentosSchema, reabrirMesSchema, fluxoQuerySchema,
+  importarOfxSchema, conciliarSchema,
 } from '@autoconnect/shared';
 
 interface AuthRequest {
@@ -31,7 +33,10 @@ interface AuthRequest {
 @UseGuards(RolesGuard)
 @Roles(...PAPEIS_DO_FINANCEIRO)
 export class FinanceiroController {
-  constructor(private readonly financeiro: FinanceiroService) {}
+  constructor(
+    private readonly financeiro: FinanceiroService,
+    private readonly conciliacao: ConciliacaoService,
+  ) {}
 
   /** GET /financeiro/resumo — saldo, o que vence, o que atrasou, o mês. */
   @Get('resumo')
@@ -153,6 +158,38 @@ export class FinanceiroController {
   ): Promise<unknown> {
     const { motivo } = cancelarLancamentoSchema.parse(body);
     return this.financeiro.cancelarLancamento(escopoDa(req.user), id, motivo);
+  }
+
+  /* ── Conciliação bancária ───────────────────────────────── */
+
+  /** POST /financeiro/contas/:id/ofx — importa o extrato. */
+  @Post('contas/:id/ofx')
+  importarOfx(
+    @Req() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const { conteudo } = importarOfxSchema.parse(body);
+    return this.conciliacao.importarOfx(escopoDa(req.user), id, conteudo);
+  }
+
+  /** GET /financeiro/contas/:id/conciliacao — o que sobra dos dois lados. */
+  @Get('contas/:id/conciliacao')
+  pendencias(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string): Promise<unknown> {
+    return this.conciliacao.pendencias(escopoDa(req.user), id);
+  }
+
+  /** POST /financeiro/conciliacoes — confirma o par sugerido (ou outro). */
+  @Post('conciliacoes')
+  conciliar(@Req() req: AuthRequest, @Body() body: unknown): Promise<unknown> {
+    const { transacaoId, lancamentoId } = conciliarSchema.parse(body);
+    return this.conciliacao.conciliar(escopoDa(req.user), transacaoId, lancamentoId);
+  }
+
+  /** POST /financeiro/conciliacoes/:id/ignorar — "não é da loja". */
+  @Post('conciliacoes/:id/ignorar')
+  ignorar(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string): Promise<unknown> {
+    return this.conciliacao.ignorar(escopoDa(req.user), id);
   }
 
   /* ── Fechamento ─────────────────────────────────────────── */

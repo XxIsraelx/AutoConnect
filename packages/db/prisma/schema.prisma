@@ -280,6 +280,7 @@ model Tenant {
   financialCategories       FinancialCategory[]
   financialEntries          FinancialEntry[]
   financialPeriods          FinancialPeriod[]
+  bankTransactions          BankTransaction[]
 
   @@map("tenants")
 }
@@ -2075,8 +2076,9 @@ model FinancialAccount {
   createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt      DateTime             @updatedAt @map("updated_at") @db.Timestamptz()
 
-  tenant  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  entries FinancialEntry[]
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  entries      FinancialEntry[]
+  transactions BankTransaction[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -2161,16 +2163,18 @@ model FinancialEntry {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
-  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  account     FinancialAccount?   @relation(fields: [accountId], references: [id])
-  category    FinancialCategory   @relation(fields: [categoryId], references: [id])
-  branch      DealershipBranch?   @relation(fields: [branchId], references: [id])
-  deal        Deal?               @relation(fields: [dealId], references: [id], onDelete: SetNull)
-  vehicle     Vehicle?            @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
-  dealPayment DealPayment?        @relation(fields: [dealPaymentId], references: [id], onDelete: SetNull)
-  aquisicao   VehicleAcquisition? @relation(fields: [vehicleAcquisitionId], references: [id], onDelete: SetNull)
-  custo       VehicleCost?        @relation(fields: [vehicleCostId], references: [id], onDelete: SetNull)
-  autor       User?               @relation(fields: [createdBy], references: [id])
+  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account         FinancialAccount?   @relation(fields: [accountId], references: [id])
+  category        FinancialCategory   @relation(fields: [categoryId], references: [id])
+  branch          DealershipBranch?   @relation(fields: [branchId], references: [id])
+  deal            Deal?               @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  vehicle         Vehicle?            @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  dealPayment     DealPayment?        @relation(fields: [dealPaymentId], references: [id], onDelete: SetNull)
+  aquisicao       VehicleAcquisition? @relation(fields: [vehicleAcquisitionId], references: [id], onDelete: SetNull)
+  /// A linha do extrato conciliada com este lançamento, quando houver.
+  bankTransaction BankTransaction?
+  custo           VehicleCost?        @relation(fields: [vehicleCostId], references: [id], onDelete: SetNull)
+  autor           User?               @relation(fields: [createdBy], references: [id])
 
   @@index([tenantId, dueDate])
   @@index([tenantId, status, dueDate])
@@ -2178,6 +2182,38 @@ model FinancialEntry {
   @@index([tenantId, categoryId])
   @@index([recurrenceId])
   @@map("financial_entries")
+}
+
+/// Uma linha do extrato do banco, importada de um OFX.
+///
+/// `fitid` é o id que o banco dá à transação: único por conta, e é ele que faz
+/// reimportar o mesmo arquivo — ou um arquivo que se sobrepõe ao anterior, que é
+/// o caso comum — **não duplicar** nada. Mesmo desenho de idempotência dos
+/// webhooks, pela mesma razão: o segundo arquivo sempre vem.
+model BankTransaction {
+  id         String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String             @map("tenant_id") @db.Uuid
+  accountId  String             @map("account_id") @db.Uuid
+  fitid      String
+  /// Dia do lançamento no banco, meia-noite UTC — a hora do arquivo é descartada.
+  postedAt   DateTime           @map("posted_at") @db.Timestamptz()
+  /// Sempre positivo; o sinal está em `direction`, como no lançamento.
+  amount     Decimal            @db.Decimal(14, 2)
+  direction  FinancialDirection
+  memo       String?
+  /// O lançamento com que esta linha foi conciliada. Nulo = ainda sobrando.
+  entryId    String?            @unique @map("entry_id") @db.Uuid
+  /// Marcada como "não é da loja": tarifa já lançada, transferência interna.
+  ignoredAt  DateTime?          @map("ignored_at") @db.Timestamptz()
+  importedAt DateTime           @default(now()) @map("imported_at") @db.Timestamptz()
+
+  tenant  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  entry   FinancialEntry?  @relation(fields: [entryId], references: [id], onDelete: SetNull)
+
+  @@unique([accountId, fitid])
+  @@index([tenantId, postedAt])
+  @@map("bank_transactions")
 }
 
 /// Mês conferido e fechado.

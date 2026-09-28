@@ -152,3 +152,48 @@ export const reabrirMes = (token: string, year: number, month: number, motivo: s
   api<{ reaberto: boolean }>(
     '/financeiro/periodos/reabrir', { method: 'POST', token, body: { year, month, motivo } },
   );
+
+/* ── Conciliação bancária ───────────────────────────────────── */
+
+export interface TransacaoDoExtrato {
+  id: string;
+  fitid: string;
+  postedAt: string;
+  amount: string;
+  direction: 'entrada' | 'saida';
+  memo: string | null;
+  sugestao: {
+    lancamentoId: string;
+    descricao: string;
+    valor: string;
+    status: string;
+    distanciaEmDias: number;
+    confianca: 'alta' | 'media';
+  } | null;
+}
+
+export interface Conciliacao {
+  transacoes: TransacaoDoExtrato[];
+  lancamentosSemExtrato: {
+    id: string; descricao: string; valor: string;
+    direction: 'entrada' | 'saida'; status: string; dueDate: string;
+  }[];
+}
+
+export const importarOfx = (token: string, contaId: string, conteudo: string) =>
+  api<{ conta: string; lidas: number; importadas: number; jaExistiam: number; ignoradas: number }>(
+    `/financeiro/contas/${contaId}/ofx`, { method: 'POST', token, body: { conteudo } },
+  );
+
+export const buscarConciliacao = (token: string, contaId: string) =>
+  api<Conciliacao>(`/financeiro/contas/${contaId}/conciliacao`, { token });
+
+export const conciliar = (token: string, transacaoId: string, lancamentoId: string) =>
+  api<{ conciliado: boolean; deuBaixa: boolean }>(
+    '/financeiro/conciliacoes', { method: 'POST', token, body: { transacaoId, lancamentoId } },
+  );
+
+export const ignorarTransacao = (token: string, id: string) =>
+  api<{ ignorada: boolean }>(
+    `/financeiro/conciliacoes/${id}/ignorar`, { method: 'POST', token, body: {} },
+  );
