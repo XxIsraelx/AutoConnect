@@ -5,7 +5,7 @@ import { desempenhoQuerySchema, portabilidadeQuerySchema } from './desempenho.sc
 import { escopoDa } from '../../common/escopo';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { BOM } from './csv';
+import { BOM } from '../../common/csv';
 
 interface AuthRequest {
   user: { id: string; role: string; tenantId: string | null };

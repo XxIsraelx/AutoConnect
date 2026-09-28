@@ -736,6 +736,52 @@ ${linhas.map((l) => `<STMTTRN>
     });
   });
 
+  /**
+   * Fase 6: a ponte com o contador.
+   *
+   * O que se fixa: as colunas que o escritório pede existem, a **origem** do
+   * lançamento gerado pelo sistema aparece (é a primeira pergunta de quem vê uma
+   * linha que ninguém digitou), e o período é obrigatório.
+   */
+  describe('exportação para o contador', () => {
+    const periodo = () => {
+      const de = new Date(Date.now() - 365 * 86_400_000).toISOString().slice(0, 10);
+      const ate = new Date(Date.now() + 365 * 86_400_000).toISOString().slice(0, 10);
+      return `from=${de}&to=${ate}`;
+    };
+
+    it('traz as colunas do escritório, com BOM para o Excel', async () => {
+      const res = await get(`/lancamentos.csv?${periodo()}`);
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('text/csv');
+      expect(res.text.startsWith('\uFEFF')).toBe(true);
+
+      const cabecalho = res.text.split('\n')[0]!;
+      for (const coluna of ['"Vencimento"', '"Pagamento"', '"Tipo"', '"Categoria"',
+        '"Documento"', '"Conta"', '"Situação"', '"Conciliado no banco"', '"Origem no sistema"']) {
+        expect(cabecalho).toContain(coluna);
+      }
+    });
+
+    it('a origem do lançamento gerado pelo sistema aparece na linha', async () => {
+      // É a primeira pergunta do contador ao ver um lançamento que ninguém
+      // digitou — e a Fase 3 gera vários deles.
+      const res = await get(`/lancamentos.csv?${periodo()}`);
+      expect(res.text).toContain('"compra de veículo"');
+      expect(res.text).toContain('"preparação"');
+    });
+
+    it('período é obrigatório, e invertido é 400', async () => {
+      expect((await get('/lancamentos.csv')).status).toBe(400);
+      expect((await get('/lancamentos.csv?from=2026-09-30&to=2026-09-01')).status).toBe(400);
+    });
+
+    it('o vendedor não leva o caixa da loja para lugar nenhum', async () => {
+      expect((await get(`/lancamentos.csv?${periodo()}`, comoVendedor)).status).toBe(403);
+    });
+  });
+
   describe('quem não entra', () => {
     it('o vendedor não vê o caixa da loja', async () => {
       for (const caminho of ['/resumo', '/contas', '/lancamentos', '/categorias']) {

@@ -1,6 +1,8 @@
 import {
-  Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards,
+  Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
+import { BOM } from '../../common/csv';
 import { FinanceiroService, PAPEIS_DO_FINANCEIRO } from './financeiro.service';
 import { ConciliacaoService } from './conciliacao.service';
 import { escopoDa } from '../../common/escopo';
@@ -11,7 +13,7 @@ import {
   atualizarLancamentoSchema, baixaSchema, cancelarLancamentoSchema,
   categoriaFinanceiraSchema, contaFinanceiraSchema, fecharMesSchema,
   lancamentoSchema, listarLancamentosSchema, reabrirMesSchema, fluxoQuerySchema,
-  importarOfxSchema, conciliarSchema,
+  importarOfxSchema, conciliarSchema, periodoDeExportacaoSchema,
 } from '@autoconnect/shared';
 
 interface AuthRequest {
@@ -158,6 +160,29 @@ export class FinanceiroController {
   ): Promise<unknown> {
     const { motivo } = cancelarLancamentoSchema.parse(body);
     return this.financeiro.cancelarLancamento(escopoDa(req.user), id, motivo);
+  }
+
+  /**
+   * GET /financeiro/lancamentos.csv?from=&to= — o período para o contador.
+   *
+   * Fica no financeiro, e não em `/tenant/reports`, porque o recorte de quem vê
+   * é outro: relatório é de gerente para cima **e vendedor na própria carteira**;
+   * o caixa da loja não é do vendedor em nenhuma fatia.
+   */
+  @Get('lancamentos.csv')
+  async csvParaOContador(
+    @Req() req: AuthRequest,
+    @Res() res: Response,
+    @Query() query: unknown,
+  ): Promise<void> {
+    const { from, to } = periodoDeExportacaoSchema.parse(query);
+    const csv = await this.financeiro.csvDeLancamentos(
+      escopoDa(req.user), new Date(from), new Date(to),
+    );
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="financeiro_${from}_a_${to}.csv"`);
+    res.send(BOM + csv);
   }
 
   /* ── Conciliação bancária ───────────────────────────────── */

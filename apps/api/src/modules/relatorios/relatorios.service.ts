@@ -6,7 +6,7 @@ import {
   calcularComissao, DEAL_FATURADO_STATUSES, DEAL_TERMINAL_STATUSES,
   MOTIVOS_DE_CANCELAMENTO_DE_NEGOCIO,
 } from '@autoconnect/shared';
-import { montarCsv, montarCsvComTeto, TETO_DE_LINHAS_CSV } from './csv';
+import { montarCsv, montarCsvComTeto, TETO_DE_LINHAS_CSV } from '../../common/csv';
 import {
   consultaDeClientesRelacionados, type ClienteRelacionado,
 } from '../../common/clientes-relacionados';

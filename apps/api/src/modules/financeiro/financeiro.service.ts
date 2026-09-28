@@ -10,6 +10,7 @@ import {
   type LancamentoInput, type ListarLancamentosInput,
 } from '@autoconnect/shared';
 import { GeracaoFinanceiraService } from './geracao.service';
+import { montarCsvComTeto, TETO_DE_LINHAS_CSV } from '../../common/csv';
 
 /** Quem opera o financeiro. Vendedor não vê o caixa da loja. */
 export const PAPEIS_DO_FINANCEIRO = ['manager', 'tenant_admin', 'super_admin'];
@@ -652,6 +653,73 @@ export class FinanceiroService {
         temCategorias: (await tx.financialCategory.count({ where: { tenantId } })) > 0,
       };
     });
+  }
+
+  /* ── Exportação para o contador ─────────────────────────── */
+
+  /**
+   * Os lançamentos do período, em CSV.
+   *
+   * **Não existe "o formato do contador"** — cada escritório importa no layout do
+   * sistema dele. O que existe é um CSV com as colunas que qualquer um pede:
+   * vencimento, pagamento, direção explícita, categoria, documento, conta e a
+   * **origem no sistema** quando o lançamento nasceu de um negócio ou de um
+   * veículo. É honesto chamar isso de "para o contador" e dizer que a primeira
+   * importação vai exigir um de-para; prometer "é só importar" seria vender o que
+   * não se entrega.
+   *
+   * Vai por **período**: o contador pede o mês, e o teto de linhas (que avisa
+   * dentro do arquivo quando corta) continua valendo.
+   */
+  async csvDeLancamentos(escopo: Escopo, from: Date, to: Date): Promise<string> {
+    const tenantId = this.tenantDe(escopo);
+
+    const lancamentos = await this.prisma.withTenant(tenantId, (tx: ScopedClient) =>
+      tx.financialEntry.findMany({
+        where: { tenantId, dueDate: { gte: from, lte: to } },
+        orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
+        take: TETO_DE_LINHAS_CSV + 1,
+        include: {
+          category: { select: { name: true, group: true } },
+          account: { select: { name: true } },
+          branch: { select: { name: true } },
+          bankTransaction: { select: { postedAt: true } },
+        },
+      }),
+    );
+
+    const cabecalho = [
+      'ID', 'Vencimento', 'Pagamento', 'Tipo', 'Valor', 'Categoria', 'Grupo',
+      'Descrição', 'Fornecedor ou cliente', 'Documento', 'Conta', 'Filial',
+      'Situação', 'Conciliado no banco', 'Origem no sistema',
+    ];
+
+    const linhas = lancamentos.map((l) => [
+      l.id,
+      l.dueDate.toISOString().slice(0, 10),
+      l.paidAt?.toISOString().slice(0, 10) ?? '',
+      l.direction === 'entrada' ? 'Entrada' : 'Saída',
+      l.value.toFixed(2),
+      l.category.name,
+      l.category.group,
+      l.description,
+      l.supplierName ?? '',
+      l.documentNumber ?? '',
+      l.account?.name ?? '',
+      l.branch?.name ?? '',
+      l.status,
+      l.bankTransaction
+        ? `sim (${l.bankTransaction.postedAt.toISOString().slice(0, 10)})`
+        : 'não',
+      // A origem explica o lançamento que ninguém digitou — é a primeira
+      // pergunta do contador ao ver uma linha que ele não reconhece.
+      l.dealId ? 'negócio'
+        : l.vehicleAcquisitionId ? 'compra de veículo'
+          : l.vehicleCostId ? 'preparação'
+            : l.dealPaymentId ? 'pagamento do negócio' : '',
+    ]);
+
+    return montarCsvComTeto(cabecalho, linhas);
   }
 
   /* ── Fluxo de caixa ─────────────────────────────────────── */

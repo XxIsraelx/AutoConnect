@@ -161,3 +161,18 @@ export const conciliarSchema = z.object({
   transacaoId: z.string().uuid(),
   lancamentoId: z.string().uuid(),
 }).strict();
+
+/**
+ * Período da exportação para o contador.
+ *
+ * As duas datas são obrigatórias, e é de propósito: exportação sem período é a
+ * base inteira, e o contador pede o mês. O padrão implícito seria o recorte
+ * errado para alguém.
+ */
+export const periodoDeExportacaoSchema = z.object({
+  from: data('Data inicial'),
+  to: data('Data final'),
+}).strict().refine((v) => Date.parse(v.from) <= Date.parse(v.to), {
+  path: ['to'],
+  message: 'A data final não pode ser antes da inicial.',
+});
