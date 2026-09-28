@@ -15,6 +15,7 @@ import {
   CHAVES_DE_PORTAL,
   PORTAIS,
   TOKEN_DE_PORTAL,
+  codigoDaConfirmacaoNoResumo,
   mensagemDoLeadDePortal,
   tokenDoDestinatario,
   type ChaveDoPortal,
@@ -85,6 +86,12 @@ export class PortaisService {
 
   /* ── Conexões ─────────────────────────────────────────────── */
 
+  /**
+   * O estado de cada portal, e em que ponto do passo a passo a loja está:
+   * o código de confirmação do Gmail (se chegou), se o portal já entregou
+   * alguma coisa, e se já virou lead. As três contam desde que a conexão foi
+   * criada — é o que a tela usa para marcar as etapas sozinha.
+   */
   async listar(tenantId: string): Promise<unknown> {
     const inicio = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
@@ -110,6 +117,29 @@ export class PortaisService {
         }),
       ]);
 
+      // Por conexão ativa: o que já chegou por ela, e o último aviso do Gmail.
+      const progresso = new Map(await Promise.all(conexoes.map(async (c) => {
+        const [porSituacao, aviso] = await Promise.all([
+          tx.portalDelivery.groupBy({
+            by: ['status'],
+            where: { connectionId: c.id, receivedAt: { gte: c.createdAt } },
+            _count: { _all: true },
+          }),
+          tx.portalDelivery.findFirst({
+            where: { connectionId: c.id, status: 'ignorado', receivedAt: { gte: c.createdAt } },
+            orderBy: { receivedAt: 'desc' },
+            select: { summary: true, receivedAt: true },
+          }),
+        ]);
+        const n = (s: string) => porSituacao.find((g) => g.status === s)?._count._all ?? 0;
+        const codigo = codigoDaConfirmacaoNoResumo(aviso?.summary);
+        return [c.id, {
+          confirmacaoDoGmail: codigo ? { codigo, recebidaEm: aviso!.receivedAt } : null,
+          recebeuDoPortal: n('aplicado') + n('duplicado') + n('nao_entendido') > 0,
+          recebeuLead: n('aplicado') + n('duplicado') > 0,
+        }] as const;
+      })));
+
       return {
         emailDisponivel: this.email.disponivel,
         simulavel: this.simulavel,
@@ -122,6 +152,9 @@ export class PortaisService {
             chave,
             nome: PORTAIS[chave].nome,
             conexao: c ? { id: c.id, conectadaEm: c.createdAt, ultimoRecebimento: c.lastReceivedAt } : null,
+            progresso: c
+              ? progresso.get(c.id)
+              : { confirmacaoDoGmail: null, recebeuDoPortal: false, recebeuLead: false },
             mes,
             recentes: recentes
               .filter((r) => r.portal === chave)
