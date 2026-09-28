@@ -153,10 +153,15 @@ faz. É aqui que ele fica melhor que planilha.
 - **Open Finance fica para depois** — precisa de certificado, homologação e
   contrato com instituição; OFX resolve 90% com 10% do custo.
 
-## Fase 6 — a ponte com o contador (≈ 1 dia)
+## Fase 6 — a ponte com o contador ✅ 28/09/2026
 
-- Exportação do período em CSV com categoria, data, valor, documento e
-  contrapartida — o formato que o escritório importa.
+- Exportação do período em CSV com categoria, data, valor, documento, conta e a
+  **origem no sistema** — a coluna que responde "de onde saiu esta linha que
+  ninguém digitou", que é a primeira pergunta de quem recebe o arquivo.
+- ⚠ **"O formato que o escritório importa" não existe:** cada um usa o layout do
+  sistema dele. O que entregamos são as colunas que todos pedem, e a tela diz que
+  a primeira importação vai precisar de um de-para. Prometer "é só importar"
+  seria vender o que não se entrega.
 - Entra em *Configurações › Levar seus dados*, ao lado dos oito arquivos que já
   estão lá.
 
@@ -180,5 +185,20 @@ planilha: o dinheiro nasce do negócio que já foi fechado no sistema. A 4 respo
 a pergunta que o dono faz toda semana. A 5 é a que dá confiança no número. A 6
 fecha o ciclo com quem vai olhar isso uma vez por mês.
 
-Estado: [plano de resolução das pendências](plano-resolucao-de-pendencias.md)
-registra o financeiro como adiado — esta nota o substitui.
+## Estado
+
+**As seis fases fecharam entre 27 e 28/09/2026.** O que o módulo faz hoje: conta e
+plano de contas, a pagar e a receber com baixa, lançamento nascendo do negócio
+faturado, da compra e da preparação, fluxo de caixa que responde em que dia o
+caixa fica negativo, DRE gerencial, fechamento de mês com comissão apurada e
+auditoria, conciliação por OFX e exportação para o contador.
+
+O que **não** faz, e segue de propósito fora: SPED, apuração de imposto, folha de
+pagamento, NF-e (adiada em 27/09/2026), conciliação de cartão por adquirente e
+Open Finance.
+
+⚠ **Nada disso foi revisado por contador** — entra na mesma revisão da Onda B, com
+o contrato e as páginas legais.
+
+O [plano de resolução das pendências](plano-resolucao-de-pendencias.md) registra o
+financeiro como adiado; esta nota o substitui.

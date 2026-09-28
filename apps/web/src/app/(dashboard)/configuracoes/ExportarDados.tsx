@@ -19,6 +19,11 @@ import { textoDoErro } from '@/components/ErroAoCarregar';
  * O recorte é o mesmo do resto do painel: vendedor leva a carteira dele,
  * gerência leva a loja inteira. Quem filtra é a API.
  */
+/** A exportação do financeiro pede período: o contador trabalha por mês. */
+const hoje = () => new Date().toISOString().slice(0, 10);
+const umAnoAtras = () =>
+  new Date(Date.now() - 365 * 86_400_000).toISOString().slice(0, 10);
+
 const EXPORTACOES: { chave: string; rotulo: string; descricao: string; rota: string; arquivo: string }[] = [
   {
     chave: 'leads',
@@ -68,6 +73,13 @@ const EXPORTACOES: { chave: string; rotulo: string; descricao: string; rota: str
     descricao: 'Veículos não vendidos, com custo e dias em estoque.',
     rota: '/tenant/reports/inventory.csv',
     arquivo: 'estoque.csv',
+  },
+  {
+    chave: 'financeiro',
+    rotulo: 'Financeiro (para o contador)',
+    descricao: 'Lançamentos dos últimos 12 meses, com conta, documento e origem. Só gerência.',
+    rota: `/financeiro/lancamentos.csv?from=${umAnoAtras()}&to=${hoje()}`,
+    arquivo: 'financeiro.csv',
   },
   {
     chave: 'desempenho',
@@ -137,7 +149,9 @@ export default function ExportarDados() {
 
       <p className="text-[11px] text-slate-400">
         Exportação grande sai nas 5.000 linhas mais recentes, e o próprio arquivo diz na última
-        linha quando cortou — reduza o período para levar o resto.
+        linha quando cortou — reduza o período para levar o resto. O arquivo do financeiro tem
+        as colunas que um escritório de contabilidade pede, mas cada um importa no layout do
+        sistema dele: a primeira vez vai precisar de um de-para.
       </p>
     </>
   );

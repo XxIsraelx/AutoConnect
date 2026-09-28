@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.350 testes (972 na API, 378 no `shared`):
+são 1.354 testes (976 na API, 378 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -717,6 +717,10 @@ em 6 fases: `docs/planos/plano-financeiro.md`.
   conferir. A regra é `sugerirConciliacao`, pura, no shared.
 - **Conciliar dá baixa** na data e na conta do extrato: a linha do banco é a
   prova de que o dinheiro se moveu.
+- **A exportação para o contador é honesta sobre o que é:** um CSV com as colunas
+  que qualquer escritório pede (inclusive a **origem** do lançamento que o sistema
+  gerou), e **não** um layout de importação — cada escritório usa o do sistema
+  dele, e a primeira vez exige um de-para. A tela diz isso.
 - ⚠ **Nada do financeiro foi revisado por contador.** Mesmo aviso do template de
   contrato sem advogado; entra na mesma revisão.
 

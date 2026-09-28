@@ -1,7 +1,12 @@
 /**
  * Geração de CSV para as exportações do painel.
  *
- * Mora aqui, e não colado em cada relatório, porque o detalhe que quebra a
+ * Saiu de `modules/relatorios` para `common` em 28/09/2026: o financeiro passou a
+ * exportar para o contador com as mesmas regras (aspas, quebra de linha, BOM e
+ * teto), e a alternativa era uma segunda cópia — que divergiria no primeiro
+ * ajuste, como toda cópia neste projeto.
+ *
+ * Mora num lugar só, e não colado em cada relatório, porque o detalhe que quebra a
  * planilha é sempre o mesmo: aspas dentro do campo. `"` vira `""`, que é o
  * escape do RFC 4180 — sem isso uma observação com aspas desloca todas as
  * colunas seguintes e o lojista descobre em cima da reunião.
