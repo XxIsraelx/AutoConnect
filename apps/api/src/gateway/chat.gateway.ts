@@ -16,6 +16,7 @@ import { PropostaChatService } from '../modules/deals/proposta-chat.service';
 import { ChatEventosService } from './chat-eventos.service';
 import { WhatsappService } from '../modules/whatsapp/whatsapp.service';
 import { PushService } from '../modules/users/push/push.service';
+import { SlaService } from '../modules/crm/sla.service';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -38,6 +39,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     private readonly eventos: ChatEventosService,
     private readonly whatsapp: WhatsappService,
     private readonly push: PushService,
+    private readonly sla: SlaService,
   ) {}
 
   /** O texto que a tela mostra quando o envio é recusado. */
@@ -201,23 +203,24 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       }
     }
 
-    const msg = await this.noContexto(client, (tx) => tx.message.create({
-      data: {
-        conversationId: data.conversationId,
-        tenantId:       conv.tenantId,
-        senderUserId:   client.userId,
-        body:           data.body,
-        kind:           (data.kind ?? 'text') as never,
-        ...(metadata ? { metadata: metadata as never } : {}),
-      },
-      include: {
-        sender: { select: { id: true, fullName: true, avatarUrl: true } },
-      },
-    }));
-
     const agora = new Date();
-    await this.noContexto(client, (tx) =>
-      tx.conversation.update({
+    const daEquipe = !!client.tenantId && client.role !== 'customer';
+    const msg = await this.noContexto(client, async (tx) => {
+      const criada = await tx.message.create({
+        data: {
+          conversationId: data.conversationId,
+          tenantId:       conv.tenantId,
+          senderUserId:   client.userId,
+          body:           data.body,
+          kind:           (data.kind ?? 'text') as never,
+          ...(metadata ? { metadata: metadata as never } : {}),
+        },
+        include: {
+          sender: { select: { id: true, fullName: true, avatarUrl: true } },
+        },
+      });
+
+      await tx.conversation.update({
         where: { id: data.conversationId },
         data:  {
           lastMessageAt: agora,
@@ -225,8 +228,13 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
           // WhatsApp, preenchida em todo canal para a tela ler de um jeito só.
           ...(client.role === 'customer' ? { customerLastMessageAt: agora } : {}),
         },
-      }),
-    );
+      });
+
+      if (daEquipe && conv.leadId) {
+        await this.respondeuOLead(tx, conv, criada.id, client.userId!, agora);
+      }
+      return criada;
+    });
 
     this.server.to(`conversation:${data.conversationId}`).emit('conversation:message', msg);
     // O cliente com conta escreveu: o vendedor pode estar com o painel fechado.
@@ -240,6 +248,55 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       });
     }
     return { ok: true, messageId: msg.id };
+  }
+
+  /**
+   * A equipe escreveu numa conversa ligada a um lead: é falar com o cliente, e
+   * conta no prazo de primeiro contato — como a resposta pelo WhatsApp
+   * (`WhatsappService.gravarSaida`). Sem isto, quem respondia pelo chat do
+   * sistema aparecia com o prazo estourado e contava contra no relatório.
+   *
+   * A primeira mensagem da equipe na conversa vira a interação `chat` na linha
+   * do tempo; as seguintes não, senão cada mensagem viraria uma linha.
+   */
+  private async respondeuOLead(
+    tx: ScopedClient,
+    conv: { id: string; leadId: string | null; customerUserId: string | null },
+    mensagemId: string,
+    autorId: string,
+    agora: Date,
+  ) {
+    const lead = await tx.lead.findFirst({
+      where: { id: conv.leadId! },
+      select: { id: true, tenantId: true, firstRespondedAt: true },
+    });
+    if (!lead) return;
+
+    // Da equipe = com autor e sem ser o cliente (o visitante escreve sem autor).
+    const anteriores = await tx.message.count({
+      where: {
+        conversationId: conv.id,
+        id: { not: mensagemId },
+        AND: [
+          { senderUserId: { not: null } },
+          ...(conv.customerUserId ? [{ senderUserId: { not: conv.customerUserId } }] : []),
+        ],
+      },
+    });
+    if (anteriores === 0) {
+      await tx.leadInteraction.create({
+        data: {
+          leadId: lead.id,
+          tenantId: lead.tenantId,
+          actorUserId: autorId,
+          kind: 'chat',
+          content: 'Conversa pelo chat do sistema',
+          occurredAt: agora,
+        },
+      });
+    }
+    await this.sla.registrarPrimeiraResposta(tx, lead, 'chat', agora);
+    await tx.lead.update({ where: { id: lead.id }, data: { lastActivityAt: agora } });
   }
 
   /** Cliente aceita ou recusa uma proposta enviada pela concessionária */

@@ -156,6 +156,74 @@ describe('ChatGateway (e2e)', () => {
     expect(Number(total)).toBe(0);
   });
 
+  describe('prazo de primeiro contato', () => {
+    const conversaDoLead = async () => {
+      await dono.$executeRaw`
+        UPDATE leads SET first_response_due_at = now() + interval '15 minutes', first_responded_at = NULL
+        WHERE id = ${f.a.leadId}::uuid`;
+      const [c] = await dono.$queryRaw<{ id: string }[]>`
+        INSERT INTO conversations (tenant_id, customer_user_id, salesperson_id, lead_id, updated_at)
+        VALUES (${f.a.id}::uuid, ${clienteId}::uuid, ${f.a.usuarioId}::uuid, ${f.a.leadId}::uuid, now())
+        RETURNING id`;
+      return c.id;
+    };
+    const situacaoDoLead = async () => {
+      const [lead] = await dono.$queryRaw<{ first_responded_at: Date | null }[]>`
+        SELECT first_responded_at FROM leads WHERE id = ${f.a.leadId}::uuid`;
+      const interacoes = await dono.$queryRaw<{ actor_user_id: string | null; content: string | null }[]>`
+        SELECT actor_user_id::text, content FROM lead_interactions
+        WHERE lead_id = ${f.a.leadId}::uuid AND kind = 'chat'`;
+      return { respondidoEm: lead.first_responded_at, interacoes };
+    };
+
+    afterEach(async () => {
+      await dono.$executeRaw`DELETE FROM lead_interactions WHERE lead_id = ${f.a.leadId}::uuid`;
+    });
+
+    it('a mensagem do vendedor para o prazo e entra na linha do tempo uma vez', async () => {
+      const conversaId = await conversaDoLead();
+      const vendedor = await conectar(f.a.usuarioId, 'salesperson', f.a.id);
+
+      await emitir(vendedor, 'conversation:send', { conversationId: conversaId, body: 'Oi! Sou o vendedor.' });
+      const depoisDaPrimeira = await situacaoDoLead();
+      expect(depoisDaPrimeira.respondidoEm).not.toBeNull();
+      expect(depoisDaPrimeira.interacoes).toEqual([
+        { actor_user_id: f.a.usuarioId, content: 'Conversa pelo chat do sistema' },
+      ]);
+
+      // A segunda mensagem não reescreve o prazo nem vira outra linha.
+      await emitir(vendedor, 'conversation:send', { conversationId: conversaId, body: 'Ainda por aí?' });
+      const depoisDaSegunda = await situacaoDoLead();
+      expect(depoisDaSegunda.respondidoEm).toEqual(depoisDaPrimeira.respondidoEm);
+      expect(depoisDaSegunda.interacoes).toHaveLength(1);
+    });
+
+    it('a mensagem do cliente não conta como resposta', async () => {
+      const conversaId = await conversaDoLead();
+      const cliente = await conectar(clienteId, 'customer', null);
+
+      const ack = await emitir<{ ok: boolean }>(cliente, 'conversation:send', {
+        conversationId: conversaId, body: 'Ainda está disponível?',
+      });
+
+      expect(ack.ok).toBe(true);
+      expect(await situacaoDoLead()).toEqual({ respondidoEm: null, interacoes: [] });
+    });
+
+    it('o vendedor que responde depois do cliente ainda é a primeira resposta', async () => {
+      const conversaId = await conversaDoLead();
+      const cliente = await conectar(clienteId, 'customer', null);
+      const vendedor = await conectar(f.a.usuarioId, 'salesperson', f.a.id);
+
+      await emitir(cliente, 'conversation:send', { conversationId: conversaId, body: 'Oi?' });
+      await emitir(vendedor, 'conversation:send', { conversationId: conversaId, body: 'Oi, tudo bem?' });
+
+      const { respondidoEm, interacoes } = await situacaoDoLead();
+      expect(respondidoEm).not.toBeNull();
+      expect(interacoes).toHaveLength(1);
+    });
+  });
+
   it('conversa de outra concessionária é recusada', async () => {
     const conversaId = await criarConversa(f.a.veiculoPublicoId);
     const deOutraLoja = await conectar(f.b.usuarioId, 'salesperson', f.b.id);

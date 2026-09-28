@@ -367,8 +367,10 @@ export function situacaoDoSla(
  * Nota interna **não** entra, de propósito: escrever "cliente parece quente" no
  * sistema não é falar com o cliente, e contá-la transformaria o indicador em
  * medida de quem digita mais. `visit` também fica de fora — quem apareceu foi
- * o cliente. Mensagem do vendedor no chat conta, e é registrada como `whatsapp`
- * ou `email` conforme o canal; ver `LEAD_INTERACTION_KINDS`.
+ * o cliente. Mensagem da equipe na conversa do lead conta sozinha, sem ninguém
+ * registrar à mão: pelo WhatsApp oficial vira `whatsapp`
+ * (`WhatsappService.gravarSaida`), pelo chat do sistema vira `chat`
+ * (`ChatGateway`); ver `LEAD_INTERACTION_KINDS`.
  */
 export const INTERACOES_DE_PRIMEIRA_RESPOSTA = [
   'call',

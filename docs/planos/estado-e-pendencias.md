@@ -329,7 +329,13 @@ conserto do plano pendente de pagamento
 
 **Encontradas em 27/09/2026** — Claude Code (sessão 2), ao fazer o WhatsApp oficial (C1)
 
-- **A mensagem do vendedor no chat do sistema não para o prazo de primeiro contato.**
+- ~~**A mensagem do vendedor no chat do sistema não para o prazo de primeiro contato.**~~ —
+  **resolvido em 28/09/2026** (branch `claude/sessao-2-sla-do-chat-e-sharp`): o `onSend` do
+  gateway, para mensagem da equipe numa conversa com `leadId`, grava na mesma transação da
+  mensagem a interação `chat` (só a primeira da equipe na conversa),
+  `registrarPrimeiraResposta(..., 'chat')` e o `lastActivityAt`. A mensagem do cliente não
+  conta. `chat-gateway.e2e-spec.ts` fixa os três casos (e falha sem a correção); a linha do
+  tempo do lead ganhou o rótulo "Chat".
   - Onde: `apps/api/src/gateway/chat.gateway.ts` (`onSend`, ramo que não é WhatsApp) e
     `packages/shared/src/domain/sla.ts` (`INTERACOES_DE_PRIMEIRA_RESPOSTA`, que inclui `chat`).
   - O que é: o comentário do `sla.ts` diz que a mensagem do vendedor no chat conta como
@@ -407,7 +413,11 @@ conserto do plano pendente de pagamento
     validação — uma tentativa só; loja demo — nenhuma.
   - Encontrado em: 27/09/2026 · Claude Code (sessão 2) · ao verificar o deploy da Onda C.
 
-- **O site em produção roda sem o `sharp`.**
+- ~~**O site em produção roda sem o `sharp`.**~~ — **resolvido em 28/09/2026** (branch
+  `claude/sessao-2-sla-do-chat-e-sharp`): `sharp@^0.33.5` no `apps/web` — a linha que o
+  Next 15 usa, testada com o 14. O lockfile traz os binários `@img/sharp-linux-x64`; o
+  `next start` local serviu `/_next/image` em WebP sem o aviso, e o Next resolve o `sharp` a
+  partir da própria pasta (hoisting do pnpm). Falta ver o aviso sumir do log do Railway.
   - Onde: `apps/web/package.json` (sem `sharp`) e o serviço web no Railway.
   - O que é: o Next 14 avisa que, sem o `sharp`, a otimização de imagem do `next/image` usa
     a alternativa em WebAssembly — mais lenta e com mais memória.

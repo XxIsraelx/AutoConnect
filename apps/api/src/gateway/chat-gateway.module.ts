@@ -7,6 +7,7 @@ import { DealsModule } from '../modules/deals/deals.module';
 import { PrismaModule } from '../common/prisma/prisma.module';
 import { WhatsappModule } from '../modules/whatsapp/whatsapp.module';
 import { PushModule } from '../modules/users/push/push.module';
+import { CrmModule } from '../modules/crm/crm.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { PushModule } from '../modules/users/push/push.module';
     ChatEventosModule,
     WhatsappModule,
     PushModule,
+    CrmModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
