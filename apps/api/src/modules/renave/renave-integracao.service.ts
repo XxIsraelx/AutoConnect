@@ -11,7 +11,7 @@ import { DocumentosStorage } from '../../common/armazenamento/documentos.storage
 import { CofreService } from '../../common/cofre/cofre.service';
 import type { Escopo } from '../../common/escopo';
 import {
-  ehEntrada, normalizarCnpj, statusDepoisDoEvento, tipoDoDocumento,
+  ehEntrada, statusDepoisDoEvento, tipoDoDocumento,
   type CancelarRenaveInput, type EnviarRenaveInput, type EventoDoRenave,
   type PedidoDeEntradaRenave, type PedidoDeSaidaRenave, type ProvedorDeRenave,
   type RespostaDoRenave, type TipoDeEventoRenave,
@@ -212,27 +212,30 @@ export class RenaveIntegracaoService {
         throw new UnprocessableEntityException('O veículo não tem placa cadastrada: o RENAVE identifica o carro por ela.');
       }
 
+      if (!p.renavam) {
+        throw new UnprocessableEntityException(
+          'Cadastre o RENAVAM no cartão "Dados fiscais" do veículo: é de lá que o envio ao RENAVE o lê.',
+        );
+      }
+
       const snapshot: Record<string, unknown> = {
         ...p.snapshot,
         // RENAVAM, tipo e número do CRV e o hodômetro estão impressos no CRLV
         // que circula com o carro. O código de segurança, não — e não entra.
         documento: {
-          renavam: dados.crv.renavam, tipoCrv: dados.crv.tipoCrv, numeroCrv: dados.crv.numeroCrv ?? null,
+          renavam: p.renavam, tipoCrv: dados.crv.tipoCrv, numeroCrv: dados.crv.numeroCrv ?? null,
         },
       };
 
       if (ehEntrada(dados.tipo)) {
-        // `normalizarCnpj` e não `replace(/\D/g, '')`: o CNPJ alfanumérico
-        // perderia as letras. Serve para o CPF também.
-        const bruto = p.veiculo.documentoDoFornecedor ?? dados.documentoDoProprietario ?? null;
-        const documento = bruto ? normalizarCnpj(bruto) : null;
-        if (dados.tipo === 'entrada_compra' && !tipoDoDocumento(documento)) {
+        // Quem vendeu vem do cartão "Nota de entrada" (`acquisition_suppliers`),
+        // já normalizado sem perder as letras do CNPJ alfanumérico.
+        if (dados.tipo === 'entrada_compra' && !tipoDoDocumento(p.vendedor?.documento)) {
           throw new UnprocessableEntityException(
-            'Informe o CPF ou CNPJ de quem consta no CRV: o RENAVE confere o vendedor pelo documento.',
+            'Cadastre quem entregou o veículo (nome e CPF/CNPJ) no cartão "Nota de entrada": ' +
+              'é de lá que o RENAVE recebe o vendedor.',
           );
         }
-        const vendedor = (p.snapshot.vendedor as { nome?: string | null } | undefined) ?? {};
-        snapshot.vendedor = { nome: vendedor.nome ?? null, documento };
         snapshot.hodometro = {
           km: dados.quilometragem ?? p.veiculo.km,
           medidoEm: (dados.dataOperacao ?? p.dataOperacao).toISOString(),
@@ -295,6 +298,7 @@ export class RenaveIntegracaoService {
     const snap = linha.snapshot as {
       veiculo?: { placa?: string | null; chassi?: string | null };
       vendedor?: { documento?: string | null };
+      documento?: { renavam?: string | null };
       comprador?: { nome: string; cpf: string; email: string | null } | null;
       hodometro?: { km: number; medidoEm: string };
     };
@@ -304,7 +308,7 @@ export class RenaveIntegracaoService {
       veiculo: {
         placa: snap.veiculo?.placa ?? '',
         chassi: snap.veiculo?.chassi ?? null,
-        renavam: dados.crv.renavam,
+        renavam: snap.documento?.renavam ?? '',
         tipoCrv: dados.crv.tipoCrv,
         numeroCrv: dados.crv.numeroCrv ?? null,
         codigoSegurancaCrv: dados.crv.codigoSegurancaCrv,

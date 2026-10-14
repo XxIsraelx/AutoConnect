@@ -77,6 +77,7 @@ describe('RENAVE — registro manual (e2e)', () => {
     const lojas = { in: [f.a.id, f.b.id] };
     await dono.renaveRegistro.deleteMany({ where: { tenantId: lojas } });
     await dono.deal.deleteMany({ where: { tenantId: lojas } });
+    await dono.acquisitionSupplier.deleteMany({ where: { tenantId: lojas } });
     await dono.vehicleAcquisition.deleteMany({ where: { tenantId: lojas } });
     await dono.user.deleteMany({ where: { tenantId: f.a.id, role: 'salesperson' } });
     await f?.limpar();
@@ -109,12 +110,15 @@ describe('RENAVE — registro manual (e2e)', () => {
     });
 
     it('com protocolo, nasce confirmada, com valor e data da aquisição', async () => {
-      await dono.vehicleAcquisition.create({
+      const aquisicao = await dono.vehicleAcquisition.create({
         data: {
           tenantId: f.a.id, vehicleId: veiculo, origin: 'trade_in',
           purchaseValue: '41234.56', enteredAt: new Date('2026-10-02T12:00:00Z'),
-          supplierName: 'Fulano de Tal', supplierDocument: '52998224725',
         },
+      });
+      // Quem vendeu é o cadastro da nota de entrada (trilha N), não uma cópia daqui.
+      await dono.acquisitionSupplier.create({
+        data: { acquisitionId: aquisicao.id, tenantId: f.a.id, fullName: 'Fulano de Tal', documento: '52998224725' },
       });
 
       const antes = await get(`/veiculos/${veiculo}`);

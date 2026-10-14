@@ -71,7 +71,11 @@ export interface RenaveDoVeiculo {
       valor: string | null;
       dataOperacao: string | null;
       temAquisicao: boolean;
+      /** Do cartão "Nota de entrada": quem vendeu o carro para a loja. */
+      vendedor: { nome: string } | null;
     };
+    /** Do cartão "Dados fiscais". */
+    renavam: string | null;
     saidas: { dealId: string; valor: string; dataOperacao: string | null }[];
   };
   integradora: CapacidadeDaIntegradora;
@@ -107,9 +111,9 @@ export interface NovoEnvio {
   dealId?: string;
   dataOperacao?: string;
   observacao?: string;
-  crv: { renavam: string; tipoCrv: string; numeroCrv?: string; codigoSegurancaCrv: string };
+  /** RENAVAM e vendedor não vão: a API os lê dos cadastros da nota fiscal. */
+  crv: { tipoCrv: string; numeroCrv?: string; codigoSegurancaCrv: string };
   quilometragem?: number;
-  documentoDoProprietario?: string;
 }
 
 export type AcaoNoRegistro =
@@ -211,7 +215,6 @@ export function useEnviarRenave() {
         body: {
           vehicleId: c.vehicleId, tipo: c.tipo, dealId: c.dealId, dataOperacao: c.dataOperacao,
           observacao: c.observacao, crv: c.crv, quilometragem: c.quilometragem,
-          documentoDoProprietario: c.documentoDoProprietario,
         },
       }),
     // Mesmo no erro: um envio sem resposta da integradora fica guardado como

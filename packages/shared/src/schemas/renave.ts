@@ -70,13 +70,12 @@ export type CancelarRenaveInput = z.infer<typeof cancelarRenaveSchema>;
 export const chaveNfeRenaveSchema = z.object({ chaveNfe: chaveNfeDoRenave }).strict();
 
 /**
- * Envio pela integradora (R2). O documento do veículo vem no corpo porque o
- * AutoConnect não o tem — e o **código de segurança do CRV não é gravado**:
- * vai para a integradora e some (decisão de 14/10/2026). Reenviar pede de novo.
+ * Envio pela integradora (R2). Só vem no corpo o que o AutoConnect não tem: o
+ * tipo, o número e o **código de segurança do CRV** — este não é gravado, vai
+ * para a integradora e some (decisão de 14/10/2026); reenviar pede de novo.
  *
- * O RENAVAM só tem o formato conferido (até 11 dígitos, com zeros à esquerda):
- * o dígito verificador não está no manual do RENAVE, e regra sem fonte não
- * vira recusa — quem recusa RENAVAM errado é o RENAVE.
+ * RENAVAM e vendedor **não** entram aqui: vêm dos cadastros da trilha N
+ * (`vehicle_fiscal_details` e `acquisition_suppliers`). Um dado, um lugar.
  */
 export const enviarRenaveSchema = z.object({
   vehicleId: z.string().uuid(),
@@ -85,17 +84,12 @@ export const enviarRenaveSchema = z.object({
   dataOperacao: dataPassada('A data da operação').optional(),
   observacao: z.string().trim().max(500).optional(),
   crv: z.object({
-    renavam: z.string().trim()
-      .regex(/^\d{9,11}$/, 'RENAVAM tem até 11 dígitos')
-      .transform((v) => v.padStart(11, '0')),
     tipoCrv: z.enum(TIPOS_DE_CRV),
     numeroCrv: z.string().trim().regex(/^\d{1,15}$/, 'Número do CRV só com dígitos').optional(),
     codigoSegurancaCrv: z.string().trim().regex(/^\d{8,12}$/, 'O código de segurança do CRV tem só dígitos'),
   }).strict(),
   /** Na entrada. Sem ele, vale a quilometragem do cadastro do veículo. */
   quilometragem: z.number().int().min(0).max(2_000_000).optional(),
-  /** Quem consta no CRV, quando a aquisição não tem o documento do fornecedor. */
-  documentoDoProprietario: z.string().trim().max(20).optional(),
 }).strict().superRefine((v, ctx) => {
   if (v.tipo === 'saida_venda' && !v.dealId) {
     ctx.addIssue({ code: 'custom', path: ['dealId'], message: 'A saída por venda é enviada a partir do negócio.' });

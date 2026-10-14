@@ -40,18 +40,19 @@ export default function EnvioPelaIntegradora({
 
   const [tipo, setTipo] = useState<RenaveOperacaoValue>(tipoInicial);
   const [negocio, setNegocio] = useState(dealId ?? saidas[0]?.dealId ?? '');
-  const [renavam, setRenavam] = useState('');
   const [tipoCrv, setTipoCrv] = useState<string>('DIGITAL');
   const [numeroCrv, setNumeroCrv] = useState('');
   const [codigo, setCodigo] = useState('');
   const [km, setKm] = useState('');
-  const [documento, setDocumento] = useState('');
 
   const saida = saidas.find((s) => s.dealId === negocio);
   const valor = tipo === 'saida_venda' ? saida?.valor : ehEntrada(tipo) ? entrada.valor : null;
   const faltaAquisicao = tipo === 'entrada_compra' && !entrada.temAquisicao;
   const faltaNegocio = tipo === 'saida_venda' && !saida;
-  const incompleto = !renavam.trim() || !codigo.trim();
+  // Um dado, um lugar: RENAVAM e vendedor vêm dos cartões da nota fiscal.
+  const faltaRenavam = !dados.sugestao.renavam;
+  const faltaVendedor = tipo === 'entrada_compra' && !entrada.vendedor;
+  const incompleto = !codigo.trim();
 
   const mandar = () => {
     enviar.mutate(
@@ -60,13 +61,11 @@ export default function EnvioPelaIntegradora({
         tipo,
         ...(tipo === 'saida_venda' ? { dealId: negocio } : {}),
         crv: {
-          renavam: renavam.replace(/\D/g, ''),
           tipoCrv,
           ...(numeroCrv.trim() ? { numeroCrv: numeroCrv.replace(/\D/g, '') } : {}),
           codigoSegurancaCrv: codigo.replace(/\D/g, ''),
         },
         ...(ehEntrada(tipo) && km.trim() ? { quilometragem: Number(km.replace(/\D/g, '')) } : {}),
-        ...(ehEntrada(tipo) && documento.trim() ? { documentoDoProprietario: documento.trim() } : {}),
       },
       // O código some do estado assim que sai daqui, com sucesso ou não: a
       // tela também não o guarda.
@@ -110,12 +109,6 @@ export default function EnvioPelaIntegradora({
         )}
 
         <label className="text-xs text-slate-500 space-y-1">
-          <span className="block">RENAVAM</span>
-          <input value={renavam} onChange={(e) => setRenavam(e.target.value)} inputMode="numeric"
-            placeholder="Até 11 dígitos" className={campo} />
-        </label>
-
-        <label className="text-xs text-slate-500 space-y-1">
           <span className="block">Tipo do CRV</span>
           <select value={tipoCrv} onChange={(e) => setTipoCrv(e.target.value)} className={campo}>
             {TIPOS_DE_CRV.map((t) => <option key={t} value={t}>{t.charAt(0) + t.slice(1).toLowerCase()}</option>)}
@@ -139,14 +132,34 @@ export default function EnvioPelaIntegradora({
               <span className="block">Hodômetro (vazio = o do cadastro)</span>
               <input value={km} onChange={(e) => setKm(e.target.value)} inputMode="numeric" placeholder="km" className={campo} />
             </label>
-            <label className="text-xs text-slate-500 space-y-1">
-              <span className="block">CPF/CNPJ de quem consta no CRV</span>
-              <input value={documento} onChange={(e) => setDocumento(e.target.value)}
-                placeholder="Se o custo do veículo não tem" className={campo} />
-            </label>
           </>
         )}
       </div>
+
+      <dl className="text-xs text-slate-500 space-y-0.5">
+        <div>
+          <dt className="inline">RENAVAM: </dt>
+          <dd className="inline font-mono">{dados.sugestao.renavam ?? '—'}</dd>
+          <span className="text-slate-400"> · do cartão “Dados fiscais”</span>
+        </div>
+        {ehEntrada(tipo) && (
+          <div>
+            <dt className="inline">Vendedor: </dt>
+            <dd className="inline">{entrada.vendedor?.nome ?? '—'}</dd>
+            <span className="text-slate-400"> · do cartão “Nota de entrada”</span>
+          </div>
+        )}
+      </dl>
+      {faltaRenavam && (
+        <p className="text-xs text-amber-700 dark:text-amber-400">
+          Cadastre o RENAVAM no cartão “Dados fiscais”, nesta página: é de lá que o envio o lê.
+        </p>
+      )}
+      {faltaVendedor && (
+        <p className="text-xs text-amber-700 dark:text-amber-400">
+          Cadastre quem entregou o veículo (nome e CPF/CNPJ) no cartão “Nota de entrada”, nesta página.
+        </p>
+      )}
 
       <p className="text-[11px] text-slate-400 flex items-start gap-1.5">
         <ShieldCheck size={12} className="shrink-0 mt-0.5" />
@@ -170,7 +183,7 @@ export default function EnvioPelaIntegradora({
       <div className="flex flex-wrap gap-2">
         <button
           type="button" onClick={mandar}
-          disabled={enviar.isPending || incompleto || faltaAquisicao || faltaNegocio}
+          disabled={enviar.isPending || incompleto || faltaAquisicao || faltaNegocio || faltaRenavam || faltaVendedor}
           className={`${botao} bg-brand-accent text-white hover:bg-blue-600`}
         >
           {enviar.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
