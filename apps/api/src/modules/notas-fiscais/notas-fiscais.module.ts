@@ -5,6 +5,7 @@ import { NotasFiscaisController, WebhookNotaFiscalController } from './notas-fis
 import { PerfilFiscalService } from './perfil-fiscal.service';
 import { EmissaoDeNotaService } from './emissao.service';
 import { RelatorioFiscalService } from './relatorio-fiscal.service';
+import { ConferenciaFiscalService } from './conferencia-fiscal.service';
 import { PROVEDOR_DE_NOTA_FISCAL, emissorConfigurado } from './emissor/provedor';
 
 /**
@@ -23,6 +24,7 @@ import { PROVEDOR_DE_NOTA_FISCAL, emissorConfigurado } from './emissor/provedor'
     PerfilFiscalService,
     EmissaoDeNotaService,
     RelatorioFiscalService,
+    ConferenciaFiscalService,
     { provide: PROVEDOR_DE_NOTA_FISCAL, inject: [ConfigService], useFactory: emissorConfigurado },
   ],
 })
