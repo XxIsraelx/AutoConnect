@@ -226,6 +226,44 @@ describe('Cadastro em autosserviço (e2e)', () => {
       expect(cnpjValido('11222333000182')).toBe(false);
     });
 
+    it('CNPJ alfanumérico — o exemplo da Receita — cadastra e grava na forma canônica', async () => {
+      // Desde julho de 2026 a Receita emite CNPJ com letras (IN RFB 2.229/2024).
+      // O `\D` de antes apagava as letras e respondia "CNPJ deve ter 14
+      // dígitos": nenhuma loja aberta dali em diante conseguia se cadastrar.
+      const canonico = '12ABC34501DE35';
+      cnpjsCriados.push(canonico);
+      jest.restoreAllMocks();
+      const brasilApi = fingirBrasilApi(ATIVA);
+
+      const res = await request(app.getHttpServer())
+        .post(rota('/auth/signup-tenant'))
+        .send({
+          tenant: { cnpj: '12.abc.345/01de-35', tradeName: 'Garagem Nova' },
+          admin: { fullName: 'Márcio', email: emailNovo('alfanumerico'), password: 'senha-forte-1' },
+        });
+
+      expect(res.status).toBe(201);
+      const tenant = await dono.tenant.findUnique({ where: { taxId: canonico } });
+      expect(tenant).not.toBeNull();
+      // A Receita continua enriquecendo: a BrasilAPI responde o formato novo.
+      expect(String(brasilApi.mock.calls[0]?.[0])).toBe(`https://brasilapi.com.br/api/cnpj/v1/${canonico}`);
+      expect(tenant!.legalName).toBe('GARAGEM CENTRAL LTDA');
+    });
+
+    it('CNPJ alfanumérico com dígito verificador errado é 400 no campo', async () => {
+      const res = await request(app.getHttpServer())
+        .post(rota('/auth/signup-tenant'))
+        .send({
+          tenant: { cnpj: '12.ABC.345/01DE-36', tradeName: 'Garagem Nova' },
+          admin: { fullName: 'Márcio', email: emailNovo('alfanumerico'), password: 'senha-forte-1' },
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errors).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'tenant.cnpj' })]),
+      );
+    });
+
     it('mesmo CNPJ em duas lojas é 409', async () => {
       const cnpj = cnpjNovo();
       const um = await request(app.getHttpServer()).post(rota('/auth/signup-tenant')).send({

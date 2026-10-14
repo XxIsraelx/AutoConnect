@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { cpfValido } from './auth';
+import { cpfValido, normalizarCnpj } from './auth';
 import {
   DEAL_STATUSES,
   PAYMENT_KINDS,
@@ -246,9 +246,12 @@ export function qualificarVendedor(v: {
   return `${empresa}, neste ato representada por ${rep}`;
 }
 
-/** CNPJ formatado: `00.000.000/0001-91`. */
+/**
+ * CNPJ formatado: `00.000.000/0001-91`, ou `12.ABC.345/01DE-35` no formato
+ * alfanumérico — com `\D` as letras sumiam e o contrato imprimia o CNPJ cru.
+ */
 export function formatarCnpj(cnpj: string): string {
-  const d = cnpj.replace(/\D/g, '');
+  const d = normalizarCnpj(cnpj);
   return d.length === 14
     ? `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`
     : cnpj;

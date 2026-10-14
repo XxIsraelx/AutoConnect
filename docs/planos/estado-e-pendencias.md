@@ -533,7 +533,16 @@ de demonstração
 **Encontrada em 13/10/2026** — Claude Code (sessão 1 do plano fiscal), ao escrever o
 validador da chave da NF-e
 
-- **O cadastro recusa CNPJ alfanumérico.**
+- ~~**O cadastro recusa CNPJ alfanumérico.**~~ — **resolvido em 14/10/2026** (`c297e0f`,
+  branch `claude/cnpj-alfanumerico`): `normalizarCnpj` (maiúsculas, tira só pontuação),
+  `cnpjValido` com ASCII − 48 (um teste compara com a implementação antiga em 4.000 CNPJs
+  numéricos) e `mascararCnpj` no shared; a máscara do `/signup` aceita letra; o
+  `formatarCnpj` do contrato e o `cpfCnpj` da Asaas deixaram de apagar as letras. A BrasilAPI
+  **já responde** o formato novo (exemplo da Receita → 404 "não encontrado"; dígito trocado →
+  400 "inválido"), então o enriquecimento segue ligado. E2e do `POST /auth/signup-tenant` com
+  `12.ABC.345/01DE-35`. Não havia `\D` sobre CNPJ em `/configuracoes` (o CNPJ não é editável
+  lá) nem no fornecedor da aquisição (`supplierDocument` é texto livre, sem validação — fica
+  para a trilha N, como o item já previa).
   - Onde: `packages/shared/src/schemas/auth.ts:19` (`cnpjValido`) e `:107` (o schema do
     `signup-tenant` faz `.replace(/\D/g, '')` antes de conferir); a máscara e a busca na
     BrasilAPI de `apps/web/src/app/(auth)/signup/SignupContent.tsx:15` e `:258` também só
@@ -558,6 +567,25 @@ validador da chave da NF-e
     Receita passa da validação.
   - Encontrado em: 13/10/2026 · Claude Code · Fase 0 do plano fiscal (fora do escopo dela:
     `auth` não é módulo de nenhuma das duas sessões fiscais).
+
+**Encontrada em 14/10/2026** — Claude Code, ao aceitar o CNPJ alfanumérico no cadastro
+
+- **A Asaas recebendo CNPJ alfanumérico não foi conferida no sandbox.**
+  - Onde: `apps/api/src/modules/cobranca/provedor-asaas.ts`, `salvarCliente` (`cpfCnpj`).
+  - O que é: o adaptador passou a mandar o CNPJ com as letras (`12ABC34501DE35`) em vez de
+    apagá-las. A Asaas anunciou no blog que cadastros e cobrança aceitam o formato novo, mas a
+    documentação da API não diz nada sobre o campo `cpfCnpj`, e nenhuma chamada real foi feita.
+  - Evidência: [blog da Asaas sobre o CNPJ alfanumérico](https://blog.asaas.com/cnpj-alfanumerico/);
+    o teste unitário só fixa o corpo que sai, não a resposta do gateway.
+  - Impacto: se a Asaas recusar, a primeira loja com CNPJ alfanumérico não consegue contratar
+    plano — recebe "CPF/CNPJ inválido" (o `ErroAsaas` repassa a descrição). Antes desta tarefa
+    ela nem se cadastrava; o que mudou é que agora o erro apareceria só na contratação.
+  - Sugestão: no sandbox, `POST /v3/customers` com `cpfCnpj: "12ABC34501DE35"` (ou um CNPJ
+    alfanumérico real de teste); se recusar, abrir chamado na Asaas — não há contorno do nosso
+    lado, mandar outro documento seria pior.
+  - Como testar: o POST no sandbox devolve `cus_…` e o `GET` do cliente traz o CNPJ com as letras.
+  - Encontrado em: 14/10/2026 · Claude Code · tarefa do CNPJ alfanumérico (sem credencial de
+    sandbox nesta sessão).
 
 **Lacunas frente ao mercado** — Claude Cowork, 27/09/2026, na pesquisa de preços
 ([plano de preços](https://claude.ai/code/artifact/daf7ac7d-5114-4621-9028-3759dbb07be8)).
