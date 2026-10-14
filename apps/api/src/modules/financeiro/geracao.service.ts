@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@autoconnect/db';
+import { Prisma, type AcquisitionOrigin } from '@autoconnect/db';
 import type { ScopedClient } from '../../common/prisma/prisma.service';
 import {
   CATEGORIAS_PADRAO, ROTULO_DA_FORMA_DE_PAGAMENTO, mesEstaFechado, type ChaveDeOrigem,
@@ -25,6 +25,14 @@ import {
  *  3. **O lançamento aponta para a origem, não copia o valor dela.** É o que
  *     evita dupla contagem com o DRE por veículo, e o que permite a tela dizer
  *     "gerado pelo sistema" em vez de fingir que alguém digitou.
+ *
+ * E uma exceção: **a troca não gera lançamento, em nenhuma das pontas**
+ * (decisão do Israel em 14/10/2026). O usado que o cliente entrega paga parte
+ * do carro novo com o próprio carro: na venda, o `deal_payment` de `trade_in`
+ * não é dinheiro a receber; na compra, a aquisição de origem `trade_in` não é
+ * dinheiro a pagar. Antes as duas viravam lançamento e se anulavam no fluxo —
+ * corrigir só uma faria o caixa prometer uma saída que não existe. O DRE não
+ * muda: receita e CMV vêm do negócio faturado, não dos lançamentos.
  */
 @Injectable()
 export class GeracaoFinanceiraService {
@@ -117,6 +125,8 @@ export class GeracaoFinanceiraService {
         where: {
           dealId: negocio.id,
           status: { in: ['pending', 'confirmed'] },
+          // A troca não é dinheiro — ver a exceção no topo do arquivo.
+          kind: { not: 'trade_in' },
           financialEntry: { is: null },
         },
         select: { id: true, kind: true, value: true, status: true, institution: true },
@@ -174,7 +184,7 @@ export class GeracaoFinanceiraService {
   async aoRegistrarAquisicao(
     tx: ScopedClient,
     aquisicao: {
-      id: string; tenantId: string; vehicleId: string;
+      id: string; tenantId: string; vehicleId: string; origin: AcquisitionOrigin;
       purchaseValue: Prisma.Decimal; supplierName: string | null; enteredAt: Date;
     },
   ): Promise<void> {
@@ -183,6 +193,23 @@ export class GeracaoFinanceiraService {
         where: { vehicleAcquisitionId: aquisicao.id },
         select: { id: true, status: true },
       });
+
+      // O usado da troca não é pago em dinheiro — ver a exceção no topo. Se a
+      // aquisição foi corrigida para troca depois de gerar a conta a pagar, a
+      // ainda prevista é cancelada (com motivo, nada apaga); a já paga fica, e
+      // quem a baixou sabe por quê.
+      if (aquisicao.origin === 'trade_in') {
+        if (existente?.status === 'previsto') {
+          await tx.financialEntry.update({
+            where: { id: existente.id },
+            data: {
+              status: 'cancelado', canceledAt: new Date(),
+              cancelReason: 'A aquisição é de troca: o carro foi pago com desconto na venda, não em dinheiro.',
+            },
+          });
+        }
+        return;
+      }
 
       if (existente) {
         if (existente.status !== 'previsto') return;

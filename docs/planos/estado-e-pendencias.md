@@ -442,7 +442,7 @@ conserto do plano pendente de pagamento
 **Encontradas em 28/09/2026** — Claude Code (sessão 2), ao alimentar o financeiro da loja
 de demonstração
 
-- **A geração do financeiro cria conta a receber para o carro dado na troca.**
+- ~~**A geração do financeiro cria conta a receber para o carro dado na troca.**~~ — **resolvido em 14/10/2026**, nas duas pontas ([decisão](../decisoes/2026-10-14%20troca%20no%20financeiro.md), opção A do Israel): nem a forma de pagamento `trade_in` vira conta a receber, nem a aquisição de origem `trade_in` vira conta a pagar; `financeiro-troca.e2e-spec.ts`. Lançamentos de troca gerados antes ficam e, se previstos, a loja cancela à mão.
   - Onde: `apps/api/src/modules/financeiro/geracao.service.ts` (`aoFaturarNegocio`, que lê
     os `deal_payments` com `status in (pending, confirmed)` sem olhar o `kind`).
   - O que é: a forma de pagamento `trade_in` é o usado que o cliente entregou, não dinheiro.
