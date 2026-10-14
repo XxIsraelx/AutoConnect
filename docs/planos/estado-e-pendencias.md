@@ -775,6 +775,16 @@ consulta, conta da Clicksign, revisão jurídica, feature flag e região da API 
     A resposta honesta para o FAQ e o roteiro continua valendo, agora com mais: "o AutoConnect
     guarda os protocolos e avisa o que falta; o envio é pela sua integradora" — a landing não é da
     trilha R e o texto foi pedido no PR.
+- **`proposta-chat.e2e-spec.ts` falhou uma vez sob RLS, inteiro, e passou em seguida.**
+  - Onde: `apps/api/test/proposta-chat.e2e-spec.ts`, na rodada da suíte de integração como
+    `autoconnect_app` (o passo de RLS do CI), rodando local junto dos outros 34 arquivos.
+  - O que é: os 13 casos falharam juntos, o que aponta para o `beforeAll` (fixture ou conexão), não
+    para uma regra. Isolado, passou 13/13; a suíte inteira, rodada de novo, passou 709/709.
+  - Evidência: só a contagem (`13 failed, 696 passed`); a saída da primeira rodada não foi guardada.
+  - Impacto: um PR pode ficar vermelho no CI sem defeito nenhum.
+  - Sugestão: se repetir, guardar o log e olhar o `beforeAll` e o tempo limite dele.
+  - Como testar: rodar a suíte sob RLS algumas vezes seguidas.
+  - Encontrado por: Claude (sessão 2), 14/10/2026, ao juntar a `main` (trilha N) nos PRs do RENAVE.
 - **Chave-mestra do cofre ainda não existe em produção.**
   - Onde: variável `COFRE_CHAVES_MESTRAS` no Railway (serviço da API).
   - O que é: o cofre de credenciais por loja (R3 do plano fiscal) cifra a chave
