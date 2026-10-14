@@ -217,6 +217,37 @@ segunda, a decisão do cofre por loja vem antes do adaptador.
 - Uma entrada e uma saída de ponta a ponta em homologação. A loja de outra
   integradora continua no R1, e isso é dito na tela, não escondido.
 
+#### Levantamento das integradoras (14/10/2026) — R3 parada na escolha
+
+Lido nos sites públicos em 14/10/2026. Só uma das candidatas publica a API.
+
+| Integradora | API para sistema de terceiros | Homologação | Preço | Observação |
+|---|---|---|---|---|
+| [IntegraRenave](https://integrarenave.com/api) | **Documentação pública**, REST v1, `X-API-Key`, `Idempotency-Key` obrigatório, erros RFC 7807 | Chaves `ir_test_…` em sandbox, sem cobrança | R$ 19,99 por requisição, sem mensalidade | Hoje só `GET /status`, `GET/POST /veiculos`, `POST /veiculos/lote`, `GET /lojas` e `POST /requisicoes`; **consulta de requisição e webhooks estão no roadmap**. O corpo de `POST /requisicoes` não está descrito, e o `openapi.json` respondeu 500. A chave identifica **um** CNPJ — não há programa de parceiro descrito. ATPV-e e CRLV-e "em breve" |
+| [Renave Fácil](https://renavefacil.net/) | Diz ter API REST para DMS; o artigo de ajuda respondeu 403 | Não informado | Não informado | Pedir a documentação ao comercial |
+| [WebRenave](https://www.webrenave.com.br/) | Fala em "integrações", sem detalhe técnico | Não informado | Não informado | Contato comercial |
+| [DataStock](https://datastock.com.br/) | Nenhuma menção a API para terceiros | — | — | Produto fechado (ControlStock) |
+| [Renave Paraná](https://renaveparana.com.br/) | Diz ter API REST, sem documentação pública | — | — | Contato por WhatsApp |
+
+**O que trava a R3, em ordem:**
+
+1. **Escolher a integradora** — decisão de produto e de custo, do Israel. A mais
+   adiantada para integrar é a IntegraRenave, mas ela ainda não tem o que a R2
+   precisa para fechar o ciclo sem gente olhando: sem consulta de requisição e
+   sem webhook, o AutoConnect envia e não fica sabendo o resultado.
+2. **Conta de sandbox** — criada por uma pessoa, no painel da integradora, com
+   CNPJ. Não é coisa que a sessão faça.
+3. **Credencial por loja.** Na IntegraRenave a chave é de um CNPJ. Sem programa
+   de parceiro, cada loja precisaria da sua chave guardada aqui — o cofre por
+   loja que a [decisão de 14/10/2026](../decisoes/2026-10-14%20renave%20dados%20do%20crv%20e%20credencial.md)
+   deixou para depois, e que precisa de decisão própria antes do adaptador.
+
+**Perguntas para mandar às integradoras** (as mesmas para todas): documentação
+completa com o corpo de criação da requisição de entrada e de saída; quando
+saem a consulta de requisição e o webhook; se há conta de parceiro para
+software house (uma chave, várias lojas por CNPJ); como o ATPV-e é devolvido;
+e quais estados cobrem hoje.
+
 ### R4 — consignação
 
 - Entrada e devolução de consignado pelo RENAVE, e o **contrato de consignação
