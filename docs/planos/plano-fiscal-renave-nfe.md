@@ -189,8 +189,12 @@ já faz.
   uma nota no **vocabulário do domínio**, não no do emissor; e `faltasParaEmitir`,
   que lista o que impede a emissão (CPF do comprador, NCM, endereço, perfil não
   confirmado em produção…). Tabela de casos em teste, inclusive centavos.
+- **`vehicle_fiscal_details`** (uma por veículo): NCM e RENAVAM. A nota pede os
+  dois e o `Vehicle` não tem nenhum; ficam numa tabela fiscal em vez de coluna
+  nova em `vehicles`, para a trilha não mexer no módulo de estoque.
 - **Tela** `/configuracoes/fiscal` (gerência): regime, série, perfis por operação,
-  e o botão "o contador confirmou" com quem e quando.
+  e o botão "o contador confirmou" com quem e quando. No veículo, um cartão
+  "Dados fiscais" com NCM e RENAVAM.
 
 ### N2 — camada neutra, simulado e o ciclo de vida da nota
 
@@ -273,6 +277,10 @@ NF-e — e esse ponto já foi resolvido na Fase 0.
 
 - `packages/shared/src/domain/chave-nfe.ts` — **ninguém edita**; precisou mudar,
   pede no PR.
+- **RENAVAM do veículo** — mora em `vehicle_fiscal_details`, da sessão 1 (N1). A
+  sessão 2 **lê**; se precisar antes de N1 chegar à `main`, pede no PR em vez de
+  criar coluna própria — dois RENAVAM para o mesmo carro é o começo da história
+  que não bate.
 - `negocios/[id]` e `veiculos/[id]` — cada sessão cria o **seu** componente e
   acrescenta **uma linha** na página para montá-lo. É o único arquivo de tela
   escrito pelas duas; o conflito, se houver, é de uma linha.
