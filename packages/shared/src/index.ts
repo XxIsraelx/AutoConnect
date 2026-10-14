@@ -37,3 +37,4 @@ export * from './schemas/renave';
 export * from './domain/nota-fiscal';
 export * from './domain/emissao-nfe';
 export * from './schemas/nota-fiscal';
+export * from './domain/conferencia-fiscal';
