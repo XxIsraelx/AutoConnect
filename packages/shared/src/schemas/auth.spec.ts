@@ -1,6 +1,8 @@
 import {
   DURACAO_DO_TRIAL_DIAS,
   cnpjValido,
+  mascararCnpj,
+  normalizarCnpj,
   signupTenantSchema,
   slugDeLoja,
   reenviarVerificacaoSchema,
@@ -45,6 +47,71 @@ describe('cadastro de concessionária', () => {
       expect(cnpjValido('11222333000182')).toBe(false);
       expect(cnpjValido('11111111111111')).toBe(false);
       expect(cnpjValido('112223330001')).toBe(false); // curto
+    });
+
+    describe('alfanumérico (IN RFB 2.229/2024, emitido desde julho de 2026)', () => {
+      it('aceita o exemplo oficial da Receita, formatado ou não, em qualquer caixa', () => {
+        expect(cnpjValido('12ABC34501DE35')).toBe(true);
+        expect(cnpjValido('12.ABC.345/01DE-35')).toBe(true);
+        expect(cnpjValido('12.abc.345/01de-35')).toBe(true);
+      });
+
+      it('recusa dígito verificador errado e letra no lugar do dígito verificador', () => {
+        expect(cnpjValido('12ABC34501DE36')).toBe(false);
+        expect(cnpjValido('12ABC34501DE3A')).toBe(false);
+        expect(cnpjValido('12ABC34501DEA5')).toBe(false);
+      });
+
+      it('não aproveita o que sobra: letra a mais não some como sumia com \\D', () => {
+        // Antes, `11222333000181X` virava `11222333000181` e passava.
+        expect(cnpjValido('11222333000181X')).toBe(false);
+      });
+    });
+
+    it('todo CNPJ numérico tem o mesmo resultado de antes do formato alfanumérico', () => {
+      // A implementação anterior, copiada como estava: `\D` e `+digito`.
+      const antiga = (cnpj: string): boolean => {
+        const c = cnpj.replace(/\D/g, '');
+        if (c.length !== 14) return false;
+        if (/^(\d)\1+$/.test(c)) return false;
+        const calc = (digits: string, n: number): number => {
+          let s = 0, p = n - 7;
+          for (let i = 0; i < n; i++) { s += +digits[i]! * p--; if (p < 2) p = 9; }
+          return s % 11 < 2 ? 0 : 11 - (s % 11);
+        };
+        return calc(c, 12) === +c[12]! && calc(c, 13) === +c[13]!;
+      };
+
+      // Gerador determinístico: a mesma sequência em toda execução.
+      let semente = 20260714;
+      const proximo = () => (semente = (semente * 1103515245 + 12345) % 2 ** 31);
+      const casos = ['11222333000181', '11.222.333/0001-81', '11222333000182', '11111111111111',
+        '00000000000000', '112223330001', CNPJ];
+      for (let i = 0; i < 2000; i++) {
+        const base = Array.from({ length: 12 }, () => proximo() % 10).join('');
+        const valido = cnpjDeTeste(base);
+        casos.push(valido, `${valido.slice(0, 13)}${(Number(valido[13]) + 1 + (proximo() % 9)) % 10}`);
+      }
+
+      const validos = casos.filter((c) => antiga(c)).length;
+      expect(validos).toBeGreaterThan(2000); // a amostra tem os dois lados
+      for (const c of casos) expect([c, cnpjValido(c)]).toEqual([c, antiga(c)]);
+    });
+  });
+
+  describe('normalizarCnpj e mascararCnpj', () => {
+    it('normaliza para 14 caracteres maiúsculos, tirando só a pontuação', () => {
+      expect(normalizarCnpj('12.abc.345/01de-35')).toBe('12ABC34501DE35');
+      expect(normalizarCnpj(' 11.222.333/0001-81 ')).toBe('11222333000181');
+    });
+
+    it('mascara enquanto digita, com letra na raiz e só algarismo no dígito verificador', () => {
+      expect(mascararCnpj('12abc34501de35')).toBe('12.ABC.345/01DE-35');
+      expect(mascararCnpj('11222333000181')).toBe('11.222.333/0001-81');
+      expect(mascararCnpj('12ABC')).toBe('12.ABC');
+      expect(mascararCnpj('12ABC34501DE3A5')).toBe('12.ABC.345/01DE-35');
+      expect(mascararCnpj('12.ABC.345/01DE-359')).toBe('12.ABC.345/01DE-35'); // corta em 14
+      expect(mascararCnpj('')).toBe('');
     });
   });
 
@@ -110,6 +177,14 @@ describe('cadastro de concessionária', () => {
       expect(saida.inviteToken).toBe('token-de-convite');
       expect(saida.admin.cpf).toBe('11144477735');
       expect(saida.branch?.city).toBe('Belo Horizonte');
+    });
+
+    it('CNPJ alfanumérico entra e sai na forma canônica', () => {
+      const saida = signupTenantSchema.parse({
+        ...minimo,
+        tenant: { ...minimo.tenant, cnpj: '12.abc.345/01de-35' },
+      });
+      expect(saida.tenant.cnpj).toBe('12ABC34501DE35');
     });
 
     it('CNPJ com dígito errado é recusado — a regra dura não depende da Receita', () => {

@@ -211,7 +211,7 @@ model Tenant {
   slug              String  @unique @db.Citext
   legalName         String  @map("legal_name")
   tradeName         String  @map("trade_name")
-  taxId             String? @unique @map("tax_id") // CNPJ (14 dígitos, sem pontuação)
+  taxId             String? @unique @map("tax_id") // CNPJ (14 caracteres, maiúsculos e sem pontuação — `normalizarCnpj`; pode ter letra desde 07/2026)
   stateRegistration String? @map("state_registration") // Inscrição Estadual (IE)
   primaryEmail      String  @map("primary_email") @db.Citext
   primaryPhone      String? @map("primary_phone")
