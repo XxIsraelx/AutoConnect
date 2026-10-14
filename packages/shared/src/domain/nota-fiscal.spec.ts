@@ -31,6 +31,7 @@ function contexto(mudar: Partial<ContextoDaNota> = {}): ContextoDaNota {
       cfopInterno: '5102',
       cfopInterestadual: '6102',
       situacaoTributaria: '102',
+      pisCofinsSituacaoTributaria: '07',
       informacoesComplementares: '  Documento emitido por ME ou EPP optante pelo Simples Nacional.  ',
     },
     emitente: {
@@ -134,6 +135,7 @@ describe('montarNota', () => {
       destino: 'interna',
       crt: 1,
       situacaoTributaria: '102',
+      pisCofinsSituacaoTributaria: '07',
       valorTotal: '84900.50',
       informacoesComplementares: 'Documento emitido por ME ou EPP optante pelo Simples Nacional.',
       emitente: { cnpj: '11222333000181' },
@@ -161,7 +163,7 @@ describe('montarNota', () => {
   it('compra de pessoa jurídica identifica o documento como CNPJ', () => {
     const { nota } = montarNota(contexto({
       operacao: 'compra_de_particular',
-      perfil: { natureza: 'Compra', cfopInterno: '1102', cfopInterestadual: '2102', situacaoTributaria: '900', informacoesComplementares: null },
+      perfil: { natureza: 'Compra', cfopInterno: '1102', cfopInterestadual: '2102', situacaoTributaria: '900', pisCofinsSituacaoTributaria: '07', informacoesComplementares: null },
       contraparte: { nome: 'Locadora SA', documento: '11.444.777/0001-61', endereco: ENDERECO_SP },
     }));
     expect(nota?.direcao).toBe('entrada');
@@ -172,7 +174,7 @@ describe('montarNota', () => {
   it('CFOP de saída no perfil de uma entrada vira falta, com o dígito esperado', () => {
     const { nota, faltas } = montarNota(contexto({
       operacao: 'compra_de_particular',
-      perfil: { natureza: 'Compra', cfopInterno: '5102', cfopInterestadual: '2102', situacaoTributaria: '900', informacoesComplementares: null },
+      perfil: { natureza: 'Compra', cfopInterno: '5102', cfopInterestadual: '2102', situacaoTributaria: '900', pisCofinsSituacaoTributaria: '07', informacoesComplementares: null },
     }));
     expect(nota).toBeNull();
     expect(faltas).toEqual([expect.objectContaining({
@@ -277,6 +279,26 @@ describe('CNPJ alfanumérico na nota', () => {
     expect(faltas).toEqual([]);
     expect(nota?.emitente.cnpj).toBe('12ABC34501DE35');
     expect(nota?.contraparte).toMatchObject({ tipoDeDocumento: 'cnpj', documento: '12ABC34501DE35' });
+  });
+});
+
+describe('situações sem valor calculado', () => {
+  it('CST de ICMS que pede base e alíquota vira falta, com o caminho', () => {
+    const base = contexto({ configuracao: { regime: 'lucro_presumido', serie: 1, ambiente: 'homologacao', contadorConfirmouEm: null } });
+    const { faltas } = montarNota({ ...base, perfil: { ...base.perfil!, situacaoTributaria: '00' } });
+    expect(faltas).toEqual([expect.objectContaining({
+      campo: 'perfil.situacaoTributaria', mensagem: expect.stringContaining('pede base de cálculo'),
+    })]);
+    expect(montarNota({ ...base, perfil: { ...base.perfil!, situacaoTributaria: '41' } }).faltas).toEqual([]);
+  });
+
+  it('PIS/COFINS ausente ou com valor calculado vira falta; 07 sai', () => {
+    const base = contexto();
+    expect(montarNota(contexto({ perfil: { ...base.perfil!, pisCofinsSituacaoTributaria: null } })).faltas)
+      .toEqual([expect.objectContaining({ campo: 'perfil.pisCofinsSituacaoTributaria' })]);
+    expect(montarNota(contexto({ perfil: { ...base.perfil!, pisCofinsSituacaoTributaria: '01' } })).faltas)
+      .toEqual([expect.objectContaining({ mensagem: expect.stringContaining('04, 05, 06, 07, 08, 09') })]);
+    expect(montarNota(base).nota?.pisCofinsSituacaoTributaria).toBe('07');
   });
 });
 

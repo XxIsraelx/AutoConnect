@@ -48,7 +48,7 @@ const MODELOS_DE_TENANT = [
   // Fiscal (trilha N): o perfil tributário da loja, o RENAVAM dos carros e as
   // notas emitidas, com CPF e endereço do comprador no snapshot.
   'fiscalSettings', 'fiscalOperationProfile', 'vehicleFiscalDetails',
-  'fiscalDocument', 'fiscalDocumentEvent', 'acquisitionSupplier',
+  'fiscalDocument', 'fiscalDocumentEvent', 'acquisitionSupplier', 'fiscalCorrectionLetter',
 ];
 
 /**

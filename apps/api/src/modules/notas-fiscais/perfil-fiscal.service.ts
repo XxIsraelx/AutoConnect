@@ -91,6 +91,14 @@ export class PerfilFiscalService {
           contadorConfirmouEm: cfg.contadorConfirmouEm?.toISOString() ?? null,
           contadorNome: cfg.contadorNome,
           contadorCrc: cfg.contadorCrc,
+          // O certificado em si nunca volta: só o que o emissor disse dele.
+          certificado: cfg.emissorConta
+            ? {
+              validoAte: cfg.certificadoValidoAte?.toISOString() ?? null,
+              cnpj: cfg.certificadoCnpj,
+              enviadoEm: cfg.certificadoEnviadoEm?.toISOString() ?? null,
+            }
+            : null,
         },
         loja: {
           cnpj: loja?.taxId ?? null,
@@ -117,6 +125,7 @@ export class PerfilFiscalService {
                 cfopInterno: p.cfopInterno,
                 cfopInterestadual: p.cfopInterestadual,
                 situacaoTributaria: p.situacaoTributaria,
+                pisCofinsSituacaoTributaria: p.pisCofinsSituacaoTributaria,
                 informacoesComplementares: p.informacoesComplementares,
               }
               : null,
@@ -233,6 +242,7 @@ export class PerfilFiscalService {
         || antes.cfopInterno !== dados.cfopInterno
         || antes.cfopInterestadual !== dados.cfopInterestadual
         || antes.situacaoTributaria !== dados.situacaoTributaria
+        || antes.pisCofinsSituacaoTributaria !== dados.pisCofinsSituacaoTributaria
         || antes.informacoesComplementares !== dados.informacoesComplementares;
       if (!mudou) return;
 
@@ -280,11 +290,12 @@ export class PerfilFiscalService {
         throw new UnprocessableEntityException('Configure ao menos uma operação antes de levar o perfil ao contador.');
       }
       const incompletas = perfis
-        .filter((p) => !p.situacaoTributaria || !situacaoTributariaValida(cfg.regime, p.situacaoTributaria))
+        .filter((p) => !p.situacaoTributaria || !situacaoTributariaValida(cfg.regime, p.situacaoTributaria)
+          || !p.pisCofinsSituacaoTributaria)
         .map((p) => DEFINICAO_DAS_OPERACOES[p.operation].rotulo);
       if (incompletas.length > 0) {
         throw new UnprocessableEntityException(
-          `Falta a situação tributária (válida para o regime) em: ${incompletas.join(', ')}.`,
+          `Falta a situação tributária (válida para o regime) ou o CST de PIS/COFINS em: ${incompletas.join(', ')}.`,
         );
       }
 

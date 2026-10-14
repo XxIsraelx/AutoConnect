@@ -3,7 +3,9 @@ import {
   AMBIENTES_FISCAIS, normalizarDocumento, normalizarNcm, normalizarRenavam, REGIMES_TRIBUTARIOS,
 } from '../domain/nota-fiscal';
 import { cnpjValido, cpfValido } from './auth';
-import { JUSTIFICATIVA_MAXIMA, JUSTIFICATIVA_MINIMA } from '../domain/emissao-nfe';
+import {
+  CORRECAO_MAXIMA, CORRECAO_MINIMA, JUSTIFICATIVA_MAXIMA, JUSTIFICATIVA_MINIMA,
+} from '../domain/emissao-nfe';
 
 /**
  * Corpos do perfil fiscal (trilha N1 do plano fiscal).
@@ -36,6 +38,8 @@ export const perfilDeOperacaoSchema = z.object({
   cfopInterestadual: cfop,
   /** CST (2 dígitos) ou CSOSN (3). Qual dos dois, depende do regime — o serviço confere. */
   situacaoTributaria: z.string().trim().regex(/^\d{2,3}$/, 'CST tem 2 dígitos; CSOSN tem 3').nullable(),
+  /** CST de PIS e de COFINS (2 dígitos). Opcional no corpo para não quebrar quem já salvava sem ele. */
+  pisCofinsSituacaoTributaria: z.string().trim().regex(/^\d{2}$/, 'CST de PIS/COFINS tem 2 dígitos').nullable().default(null),
   informacoesComplementares: z.string().trim().max(2000).nullable(),
 }).strict();
 export type PerfilDeOperacaoInput = z.infer<typeof perfilDeOperacaoSchema>;
@@ -124,3 +128,24 @@ export const quemEntregouSchema = z.object({
   email: z.string().trim().email('E-mail inválido').nullable().optional().transform((v) => v ?? null),
 }).strict();
 export type QuemEntregouInput = z.infer<typeof quemEntregouSchema>;
+
+/* ── Emissor real (N3) ─────────────────────────────────────── */
+
+/** O texto vai para a SEFAZ no evento de carta de correção (`xCorrecao`). */
+export const cartaDeCorrecaoSchema = z.object({
+  correcao: z.string().trim()
+    .min(CORRECAO_MINIMA, `A SEFAZ exige ao menos ${CORRECAO_MINIMA} caracteres na correção`)
+    .max(CORRECAO_MAXIMA),
+}).strict();
+
+/**
+ * O certificado A1 da loja. Passa pela API e vai direto ao emissor: não é
+ * gravado, e a senha não é logada. Um PFX tem poucos KB; 200 KB em base64 é
+ * folga, não convite.
+ */
+export const certificadoA1Schema = z.object({
+  arquivoBase64: z.string().min(100, 'Envie o arquivo do certificado (.pfx ou .p12)').max(280_000, 'Arquivo grande demais para um certificado A1')
+    .regex(/^[A-Za-z0-9+/]+=*$/, 'O arquivo não chegou em base64'),
+  senha: z.string().min(1, 'Informe a senha do certificado').max(200),
+}).strict();
+export type CertificadoA1Input = z.infer<typeof certificadoA1Schema>;

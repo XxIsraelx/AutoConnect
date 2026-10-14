@@ -10,9 +10,10 @@ import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.s
 import { DocumentosStorage } from '../../common/armazenamento/documentos.storage';
 import { ehGlobal, type Escopo } from '../../common/escopo';
 import {
-  aplicarRetorno, podeCancelar,
-  type CabecalhosDoEmissor, type FaltaParaEmitir, type NotaMontada, type OperacaoFiscal,
-  type ProvedorDeNotaFiscal, type RetornoDoEmissor, type StatusDaNota,
+  aplicarRetorno, podeCancelar, podeCorrigir, O_QUE_A_CARTA_NAO_CORRIGE,
+  type AmbienteFiscal, type CabecalhosDoEmissor, type CertificadoA1Input, type EmitenteNoEmissor,
+  type FaltaParaEmitir, type NotaMontada, type OperacaoFiscal, type ProvedorDeNotaFiscal,
+  type RetornoDoEmissor, type StatusDaNota,
 } from '@autoconnect/shared';
 import { PerfilFiscalService } from './perfil-fiscal.service';
 import { PROVEDOR_DE_NOTA_FISCAL } from './emissor/provedor';
@@ -106,6 +107,96 @@ export class EmissaoDeNotaService {
       provedor: this.provedor.disponivel ? this.provedor.nome : null,
       homologacao: this.provedor.disponivel && this.provedor.homologacao,
       simulado: this.simulado,
+      exigeCertificado: this.provedor.disponivel && this.provedor.exigeCertificado,
+      oQueACartaNaoCorrige: O_QUE_A_CARTA_NAO_CORRIGE,
+    };
+  }
+
+  /** A loja no emissor, no ambiente da nota. A conta é só um id — nunca um token. */
+  private async emitenteDa(tenantId: string, ambiente: AmbienteFiscal | string): Promise<EmitenteNoEmissor> {
+    const cfg = await this.prisma.withTenant(tenantId, (tx: ScopedClient) =>
+      tx.fiscalSettings.findUnique({ where: { tenantId }, select: { emissorConta: true } }),
+    );
+    return { contaExterna: cfg?.emissorConta ?? null, ambiente: ambiente as AmbienteFiscal };
+  }
+
+  /* ── Certificado A1 (N3) ─────────────────────────────────── */
+
+  /**
+   * Habilita a loja no emissor com o certificado A1.
+   *
+   * O arquivo e a senha passam por aqui e vão ao emissor — **não** são
+   * gravados, nem na auditoria. Fica o que o emissor devolve: o id da empresa
+   * e a validade do certificado, para avisar antes de vencer.
+   */
+  async enviarCertificado(escopo: Escopo, quem: QuemPede, certificado: CertificadoA1Input) {
+    const tenantId = this.tenantDe(escopo);
+    this.exigirEmissor();
+
+    const dados = await this.prisma.withTenant(tenantId, async (tx: ScopedClient) => {
+      const [cfg, loja, matriz] = await Promise.all([
+        tx.fiscalSettings.findUnique({ where: { tenantId } }),
+        tx.tenant.findUnique({
+          where: { id: tenantId },
+          select: { taxId: true, stateRegistration: true, legalName: true, tradeName: true, primaryEmail: true },
+        }),
+        tx.dealershipBranch.findFirst({ where: { tenantId, isHeadquarters: true } }),
+      ]);
+      if (!cfg) throw new ConflictException('Defina o regime tributário da loja antes de enviar o certificado.');
+      const faltam = [
+        !loja?.taxId && 'CNPJ',
+        !loja?.stateRegistration && 'inscrição estadual',
+        !(matriz?.addressLine && matriz.addressNumber && matriz.neighborhood && matriz.city && matriz.state && matriz.postalCode)
+          && 'endereço completo da matriz',
+      ].filter(Boolean);
+      if (faltam.length > 0) {
+        throw new UnprocessableEntityException(`Antes do certificado, preencha em Configurações: ${faltam.join(', ')}.`);
+      }
+      return {
+        contaExterna: cfg.emissorConta,
+        cnpj: loja!.taxId!,
+        razaoSocial: loja!.legalName,
+        nomeFantasia: loja!.tradeName,
+        inscricaoEstadual: loja!.stateRegistration!,
+        regime: cfg.regime,
+        email: loja!.primaryEmail,
+        endereco: {
+          logradouro: matriz!.addressLine, numero: matriz!.addressNumber, complemento: matriz!.complement,
+          bairro: matriz!.neighborhood, cidade: matriz!.city, uf: matriz!.state, cep: matriz!.postalCode,
+        },
+      };
+    });
+
+    // Rede fora da transação: o emissor pode levar segundos.
+    const registrado = await this.provedor.registrarEmitente(dados, certificado);
+
+    await this.prisma.withTenant(tenantId, async (tx: ScopedClient) => {
+      await tx.fiscalSettings.update({
+        where: { tenantId },
+        data: {
+          emissorConta: registrado.contaExterna,
+          certificadoValidoAte: registrado.certificadoValidoAte ? new Date(registrado.certificadoValidoAte) : null,
+          certificadoCnpj: registrado.certificadoCnpj,
+          certificadoEnviadoEm: new Date(),
+          certificadoEnviadoPor: quem.id,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId, actorUserId: quem.id, action: 'fiscal_certificado_enviado',
+          entityType: 'fiscal_settings', entityId: tenantId,
+          // Nem o arquivo nem a senha: só o que o emissor disse dele.
+          diff: {
+            emissor: this.provedor.nome, validoAte: registrado.certificadoValidoAte,
+            cnpjDoCertificado: registrado.certificadoCnpj,
+          },
+        },
+      });
+    });
+
+    return {
+      validoAte: registrado.certificadoValidoAte,
+      cnpj: registrado.certificadoCnpj,
     };
   }
 
@@ -116,6 +207,9 @@ export class EmissaoDeNotaService {
     numero: number | null; chave: string | null; protocolo: string | null; motivo: string | null;
     snapshot: Prisma.JsonValue; autorizadaEm: Date | null; canceladaEm: Date | null;
     justificativaDoCancelamento: string | null; createdAt: Date;
+    correcoes?: {
+      id: string; status: string; sequencia: number | null; correcao: string; motivo: string | null; createdAt: Date;
+    }[];
   }) {
     const snapshot = d.snapshot as unknown as NotaMontada;
     const cancelavel = podeCancelar(
@@ -140,6 +234,14 @@ export class EmissaoDeNotaService {
       justificativaDoCancelamento: d.justificativaDoCancelamento,
       emitidaEm: d.createdAt.toISOString(),
       cancelamento: cancelavel.pode ? { pode: true as const } : { pode: false as const, motivo: cancelavel.motivo },
+      correcoes: (d.correcoes ?? []).map((c) => ({
+        id: c.id, status: c.status, sequencia: c.sequencia, correcao: c.correcao, motivo: c.motivo,
+        em: c.createdAt.toISOString(),
+      })),
+      correcao: (() => {
+        const r = podeCorrigir({ status: d.status }, (d.correcoes ?? []).filter((c) => c.status === 'autorizada').length);
+        return r.pode ? { pode: true as const } : { pode: false as const, motivo: r.motivo };
+      })(),
     };
   }
 
@@ -153,6 +255,7 @@ export class EmissaoDeNotaService {
       if (!veiculo.acquisition) return [];
       const notas = await tx.fiscalDocument.findMany({
         where: { tenantId, vehicleAcquisitionId: veiculo.acquisition.id }, orderBy: { createdAt: 'desc' },
+        include: { correcoes: { orderBy: { createdAt: 'asc' } } },
       });
       return notas.map((n) => this.publica(n));
     });
@@ -165,6 +268,7 @@ export class EmissaoDeNotaService {
       if (!negocio) throw new NotFoundException('Negócio não encontrado.');
       const notas = await tx.fiscalDocument.findMany({
         where: { tenantId, dealId }, orderBy: { createdAt: 'desc' },
+        include: { correcoes: { orderBy: { createdAt: 'asc' } } },
       });
       return notas.map((n) => this.publica(n));
     });
@@ -172,7 +276,10 @@ export class EmissaoDeNotaService {
 
   private async umaNota(tenantId: string, notaId: string) {
     return this.prisma.withTenant(tenantId, async (tx: ScopedClient) => {
-      const nota = await tx.fiscalDocument.findFirst({ where: { id: notaId, tenantId } });
+      const nota = await tx.fiscalDocument.findFirst({
+        where: { id: notaId, tenantId },
+        include: { correcoes: { orderBy: { createdAt: 'asc' } } },
+      });
       if (!nota) throw new NotFoundException('Nota fiscal não encontrada.');
       return nota;
     });
@@ -233,6 +340,12 @@ export class EmissaoDeNotaService {
           faltas: montada.faltas,
         });
       }
+      if (this.provedor.exigeCertificado) {
+        const cfg = await tx.fiscalSettings.findUnique({ where: { tenantId }, select: { emissorConta: true } });
+        if (!cfg?.emissorConta) {
+          throw new ConflictException('Envie o certificado A1 da loja em Perfil fiscal antes de emitir.');
+        }
+      }
       if (montada.nota.ambiente === 'producao' && this.provedor.homologacao) {
         throw new ConflictException(
           'O perfil fiscal está em produção, mas o emissor desta instalação é de homologação: ' +
@@ -273,7 +386,7 @@ export class EmissaoDeNotaService {
     });
 
     try {
-      const retorno = await this.provedor.emitir({
+      const retorno = await this.provedor.emitir(await this.emitenteDa(tenantId, nota.ambiente), {
         referencia: nota.id,
         nota: nota.snapshot as unknown as NotaMontada,
       });
@@ -375,8 +488,10 @@ export class EmissaoDeNotaService {
    */
   private async arquivar(tenantId: string, notaId: string): Promise<void> {
     try {
-      const xml = Buffer.from(await this.provedor.baixarXml(notaId));
-      const danfe = this.storage.configurado ? Buffer.from(await this.provedor.baixarDanfe(notaId)) : null;
+      const { ambiente } = await this.umaNota(tenantId, notaId);
+      const emitente = await this.emitenteDa(tenantId, ambiente);
+      const xml = Buffer.from(await this.provedor.baixarXml(emitente, notaId));
+      const danfe = this.storage.configurado ? Buffer.from(await this.provedor.baixarDanfe(emitente, notaId)) : null;
       const [xmlGuardado, danfeGuardado] = this.storage.configurado
         ? await Promise.all([
           this.storage.guardar(tenantId, `notas/${notaId}.xml`, xml, 'application/xml'),
@@ -406,8 +521,48 @@ export class EmissaoDeNotaService {
     if (nota.status !== 'processando' && nota.status !== 'autorizada') {
       return this.publica(nota);
     }
-    const retorno = await this.provedor.consultar(notaId);
+    const retorno = await this.provedor.consultar(await this.emitenteDa(tenantId, nota.ambiente), notaId);
     await this.aplicar(tenantId, notaId, retorno, 'consulta', JSON.stringify(retorno));
+    return this.publica(await this.umaNota(tenantId, notaId));
+  }
+
+  /* ── Carta de correção (N3) ──────────────────────────────── */
+
+  /**
+   * A CC-e é síncrona: o emissor responde com a SEFAZ na hora. Recusada
+   * também fica gravada — é a trilha do que a loja tentou corrigir —, e a
+   * resposta diz o motivo.
+   */
+  async cartaDeCorrecao(escopo: Escopo, quem: QuemPede, notaId: string, correcao: string) {
+    const tenantId = this.tenantDe(escopo);
+    this.exigirEmissor();
+    const nota = await this.umaNota(tenantId, notaId);
+    const pode = podeCorrigir(nota, nota.correcoes.filter((c) => c.status === 'autorizada').length);
+    if (!pode.pode) throw new ConflictException(pode.motivo);
+
+    const r = await this.provedor.cartaDeCorrecao(await this.emitenteDa(tenantId, nota.ambiente), notaId, correcao);
+
+    await this.prisma.withTenant(tenantId, async (tx: ScopedClient) => {
+      const carta = await tx.fiscalCorrectionLetter.create({
+        data: {
+          tenantId, documentId: notaId, status: r.situacao, sequencia: r.sequencia,
+          correcao, protocolo: r.protocolo ?? null,
+          motivo: r.situacao === 'rejeitada' ? (r.motivo || 'Recusada sem motivo informado') : null,
+          createdBy: quem.id,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId, actorUserId: quem.id, action: 'nota_fiscal_carta_de_correcao',
+          entityType: 'fiscal_document', entityId: notaId,
+          diff: { cartaId: carta.id, situacao: r.situacao, sequencia: r.sequencia },
+        },
+      });
+    });
+
+    if (r.situacao === 'rejeitada') {
+      throw new ConflictException(`A SEFAZ recusou a carta de correção: ${r.motivo ?? 'sem motivo informado'}.`);
+    }
     return this.publica(await this.umaNota(tenantId, notaId));
   }
 
@@ -440,7 +595,8 @@ export class EmissaoDeNotaService {
       });
     });
 
-    const retorno = await this.provedor.cancelar(notaId, justificativa);
+    const { ambiente } = await this.umaNota(tenantId, notaId);
+    const retorno = await this.provedor.cancelar(await this.emitenteDa(tenantId, ambiente), notaId, justificativa);
     await this.aplicar(tenantId, notaId, retorno, 'cancelamento', JSON.stringify(retorno));
     const depois = await this.umaNota(tenantId, notaId);
     if (depois.status !== 'cancelada' && retorno.situacao === 'cancelamento_rejeitado') {
@@ -476,8 +632,21 @@ export class EmissaoDeNotaService {
       return { recebido: true, aplicado: false, motivo: 'nota-desconhecida' };
     }
 
+    // Autorização sem protocolo (a Focus só manda o protocolo na consulta
+    // completa): a consulta traz o que falta, e é ela que se aplica. O
+    // webhook fica registrado mesmo assim, para a trilha.
+    let aplicavel = retorno;
+    if (retorno.situacao === 'autorizada' && !retorno.protocolo) {
+      try {
+        const nota = await this.umaNota(alvo.tenantId, retorno.referencia);
+        aplicavel = await this.provedor.consultar(await this.emitenteDa(alvo.tenantId, nota.ambiente), retorno.referencia);
+      } catch (e) {
+        this.logger.warn(`Webhook autorizou a nota ${retorno.referencia} sem protocolo, e a consulta falhou: ${(e as Error).message}`);
+      }
+    }
+
     const r = await this.aplicar(
-      alvo.tenantId, retorno.referencia, retorno, 'webhook', corpo.toString('utf8'), idDaEntrega,
+      alvo.tenantId, retorno.referencia, aplicavel, 'webhook', corpo.toString('utf8'), idDaEntrega,
     );
     return { recebido: true, aplicado: r.aplicado, status: r.status, motivo: r.motivo };
   }
@@ -497,7 +666,7 @@ export class EmissaoDeNotaService {
       throw new ConflictException('A nota ainda não foi autorizada: não há XML nem DANFE.');
     }
 
-    const conteudo = await this.conteudoConferido(nota, tipo);
+    const conteudo = await this.conteudoConferido(await this.emitenteDa(tenantId, nota.ambiente), nota, tipo);
     if (tipo === 'xml' && nota.xmlSha256 && sha256(conteudo) !== nota.xmlSha256) {
       this.logger.error(`XML da nota ${notaId} não confere com o hash da autorização.`);
       throw new ConflictException(
@@ -514,6 +683,7 @@ export class EmissaoDeNotaService {
 
   /** Do bucket quando arquivado; do emissor quando não. */
   private async conteudoConferido(
+    emitente: EmitenteNoEmissor,
     nota: { id: string; xmlKey: string | null; danfeKey: string | null },
     tipo: 'xml' | 'danfe',
   ): Promise<Buffer> {
@@ -522,7 +692,9 @@ export class EmissaoDeNotaService {
     if (doBucket) return doBucket;
     this.exigirEmissor();
     return Buffer.from(
-      tipo === 'xml' ? await this.provedor.baixarXml(nota.id) : await this.provedor.baixarDanfe(nota.id),
+      tipo === 'xml'
+        ? await this.provedor.baixarXml(emitente, nota.id)
+        : await this.provedor.baixarDanfe(emitente, nota.id),
     );
   }
 
@@ -533,11 +705,14 @@ export class EmissaoDeNotaService {
    * pode derrubar o pacote do mês inteiro: ela vai para o LEIA-ME com o motivo,
    * e as outras seguem.
    */
-  async xmlParaPacote(nota: {
-    id: string; xmlKey: string | null; danfeKey: string | null; xmlSha256: string | null;
-  }): Promise<{ xml: Buffer } | { falha: string }> {
+  async xmlParaPacote(
+    contaNoEmissor: string | null,
+    nota: { id: string; ambiente: string; xmlKey: string | null; danfeKey: string | null; xmlSha256: string | null },
+  ): Promise<{ xml: Buffer } | { falha: string }> {
     try {
-      const xml = await this.conteudoConferido(nota, 'xml');
+      const xml = await this.conteudoConferido(
+        { contaExterna: contaNoEmissor, ambiente: nota.ambiente as AmbienteFiscal }, nota, 'xml',
+      );
       if (nota.xmlSha256 && sha256(xml) !== nota.xmlSha256) {
         this.logger.error(`XML da nota ${nota.id} não confere com o hash da autorização.`);
         return { falha: 'o XML recebido não confere com o da autorização (fora do pacote)' };

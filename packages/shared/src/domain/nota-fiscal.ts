@@ -68,6 +68,26 @@ export function situacaoTributariaValida(regime: RegimeTributario, codigo: strin
   return usaCsosn(regime) ? CSOSNS.has(codigo) : CSTS_DE_ICMS.has(codigo);
 }
 
+/**
+ * Situações tributárias que a nota sai **sem valor calculado** — sem base de
+ * cálculo, alíquota nem valor de imposto no item.
+ *
+ * É o limite honesto da montagem: o AutoConnect não calcula tributo (regra 5
+ * do plano fiscal). Uma situação fora destas listas — CST 00, 20, CSOSN 101,
+ * PIS/COFINS 01, 49, 99 — pede base e alíquota que só o contador sabe dar, e
+ * vira falta antes da emissão em vez de rejeição da SEFAZ depois. Ampliar a
+ * lista é trabalho com o contador, não com o código.
+ */
+export const ICMS_SEM_VALOR_CALCULADO: ReadonlySet<string> = new Set([
+  // CSOSN: tributada sem permissão de crédito, isenta/faixa, imune, não tributada, ST já cobrada, outros
+  '102', '103', '300', '400', '500', '900',
+  // CST: isenta, não tributada, suspensão
+  '40', '41', '50',
+]);
+
+/** CST de PIS/COFINS sem base nem alíquota no item (grupos PISNT e COFINSNT). */
+export const PIS_COFINS_SEM_VALOR_CALCULADO = ['04', '05', '06', '07', '08', '09'] as const;
+
 export const AMBIENTES_FISCAIS = ['homologacao', 'producao'] as const;
 export type AmbienteFiscal = (typeof AMBIENTES_FISCAIS)[number];
 
@@ -305,6 +325,8 @@ export interface PerfilDaOperacao {
   cfopInterestadual: string;
   /** CST (2 dígitos) ou CSOSN (3), conforme o regime. */
   situacaoTributaria: string | null;
+  /** CST de PIS e de COFINS — o mesmo para os dois, como a revenda quase sempre usa. */
+  pisCofinsSituacaoTributaria: string | null;
   informacoesComplementares: string | null;
 }
 
@@ -364,6 +386,7 @@ export interface NotaMontada {
   presencial: boolean;
   crt: 1 | 2 | 3 | 4;
   situacaoTributaria: string;
+  pisCofinsSituacaoTributaria: string;
   ambiente: AmbienteFiscal;
   serie: number;
   emitente: {
@@ -495,6 +518,29 @@ export function montarNota(ctx: ContextoDaNota): ResultadoDaMontagem {
           `A situação tributária ${perfil.situacaoTributaria} não é ${usaCsosn(cfg.regime) ? 'um CSOSN' : 'um CST'} — ` +
           `é o que o regime ${ROTULO_DO_REGIME[cfg.regime]} usa.`,
       });
+    } else if (!ICMS_SEM_VALOR_CALCULADO.has(perfil.situacaoTributaria)) {
+      faltas.push({
+        campo: 'perfil.situacaoTributaria',
+        onde: 'perfil_fiscal',
+        mensagem:
+          `A situação tributária ${perfil.situacaoTributaria} pede base de cálculo e alíquota, que o AutoConnect ` +
+          'ainda não envia na nota. Combine com o contador uma situação sem valor calculado, ou emita no emissor da loja.',
+      });
+    }
+    if (!perfil.pisCofinsSituacaoTributaria) {
+      faltas.push({
+        campo: 'perfil.pisCofinsSituacaoTributaria',
+        onde: 'perfil_fiscal',
+        mensagem: `Defina o CST de PIS/COFINS da operação "${def.rotulo}" com o contador.`,
+      });
+    } else if (!(PIS_COFINS_SEM_VALOR_CALCULADO as readonly string[]).includes(perfil.pisCofinsSituacaoTributaria)) {
+      faltas.push({
+        campo: 'perfil.pisCofinsSituacaoTributaria',
+        onde: 'perfil_fiscal',
+        mensagem:
+          `O CST ${perfil.pisCofinsSituacaoTributaria} de PIS/COFINS pede base de cálculo e alíquota, que o ` +
+          `AutoConnect ainda não envia. Os que saem sem valor: ${PIS_COFINS_SEM_VALOR_CALCULADO.join(', ')}.`,
+      });
     }
   }
 
@@ -590,6 +636,7 @@ export function montarNota(ctx: ContextoDaNota): ResultadoDaMontagem {
       presencial: ctx.presencial,
       crt: crtDoRegime(cfg.regime),
       situacaoTributaria: perfil.situacaoTributaria!,
+      pisCofinsSituacaoTributaria: perfil.pisCofinsSituacaoTributaria!,
       ambiente: cfg.ambiente,
       serie: cfg.serie,
       emitente: {

@@ -200,10 +200,13 @@ export class RelatorioFiscalService {
     const { notas } = await this.notasDoPeriodo(tenantId, periodo);
 
     const comXml = notas.filter((n) => n.status === 'autorizada' || n.status === 'cancelada');
+    const conta = (await this.prisma.withTenant(tenantId, (tx: ScopedClient) =>
+      tx.fiscalSettings.findUnique({ where: { tenantId }, select: { emissorConta: true } }),
+    ))?.emissorConta ?? null;
     const xmls = new Map<string, { xml: Buffer } | { falha: string }>();
     for (let i = 0; i < comXml.length; i += BUSCAS_EM_PARALELO) {
       const lote = comXml.slice(i, i + BUSCAS_EM_PARALELO);
-      const resultados = await Promise.all(lote.map((n) => this.emissao.xmlParaPacote(n)));
+      const resultados = await Promise.all(lote.map((n) => this.emissao.xmlParaPacote(conta, n)));
       lote.forEach((n, j) => xmls.set(n.id, resultados[j]!));
     }
 

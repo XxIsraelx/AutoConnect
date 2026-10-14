@@ -29,7 +29,7 @@
 | **WhatsApp oficial** | ✅ estrutura | ✅ completo | desde 27/09/2026 (sessão 2, item C1): camada neutra com provedor simulado, webhook com HMAC do corpo cru e idempotente, cliente que escreve vira lead pelo caminho do formulário (dedupe, rodízio, prazo), resposta pelo chat com a janela de 24 h conferida na API, modelos aprovados, status de entrega, uso do mês em **Canais**. **Adaptador da Meta escrito e NÃO exercitado — falta a conta** ([decisão](../decisoes/2026-09-27%20whatsapp%20oficial.md)) |
 | **Leads dos portais** | ✅ estrutura | ✅ completo | desde 27/09/2026 (sessão 2, item C2): endereço de entrada por loja e portal (URL de webhook e e-mail de encaminhamento, token só em hash), entregas guardadas cruas e reprocessáveis, formato AutoConnect no webhook e leitor genérico de e-mail com rótulos, código de confirmação do Gmail na tela, lead pelo caminho do formulário com origem `portal`. **Falta a conta do e-mail de entrada (Postmark) e uma notificação real da OLX** ([decisão](../decisoes/2026-09-27%20leads%20dos%20portais.md)) |
 | **Push do vendedor** | ✅ completo | ✅ completo | desde 27/09/2026 (sessão 2, item C3): Web Push com VAPID pelo service worker (sem app de loja), lead novo para o vendedor da vez (ou a gerência, sem responsável), mensagem do cliente para quem cuida da conversa, aparelho que muda de dono, logout que desinscreve. Verificado de ponta a ponta com o serviço de push real. **Falta só cadastrar as chaves VAPID no Railway** ([decisão](../decisoes/2026-09-27%20push%20do%20vendedor.md)) |
-| **Fiscal — NF-e** | ◐ N4 | ◐ N4 | desde 14/10/2026 (plano fiscal, sessão 1): perfil fiscal da loja (regime, série, ambiente, CFOP e CST/CSOSN por operação), confirmação do contador apagada a cada mudança, NCM/RENAVAM do veículo, **prévia da nota no negócio** **emissão da nota de saída** e, desde a N2b, **da nota de entrada** a partir da aquisição (com quem entregou o veículo), com emissor simulado (uma nota viva por origem, autorizada imutável, webhook idempotente, cancelamento, XML/DANFE). e, desde a N4, a aba **Notas fiscais** do financeiro com o **pacote do mês para o contador** (XMLs + índice + LEIA-ME). **Falta o emissor real** e a carta de correção (N3) — [plano](plano-fiscal-renave-nfe.md) |
+| **Fiscal — NF-e** | ◐ estrutura | ✅ completo | desde 14/10/2026 (plano fiscal, sessão 1): perfil fiscal da loja (regime, série, ambiente, CFOP e CST/CSOSN por operação), confirmação do contador apagada a cada mudança, NCM/RENAVAM do veículo, **prévia da nota no negócio** **emissão da nota de saída** e, desde a N2b, **da nota de entrada** a partir da aquisição (com quem entregou o veículo), com emissor simulado (uma nota viva por origem, autorizada imutável, webhook idempotente, cancelamento, XML/DANFE). a aba **Notas fiscais** do financeiro com o **pacote do mês para o contador** (N4) e, desde a N3, **carta de correção**, **certificado A1** e o **adaptador da Focus NFe** escrito e testado com `fetch` dublado. **Falta a conta na Focus** — [plano](plano-fiscal-renave-nfe.md), N3 |
 
 ## Pendências conhecidas
 
@@ -68,6 +68,14 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
   Falta: uma assinatura de ponta a ponta para confirmar o cabeçalho do HMAC, o
   link do PDF assinado e o `signer.key` do webhook. Para ter validade: conta de
   produção na Clicksign (URL, token e webhook novos) e revisão jurídica do contrato.
+
+- **NF-e pela Focus sem conta** (14/10/2026): o adaptador está escrito a partir da
+  documentação e testado com `fetch` dublado, mas nenhuma nota foi emitida na Focus.
+  Falta: conta, token master, as quatro variáveis no Railway, um CNPJ real com A1
+  válido (a Focus exige até em homologação) e cinco premissas a conferir na primeira
+  nota — a lista e o passo a passo estão na fase N3 do
+  [plano fiscal](plano-fiscal-renave-nfe.md). Enquanto isso, a prévia mostra os dados
+  para a loja usar no emissor dela.
 
 **Da definição de pronto do plano, um item nunca foi cumprido**
 - **Feature flag.** O plano pede "feature nova atrás de flag até o piloto
@@ -622,6 +630,27 @@ validador da chave da NF-e
   - Como testar: escrever `this.prisma.financialEntry.findMany()` num arquivo e ver o teste
     quebrar.
   - Encontrado em: 14/10/2026 · Claude Code · fase N2 do plano fiscal.
+
+**Encontrada em 14/10/2026** — Claude Code (sessão 1 do plano fiscal), na fase N3
+
+- **A nota só sai em situações tributárias sem valor calculado.**
+  - Onde: `packages/shared/src/domain/nota-fiscal.ts`, `ICMS_SEM_VALOR_CALCULADO` e
+    `PIS_COFINS_SEM_VALOR_CALCULADO`; a montagem (`montarNota`) recusa o resto como falta.
+  - O que é: CST de ICMS 00, 10, 20, 51, 70, 90, CSOSN 101, 201–203 e PIS/COFINS 01, 02,
+    49, 99 pedem base de cálculo, alíquota e valor no item. O AutoConnect não calcula
+    tributo (regra 5 do plano fiscal), então essas notas não são montadas.
+  - Evidência: a referência "Emitir NF-e" da Focus lista os campos de valor por CST; o
+    perfil fiscal não tem alíquota nem redução de base.
+  - Impacto: loja do **regime normal** que tribute ICMS na saída do usado (base reduzida
+    do Convênio ICMS 15/81, por exemplo) **não emite pelo AutoConnect** — a prévia diz
+    isso e manda usar o emissor da loja. O Simples Nacional com CSOSN 102/103/500/900 e
+    PIS/COFINS 04–09 sai.
+  - Sugestão: com o contador da primeira loja do regime normal, decidir quais alíquotas e
+    reduções o perfil passa a guardar (por operação e UF), e só então ampliar as listas.
+    Não estimar alíquota no código.
+  - Como testar: perfil com CST 20 vira falta na prévia; depois da mudança, a mesma nota sai
+    com base reduzida conferida pelo contador.
+  - Encontrado em: 14/10/2026 · Claude Code · fase N3 do plano fiscal.
 
 **Lacunas frente ao mercado** — Claude Cowork, 27/09/2026, na pesquisa de preços
 ([plano de preços](https://claude.ai/code/artifact/daf7ac7d-5114-4621-9028-3759dbb07be8)).
