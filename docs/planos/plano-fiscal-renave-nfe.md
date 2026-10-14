@@ -262,9 +262,10 @@ e quais estados cobrem hoje.
 **Enviadas à IntegraRenave em 14/10/2026** (`contato@integrarenave.com`, do
 Gmail do Israel), mais uma: se dá para ter conta de testes antes de o
 AutoConnect ter CNPJ — ele ainda não tem, e é por isso que a conta de sandbox
-não foi aberta. **A R3 espera a resposta.** Renave Fácil não foi consultada
-ainda; é a próxima se a IntegraRenave não tiver prazo para a consulta de
-requisição e o webhook.
+não foi aberta. **Enviadas também ao Renave Fácil** no mesmo dia
+(`contato@renavefacil.net`), adaptadas — a API deles não é pública, então a
+primeira pergunta pede a documentação, e uma sétima pergunta o preço para a
+loja. **A R3 espera as duas respostas.**
 
 ### R4 — consignação
 
