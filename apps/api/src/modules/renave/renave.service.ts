@@ -111,7 +111,7 @@ export class RenaveService {
           id: true, status: true, condition: true,
           acquisition: {
             select: {
-              origin: true, enteredAt: true, purchaseValue: true,
+              id: true, origin: true, enteredAt: true, purchaseValue: true,
               supplier: { select: { fullName: true } },
             },
           },
@@ -127,6 +127,22 @@ export class RenaveService {
 
       const tenant = await tx.tenant.findUnique({ where: { id: tenantId }, select: { taxId: true } });
       const registros = veiculo.renaveRegistros;
+
+      // As notas autorizadas da compra e das vendas deste carro (trilha N, só
+      // leitura). Há no máximo uma autorizada por origem — os índices únicos
+      // parciais da trilha N garantem —, e cancelada não serve ao RENAVE.
+      const dealIds = veiculo.deals.map((d) => d.id);
+      const origens: Prisma.FiscalDocumentWhereInput[] = [];
+      if (dealIds.length) origens.push({ dealId: { in: dealIds } });
+      if (veiculo.acquisition) origens.push({ vehicleAcquisitionId: veiculo.acquisition.id });
+      const notas = origens.length
+        ? await tx.fiscalDocument.findMany({
+            where: { tenantId, status: 'autorizada', chave: { not: null }, OR: origens },
+            select: { dealId: true, vehicleAcquisitionId: true, chave: true, numero: true, serie: true },
+          })
+        : [];
+      const notaDe = (n: (typeof notas)[number] | undefined) =>
+        n?.chave ? { chave: n.chave, numero: n.numero, serie: n.serie } : null;
 
       const pendencias = pendenciasRenave({
         veiculo,
@@ -163,6 +179,17 @@ export class RenaveService {
           },
           /** Do cartão "Dados fiscais" (`vehicle_fiscal_details`, trilha N): o RENAVAM do carro. */
           renavam: veiculo.fiscalDetails?.renavam ?? null,
+          /**
+           * A NF-e autorizada que a tela sugere no campo da chave — da compra
+           * (entrada) e de cada venda (saída). Sugestão, nunca gravação: a loja
+           * pode ter enviado outra ao RENAVE, e a conferência da Fase C aponta.
+           */
+          notasAutorizadas: {
+            entrada: notaDe(notas.find((n) => n.vehicleAcquisitionId !== null)),
+            porNegocio: Object.fromEntries(
+              notas.filter((n) => n.dealId).map((n) => [n.dealId!, notaDe(n)]),
+            ),
+          },
           saidas: veiculo.deals
             .filter((d) => (NEGOCIO_QUE_SAI as readonly string[]).includes(d.status))
             .map((d) => ({

@@ -540,11 +540,13 @@ Decidido durante a fase, com o padrão adotado:
 - **Só lê** `deals`, `vehicle_acquisitions`, `fiscal_documents` e
   `renave_registros`.
 
-**O pré-preenchimento da chave no registro de saída** é do formulário do RENAVE
-(trilha R, sessão 2): a leitura está pronta (`GET /fiscal/negocios/:id/notas` e
-`GET /fiscal/veiculos/:id/entrada/notas` devolvem a chave da nota autorizada), e o
-pedido foi feito à sessão 2 em 14/10/2026. Enquanto isso, a conferência mostra a
-chave para copiar.
+**O pré-preenchimento da chave no registro do RENAVE** é do formulário do RENAVE
+(trilha R, sessão 2) — ✅ **entregue em 14/10/2026**: o cartão traz as notas
+autorizadas da compra e de cada venda (`sugestao.notasAutorizadas`, lidas de
+`fiscal_documents` dentro do `withTenant`), e o campo da chave — no registro novo e
+no "informar NF-e" — vem preenchido quando está vazio, com "da nota autorizada nº
+X". Nunca sobrescreve o que a loja digitou; chave diferente da autorizada é aviso,
+e quem marca a divergência é esta conferência.
 
 ---
 
