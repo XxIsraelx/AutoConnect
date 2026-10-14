@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import {
-  AMBIENTES_FISCAIS, normalizarNcm, normalizarRenavam, REGIMES_TRIBUTARIOS,
+  AMBIENTES_FISCAIS, normalizarDocumento, normalizarNcm, normalizarRenavam, REGIMES_TRIBUTARIOS,
 } from '../domain/nota-fiscal';
+import { cnpjValido, cpfValido } from './auth';
 import { JUSTIFICATIVA_MAXIMA, JUSTIFICATIVA_MINIMA } from '../domain/emissao-nfe';
 
 /**
@@ -90,3 +91,36 @@ export type CancelarNotaInput = z.infer<typeof cancelarNotaSchema>;
 export const simularRetornoDaNotaSchema = z.object({
   acao: z.enum(['autorizar', 'rejeitar', 'denegar']),
 }).strict();
+
+/* ── Quem entregou o veículo (N2b) ─────────────────────────── */
+
+const textoOpcional = (max: number) =>
+  z.string().trim().max(max).nullable().optional().transform((v) => (v ? v : null));
+
+/**
+ * Qualificação de quem entregou o veículo à loja — o remetente da nota de
+ * entrada, e o vendedor que o RENAVE pede na entrada do estoque.
+ *
+ * O documento é a regra dura (CPF ou CNPJ válido, inclusive alfanumérico); o
+ * endereço pode ser salvo pela metade — a prévia da nota diz o que falta.
+ */
+export const quemEntregouSchema = z.object({
+  fullName: z.string().trim().min(3, 'Informe o nome como está no documento').max(160),
+  documento: z.string().transform(normalizarDocumento).refine(
+    (d) => (/^\d{11}$/.test(d) && cpfValido(d)) || (d.length === 14 && cnpjValido(d)),
+    'CPF ou CNPJ inválido — confira os dígitos',
+  ),
+  rg: textoOpcional(20),
+  addressLine: textoOpcional(160),
+  addressNumber: textoOpcional(20),
+  complement: textoOpcional(80),
+  neighborhood: textoOpcional(80),
+  city: textoOpcional(80),
+  state: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/, 'UF com duas letras').nullable().optional()
+    .transform((v) => v ?? null),
+  postalCode: z.string().nullable().optional()
+    .transform((v) => (v ? v.replace(/\D/g, '') : null))
+    .refine((v) => v === null || /^\d{8}$/.test(v), 'CEP tem 8 dígitos'),
+  email: z.string().trim().email('E-mail inválido').nullable().optional().transform((v) => v ?? null),
+}).strict();
+export type QuemEntregouInput = z.infer<typeof quemEntregouSchema>;

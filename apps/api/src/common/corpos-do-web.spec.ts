@@ -57,6 +57,7 @@ import {
   emitirNotaDoNegocioSchema,
   cancelarNotaSchema,
   simularRetornoDaNotaSchema,
+  quemEntregouSchema,
 } from '@autoconnect/shared';
 import { acceptInviteSchema } from '../modules/invitations/invitations.controller';
 import { anularSchema, assinarSchema } from '../modules/contracts/contracts.controller';
@@ -248,6 +249,8 @@ const ROTAS: Record<string, Declaracao> = {
   'POST /fiscal/notas/:p/consultar': { semCorpo: true },
   'POST /fiscal/notas/:p/cancelar': { schema: cancelarNotaSchema },
   'POST /fiscal/notas/:p/simular': { schema: simularRetornoDaNotaSchema },
+  'PUT /fiscal/veiculos/:p/quem-entregou': { schema: quemEntregouSchema },
+  'POST /fiscal/veiculos/:p/entrada/notas': { schema: emitirNotaDoNegocioSchema },
   'POST /financeiro/periodos/reabrir': { schema: reabrirMesSchema },
 
   'POST /public/conversations/:p/messages': { schema: mensagemDeVisitanteSchema },

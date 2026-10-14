@@ -5,10 +5,11 @@ import {
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { ehGlobal, type Escopo } from '../../common/escopo';
 import {
-  cfopValido, DEFINICAO_DAS_OPERACOES, montarNota, OPERACOES_FISCAIS, ROTULO_DA_DIRECAO,
-  operacaoDeSaidaDoNegocio, situacaoTributariaValida, usaCsosn,
-  type ConfirmacaoDoContadorInput, type DadosFiscaisDoVeiculoInput, type EnderecoFiscal,
-  type OperacaoFiscal, type PerfilDeOperacaoInput, type PerfilFiscalInput,
+  cfopValido, DEFINICAO_DAS_OPERACOES, entradaDaAquisicao, montarNota, normalizarDocumento,
+  OPERACOES_FISCAIS, ROTULO_DA_DIRECAO, operacaoDeSaidaDoNegocio, situacaoTributariaValida, usaCsosn,
+  type ConfirmacaoDoContadorInput, type ContextoDaNota, type DadosFiscaisDoVeiculoInput,
+  type EnderecoFiscal, type OperacaoFiscal, type PerfilDeOperacaoInput, type PerfilFiscalInput,
+  type QuemEntregouInput,
 } from '@autoconnect/shared';
 
 /** Quem mexe no fiscal. O vendedor vê o estado da nota, não o perfil da loja. */
@@ -395,6 +396,36 @@ export class PerfilFiscalService {
     if (!negocio) throw new NotFoundException('Negócio não encontrado.');
 
     const operacao = operacaoDeSaidaDoNegocio(negocio.vehicle.acquisition?.origin ?? null);
+    const b = negocio.buyer;
+    const v = negocio.vehicle;
+
+    const { nota, faltas } = montarNota({
+      ...(await this.ladoDaLoja(tx, tenantId, operacao)),
+      contraparte: {
+        nome: b?.fullName ?? null,
+        documento: b?.cpf ?? null,
+        email: b?.email ?? null,
+        endereco: b && {
+          logradouro: b.addressLine, numero: b.addressNumber, bairro: b.neighborhood,
+          cidade: b.city, uf: b.state, cep: b.postalCode,
+        },
+      },
+      veiculo: this.veiculoDaNota(v),
+      valor: negocio.saleValue.toFixed(2),
+      presencial,
+    });
+
+    return {
+      operacao,
+      rotulo: DEFINICAO_DAS_OPERACOES[operacao].rotulo,
+      nota,
+      faltas,
+      statusDoNegocio: negocio.status,
+    };
+  }
+
+  /** O que vem da loja em qualquer nota: configuração, perfil da operação e emitente. */
+  private async ladoDaLoja(tx: ScopedClient, tenantId: string, operacao: OperacaoFiscal) {
     const [cfg, perfil, loja, matriz] = await Promise.all([
       tx.fiscalSettings.findUnique({ where: { tenantId } }),
       tx.fiscalOperationProfile.findUnique({ where: { tenantId_operation: { tenantId, operation: operacao } } }),
@@ -404,15 +435,11 @@ export class PerfilFiscalService {
       }),
       tx.dealershipBranch.findFirst({ where: { tenantId, isHeadquarters: true } }),
     ]);
-
     const enderecoDaMatriz: EnderecoFiscal | null = matriz && {
       logradouro: matriz.addressLine, numero: matriz.addressNumber, complemento: matriz.complement,
       bairro: matriz.neighborhood, cidade: matriz.city, uf: matriz.state, cep: matriz.postalCode,
     };
-    const b = negocio.buyer;
-    const v = negocio.vehicle;
-
-    const { nota, faltas } = montarNota({
+    return {
       operacao,
       configuracao: cfg && {
         regime: cfg.regime, serie: cfg.serie, ambiente: cfg.ambiente,
@@ -426,32 +453,143 @@ export class PerfilFiscalService {
         nomeFantasia: loja?.tradeName ?? '',
         endereco: enderecoDaMatriz,
       },
+    } satisfies Pick<ContextoDaNota, 'operacao' | 'configuracao' | 'perfil' | 'emitente'>;
+  }
+
+  private veiculoDaNota(v: {
+    vin: string | null; licensePlate: string | null; versionName: string | null;
+    yearMake: number; yearModel: number; color: string | null; mileageKm: number;
+    brand: { name: string }; model: { name: string };
+    fiscalDetails: { ncm: string | null; renavam: string | null; origem: number } | null;
+  }): ContextoDaNota['veiculo'] {
+    return {
+      marca: v.brand.name, modelo: v.model.name, versao: v.versionName,
+      anoFabricacao: v.yearMake, anoModelo: v.yearModel, cor: v.color, quilometragem: v.mileageKm,
+      chassi: v.vin, placa: v.licensePlate,
+      renavam: v.fiscalDetails?.renavam ?? null, ncm: v.fiscalDetails?.ncm ?? null,
+      origem: v.fiscalDetails?.origem ?? 0,
+    };
+  }
+
+  /* ── Nota de entrada (N2b) ──────────────────────────────── */
+
+  private async aquisicaoDoVeiculo(tx: ScopedClient, tenantId: string, vehicleId: string) {
+    const veiculo = await tx.vehicle.findFirst({
+      where: { id: vehicleId, tenantId },
+      select: {
+        vin: true, licensePlate: true, versionName: true, yearMake: true, yearModel: true,
+        color: true, mileageKm: true,
+        brand: { select: { name: true } },
+        model: { select: { name: true } },
+        fiscalDetails: true,
+        acquisition: { include: { supplier: true } },
+      },
+    });
+    if (!veiculo) throw new NotFoundException('Veículo não encontrado.');
+    return veiculo;
+  }
+
+  /**
+   * Quem entregou o veículo: o que está gravado, ou o que a aquisição tiver
+   * para começar — a tela da aquisição nunca pediu nome nem documento.
+   */
+  async quemEntregou(escopo: Escopo, vehicleId: string) {
+    const tenantId = this.tenantDe(escopo);
+    return this.prisma.withTenant(tenantId, async (tx: ScopedClient) => {
+      const { acquisition: a } = await this.aquisicaoDoVeiculo(tx, tenantId, vehicleId);
+      if (!a) return { aquisicao: null, quemEntregou: null, salvo: false, entrada: null };
+
+      const q = a.supplier;
+      const documento = q?.documento ?? (normalizarDocumento(a.supplierDocument) || null);
+      return {
+        aquisicao: { origem: a.origin, valor: a.purchaseValue.toFixed(2), entrouEm: a.enteredAt.toISOString() },
+        salvo: !!q,
+        quemEntregou: {
+          fullName: q?.fullName ?? a.supplierName ?? '',
+          documento: documento ?? '',
+          rg: q?.rg ?? null,
+          addressLine: q?.addressLine ?? null,
+          addressNumber: q?.addressNumber ?? null,
+          complement: q?.complement ?? null,
+          neighborhood: q?.neighborhood ?? null,
+          city: q?.city ?? null,
+          state: q?.state ?? null,
+          postalCode: q?.postalCode ?? null,
+          email: q?.email ?? null,
+        },
+        entrada: entradaDaAquisicao(a.origin, documento),
+      };
+    });
+  }
+
+  async salvarQuemEntregou(escopo: Escopo, quem: QuemPede, vehicleId: string, dados: QuemEntregouInput) {
+    const tenantId = this.tenantDe(escopo);
+    await this.prisma.withTenant(tenantId, async (tx: ScopedClient) => {
+      const { acquisition: a } = await this.aquisicaoDoVeiculo(tx, tenantId, vehicleId);
+      if (!a) throw new ConflictException('Registre a aquisição do veículo antes de quem o entregou.');
+      await tx.acquisitionSupplier.upsert({
+        where: { acquisitionId: a.id },
+        create: { acquisitionId: a.id, tenantId, ...dados },
+        update: dados,
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId, actorUserId: quem.id, action: 'fiscal_quem_entregou_salvo',
+          entityType: 'vehicle', entityId: vehicleId,
+          // O documento fica na trilha só pelo final: auditoria não é cadastro.
+          diff: { documentoFinal: dados.documento.slice(-4), cidade: dados.city, uf: dados.state },
+        },
+      });
+    });
+    return this.quemEntregou(escopo, vehicleId);
+  }
+
+  async previaDaAquisicao(escopo: Escopo, vehicleId: string, presencial: boolean) {
+    const tenantId = this.tenantDe(escopo);
+    return this.prisma.withTenant(tenantId, async (tx: ScopedClient) => {
+      const m = await this.montarDaAquisicao(tx, tenantId, vehicleId, presencial);
+      return {
+        temAquisicao: m.aquisicaoId !== null,
+        semNotaPropria: m.entrada && !m.entrada.precisaDeNota ? m.entrada.motivo : null,
+        operacao: m.operacao,
+        rotulo: m.operacao ? DEFINICAO_DAS_OPERACOES[m.operacao].rotulo : null,
+        nota: m.nota,
+        faltas: m.faltas,
+      };
+    });
+  }
+
+  /**
+   * A nota de entrada de um veículo: remetente é quem entregou, valor é o da
+   * compra. Sem aquisição, ou quando quem emite é o outro lado, não há nota.
+   */
+  async montarDaAquisicao(tx: ScopedClient, tenantId: string, vehicleId: string, presencial: boolean) {
+    const v = await this.aquisicaoDoVeiculo(tx, tenantId, vehicleId);
+    const a = v.acquisition;
+    if (!a) return { aquisicaoId: null, entrada: null, operacao: null, nota: null, faltas: [] };
+
+    const q = a.supplier;
+    const documento = q?.documento ?? (normalizarDocumento(a.supplierDocument) || null);
+    const entrada = entradaDaAquisicao(a.origin, documento);
+    if (!entrada.precisaDeNota) {
+      return { aquisicaoId: a.id, entrada, operacao: null, nota: null, faltas: [] };
+    }
+
+    const { nota, faltas } = montarNota({
+      ...(await this.ladoDaLoja(tx, tenantId, entrada.operacao)),
       contraparte: {
-        nome: b?.fullName ?? null,
-        documento: b?.cpf ?? null,
-        email: b?.email ?? null,
-        endereco: b && {
-          logradouro: b.addressLine, numero: b.addressNumber, bairro: b.neighborhood,
-          cidade: b.city, uf: b.state, cep: b.postalCode,
+        nome: q?.fullName ?? a.supplierName ?? null,
+        documento,
+        email: q?.email ?? null,
+        endereco: q && {
+          logradouro: q.addressLine, numero: q.addressNumber, complemento: q.complement,
+          bairro: q.neighborhood, cidade: q.city, uf: q.state, cep: q.postalCode,
         },
       },
-      veiculo: {
-        marca: v.brand.name, modelo: v.model.name, versao: v.versionName,
-        anoFabricacao: v.yearMake, anoModelo: v.yearModel, cor: v.color, quilometragem: v.mileageKm,
-        chassi: v.vin, placa: v.licensePlate,
-        renavam: v.fiscalDetails?.renavam ?? null, ncm: v.fiscalDetails?.ncm ?? null,
-        origem: v.fiscalDetails?.origem ?? 0,
-      },
-      valor: negocio.saleValue.toFixed(2),
+      veiculo: this.veiculoDaNota(v),
+      valor: a.purchaseValue.toFixed(2),
       presencial,
     });
-
-    return {
-      operacao,
-      rotulo: DEFINICAO_DAS_OPERACOES[operacao].rotulo,
-      nota,
-      faltas,
-      statusDoNegocio: negocio.status,
-    };
+    return { aquisicaoId: a.id, entrada, operacao: entrada.operacao, nota, faltas };
   }
 }

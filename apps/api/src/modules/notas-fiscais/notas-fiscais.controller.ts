@@ -11,7 +11,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import {
   cancelarNotaSchema, confirmacaoDoContadorSchema, dadosFiscaisDoVeiculoSchema,
-  emitirNotaDoNegocioSchema, perfilDeOperacaoSchema, perfilFiscalSchema, simularRetornoDaNotaSchema,
+  emitirNotaDoNegocioSchema, perfilDeOperacaoSchema, perfilFiscalSchema, quemEntregouSchema,
+  simularRetornoDaNotaSchema,
 } from '@autoconnect/shared';
 
 interface AuthRequest {
@@ -124,6 +125,49 @@ export class NotasFiscaisController {
   ): Promise<unknown> {
     const { presencial } = emitirNotaDoNegocioSchema.parse(body ?? {});
     return this.emissao.emitir(escopoDa(req.user), req.user, id, presencial);
+  }
+
+  /* ── Nota de entrada (N2b) ───────────────────────────── */
+
+  /** GET /fiscal/veiculos/:id/quem-entregou — o remetente da nota de entrada. */
+  @Get('veiculos/:id/quem-entregou')
+  quemEntregou(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string): Promise<unknown> {
+    return this.perfil.quemEntregou(escopoDa(req.user), id);
+  }
+
+  @Put('veiculos/:id/quem-entregou')
+  salvarQuemEntregou(
+    @Req() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    return this.perfil.salvarQuemEntregou(escopoDa(req.user), req.user, id, quemEntregouSchema.parse(body));
+  }
+
+  @Get('veiculos/:id/entrada/previa')
+  previaDaEntrada(
+    @Req() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: unknown,
+  ): Promise<unknown> {
+    const { presencial } = previaQuerySchema.parse(query);
+    return this.perfil.previaDaAquisicao(escopoDa(req.user), id, presencial);
+  }
+
+  @Get('veiculos/:id/entrada/notas')
+  notasDeEntrada(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string): Promise<unknown> {
+    return this.emissao.listarDaAquisicao(escopoDa(req.user), id);
+  }
+
+  /** POST /fiscal/veiculos/:id/entrada/notas — emite a nota de entrada do veículo. */
+  @Post('veiculos/:id/entrada/notas')
+  emitirEntrada(
+    @Req() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const { presencial } = emitirNotaDoNegocioSchema.parse(body ?? {});
+    return this.emissao.emitirEntrada(escopoDa(req.user), req.user, id, presencial);
   }
 
   /** POST /fiscal/notas/:id/consultar — pergunta ao emissor em que pé a nota está. */

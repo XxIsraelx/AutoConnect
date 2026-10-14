@@ -11,14 +11,26 @@ import { DocumentosStorage } from '../../common/armazenamento/documentos.storage
 import { ehGlobal, type Escopo } from '../../common/escopo';
 import {
   aplicarRetorno, podeCancelar,
-  type CabecalhosDoEmissor, type NotaMontada, type ProvedorDeNotaFiscal,
-  type RetornoDoEmissor, type StatusDaNota,
+  type CabecalhosDoEmissor, type FaltaParaEmitir, type NotaMontada, type OperacaoFiscal,
+  type ProvedorDeNotaFiscal, type RetornoDoEmissor, type StatusDaNota,
 } from '@autoconnect/shared';
 import { PerfilFiscalService } from './perfil-fiscal.service';
 import { PROVEDOR_DE_NOTA_FISCAL } from './emissor/provedor';
 import { ProvedorDeNotaSimulado, type AcaoSimuladaDaNota } from './emissor/provedor-simulado';
 
 interface QuemPede { id: string }
+
+/** O que a emissão precisa saber, venha a nota do negócio ou da aquisição. */
+interface NotaParaEmitir {
+  origem: { dealId: string } | { vehicleAcquisitionId: string };
+  operacao: OperacaoFiscal;
+  nota: NotaMontada | null;
+  faltas: FaltaParaEmitir[];
+  /** Por que esta origem não pode emitir agora; `null` quando pode. */
+  impedimento: string | null;
+  /** Para a mensagem do clique duplo. */
+  descricao: string;
+}
 
 /** De onde veio o retorno — fica no evento, para a trilha. */
 type OrigemDoRetorno = 'emissao' | 'consulta' | 'cancelamento' | 'webhook';
@@ -131,6 +143,21 @@ export class EmissaoDeNotaService {
     };
   }
 
+  async listarDaAquisicao(escopo: Escopo, vehicleId: string) {
+    const tenantId = this.tenantDe(escopo);
+    return this.prisma.withTenant(tenantId, async (tx: ScopedClient) => {
+      const veiculo = await tx.vehicle.findFirst({
+        where: { id: vehicleId, tenantId }, select: { acquisition: { select: { id: true } } },
+      });
+      if (!veiculo) throw new NotFoundException('Veículo não encontrado.');
+      if (!veiculo.acquisition) return [];
+      const notas = await tx.fiscalDocument.findMany({
+        where: { tenantId, vehicleAcquisitionId: veiculo.acquisition.id }, orderBy: { createdAt: 'desc' },
+      });
+      return notas.map((n) => this.publica(n));
+    });
+  }
+
   async listarDoNegocio(escopo: Escopo, dealId: string) {
     const tenantId = this.tenantDe(escopo);
     return this.prisma.withTenant(tenantId, async (tx: ScopedClient) => {
@@ -153,17 +180,53 @@ export class EmissaoDeNotaService {
 
   /* ── Emissão ─────────────────────────────────────────────── */
 
+  /** Nota de saída do negócio. */
   async emitir(escopo: Escopo, quem: QuemPede, dealId: string, presencial: boolean) {
+    return this.emitirDe(escopo, quem, async (tx, tenantId) => {
+      const m = await this.perfil.montarDoNegocio(tx, tenantId, dealId, presencial);
+      return {
+        origem: { dealId },
+        operacao: m.operacao,
+        nota: m.nota,
+        faltas: m.faltas,
+        impedimento: STATUS_DO_NEGOCIO_QUE_EMITE.includes(m.statusDoNegocio)
+          ? null
+          : 'A nota sai a partir da assinatura do contrato — e não sai de negócio cancelado ou distratado.',
+        descricao: 'Este negócio',
+      };
+    });
+  }
+
+  /** Nota de entrada do veículo, a partir da aquisição (N2b). */
+  async emitirEntrada(escopo: Escopo, quem: QuemPede, vehicleId: string, presencial: boolean) {
+    return this.emitirDe(escopo, quem, async (tx, tenantId) => {
+      const m = await this.perfil.montarDaAquisicao(tx, tenantId, vehicleId, presencial);
+      if (!m.aquisicaoId) {
+        throw new ConflictException('Registre a aquisição do veículo antes de emitir a nota de entrada.');
+      }
+      if (m.entrada && !m.entrada.precisaDeNota) throw new ConflictException(m.entrada.motivo);
+      return {
+        origem: { vehicleAcquisitionId: m.aquisicaoId },
+        operacao: m.operacao!,
+        nota: m.nota,
+        faltas: m.faltas,
+        impedimento: null,
+        descricao: 'Esta aquisição',
+      };
+    });
+  }
+
+  private async emitirDe(
+    escopo: Escopo,
+    quem: QuemPede,
+    montar: (tx: ScopedClient, tenantId: string) => Promise<NotaParaEmitir>,
+  ) {
     const tenantId = this.tenantDe(escopo);
     this.exigirEmissor();
 
     const nota = await this.prisma.withTenant(tenantId, async (tx: ScopedClient) => {
-      const montada = await this.perfil.montarDoNegocio(tx, tenantId, dealId, presencial);
-      if (!STATUS_DO_NEGOCIO_QUE_EMITE.includes(montada.statusDoNegocio)) {
-        throw new ConflictException(
-          'A nota sai a partir da assinatura do contrato — e não sai de negócio cancelado ou distratado.',
-        );
-      }
+      const montada = await montar(tx, tenantId);
+      if (montada.impedimento) throw new ConflictException(montada.impedimento);
       if (!montada.nota) {
         throw new UnprocessableEntityException({
           message: 'Faltam dados para emitir a nota.',
@@ -181,7 +244,7 @@ export class EmissaoDeNotaService {
         const criada = await tx.fiscalDocument.create({
           data: {
             tenantId,
-            dealId,
+            ...montada.origem,
             operation: montada.operacao,
             provider: this.provedor.nome,
             ambiente: montada.nota.ambiente,
@@ -194,13 +257,16 @@ export class EmissaoDeNotaService {
           data: {
             tenantId, actorUserId: quem.id, action: 'nota_fiscal_emitida',
             entityType: 'fiscal_document', entityId: criada.id,
-            diff: { dealId, operacao: montada.operacao, cfop: montada.nota.cfop, valor: montada.nota.valorTotal },
+            diff: {
+              ...montada.origem, operacao: montada.operacao,
+              cfop: montada.nota.cfop, valor: montada.nota.valorTotal,
+            },
           },
         });
         return criada;
       } catch (e) {
         if (ehDuplicidade(e)) {
-          throw new ConflictException('Este negócio já tem uma nota em processamento ou autorizada.');
+          throw new ConflictException(`${montada.descricao} já tem uma nota em processamento ou autorizada.`);
         }
         throw e;
       }

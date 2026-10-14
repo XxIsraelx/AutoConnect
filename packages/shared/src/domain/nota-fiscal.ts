@@ -15,7 +15,7 @@
  *     faltas em vez de preencher o buraco — como `pendenciasParaPublicar` faz
  *     com o anúncio. Nota com campo inventado é pior que nota não emitida.
  */
-import { cnpjValido, cpfValido } from '../schemas/auth';
+import { cnpjValido, cpfValido, normalizarCnpj } from '../schemas/auth';
 import { chassiValido } from './consulta-veicular';
 import { deCentavos, emCentavos } from './dinheiro';
 
@@ -166,6 +166,58 @@ export const DEFINICAO_DAS_OPERACOES: Record<OperacaoFiscal, DefinicaoDaOperacao
  */
 export function operacaoDeSaidaDoNegocio(origemDaAquisicao: string | null): OperacaoFiscal {
   return origemDaAquisicao === 'consignment' ? 'venda_de_consignado' : 'venda';
+}
+
+/**
+ * Se a entrada de um veículo pede **nota nossa**, e de qual operação.
+ *
+ * A loja só emite nota de entrada quando do outro lado não há quem emita:
+ * pessoa física vendendo, dando na troca ou deixando em consignação. Pessoa
+ * jurídica emite a própria nota de venda (a loja registra a chave dela); leilão,
+ * transferência entre lojas e 0 km também chegam com nota de outro emissor.
+ * Emitir mesmo assim seria duas notas para a mesma operação.
+ *
+ * Sem documento do fornecedor, a resposta é "precisa" — e a falta do CPF
+ * aparece na montagem. Quando o CNPJ entra, a resposta muda para "não precisa".
+ */
+export type EntradaDaAquisicao =
+  | { precisaDeNota: true; operacao: OperacaoFiscal }
+  | { precisaDeNota: false; motivo: string };
+
+export function entradaDaAquisicao(
+  origemDaAquisicao: string,
+  documentoDoFornecedor: string | null,
+): EntradaDaAquisicao {
+  switch (origemDaAquisicao) {
+    case 'dealer_transfer':
+      return { precisaDeNota: false, motivo: 'Transferência entre lojas: a nota é do estabelecimento que enviou o veículo.' };
+    case 'auction':
+      return { precisaDeNota: false, motivo: 'Compra em leilão: a nota é do leiloeiro ou de quem pôs o veículo à venda.' };
+    case 'factory':
+      return { precisaDeNota: false, motivo: 'Veículo 0 km: a nota é da montadora ou da distribuidora.' };
+  }
+
+  const documento = normalizarDocumento(documentoDoFornecedor);
+  if (documento.length === 14 && cnpjValido(documento)) {
+    return {
+      precisaDeNota: false,
+      motivo: 'Fornecedor pessoa jurídica emite a própria nota de venda — a loja não emite outra.',
+    };
+  }
+
+  const operacao: OperacaoFiscal =
+    origemDaAquisicao === 'trade_in' ? 'entrada_de_troca'
+    : origemDaAquisicao === 'consignment' ? 'entrada_em_consignacao'
+    : 'compra_de_particular';
+  return { precisaDeNota: true, operacao };
+}
+
+/**
+ * CPF ou CNPJ na forma canônica: maiúsculo, só letra e algarismo. **Não**
+ * `replace(/\D/g, '')` — o CNPJ alfanumérico perderia as letras (PR #24).
+ */
+export function normalizarDocumento(bruto: string | null | undefined): string {
+  return (bruto ?? '').toUpperCase().replace(/[^0-9A-Z]/g, '');
 }
 
 export type DestinoDaOperacao = 'interna' | 'interestadual';
@@ -461,9 +513,9 @@ export function montarNota(ctx: ContextoDaNota): ResultadoDaMontagem {
 
   // Contraparte
   const quem = def.direcao === 'saida' ? 'do comprador' : 'de quem entrega o veículo';
-  const documento = (contraparte.documento ?? '').replace(/\D/g, '');
+  const documento = normalizarDocumento(contraparte.documento);
   const tipoDeDocumento: 'cpf' | 'cnpj' | null =
-    documento.length === 11 && cpfValido(documento) ? 'cpf'
+    /^\d{11}$/.test(documento) && cpfValido(documento) ? 'cpf'
     : documento.length === 14 && cnpjValido(documento) ? 'cnpj'
     : null;
   if (!contraparte.nome?.trim()) {
@@ -541,7 +593,7 @@ export function montarNota(ctx: ContextoDaNota): ResultadoDaMontagem {
       ambiente: cfg.ambiente,
       serie: cfg.serie,
       emitente: {
-        cnpj: emitente.cnpj!.replace(/\D/g, ''),
+        cnpj: normalizarCnpj(emitente.cnpj!),
         inscricaoEstadual: emitente.inscricaoEstadual!.trim(),
         razaoSocial: emitente.razaoSocial,
         nomeFantasia: emitente.nomeFantasia,
