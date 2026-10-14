@@ -245,18 +245,33 @@ Decidido durante a fase, com o padrão adotado:
 - **Saiu da N2, com fase própria (N2b):** a nota de **entrada** e a **carta de
   correção** — ver abaixo.
 
-### N2b — nota de entrada e carta de correção
+### N2b — nota de entrada ✅ 14/10/2026
 
-- **Nota de entrada** (compra de particular, troca, consignação), a partir da
-  aquisição. Esbarra num dado que não existe: a `VehicleAcquisition` guarda nome
-  e documento do fornecedor, **sem endereço** — e a NF-e exige o do remetente.
-  Padrão que vou adotar: uma tabela da trilha fiscal para o endereço do
-  fornecedor, como o NCM do veículo, em vez de colunas novas em
-  `vehicle_acquisitions` (o módulo de estoque não muda de comportamento).
-  Compra de **pessoa jurídica** não gera nota nossa — quem emite é o vendedor.
-- **Carta de correção (CC-e)**, com sequência e o texto de 15 a 1.000
-  caracteres. Fica depois da N3 de propósito: a numeração de sequência e o que o
-  emissor devolve são do emissor real, e simular sem ele seria inventar formato.
+**Entregue em 14/10/2026:** migration `nota_de_entrada` — `acquisition_suppliers`
+(quem entregou o veículo, com RLS) e a nota com **exatamente uma origem**
+(negócio **ou** aquisição, `num_nonnulls = 1`) e uma nota de entrada viva por
+aquisição; `entradaDaAquisicao` no shared; rotas de quem entregou, prévia e
+emissão da entrada; e o cartão **Nota de entrada** no veículo, com o mesmo cartão
+de nota da saída (`CartaoDaNotaFiscal`). 10 testes de regra e 10 e2e. Conferido
+no navegador: o formulário abre com o nome que a aquisição tinha, salvar completa
+a prévia (CFOP 1102, valor da compra), emitir → autorizada.
+
+Decidido durante a fase, com o padrão adotado:
+
+- **A tela da aquisição nunca pediu nome nem documento do fornecedor** (só
+  origem, valor e data). Em vez de mexer nela, a trilha fiscal tem a sua
+  qualificação de quem entregou — mesma razão do `DealBuyer` no contrato: o
+  nome do papel pode diferir do cadastro rápido. Nasce com o que a aquisição
+  tiver.
+- **A loja só emite quando do outro lado não há quem emita:** pessoa física
+  vendendo, trocando ou consignando. Fornecedor **pessoa jurídica** (inclusive
+  CNPJ alfanumérico), **leilão**, **transferência** e **0 km** chegam com nota de
+  outro emissor — o cartão diz de quem, em vez de oferecer o botão.
+- **CNPJ alfanumérico na nota:** a montagem apagava as letras (`\D`) do CNPJ do
+  emitente e do documento da contraparte. Corrigido aqui, com teste, depois do
+  PR #24 (CNPJ alfanumérico no cadastro).
+- **A carta de correção foi para a N3**: a numeração de sequência e o retorno
+  são do emissor real, e simular sem ele seria inventar formato.
 
 
 - **`fiscal_documents`**: `tipo` (entrada, saída), `status`
@@ -295,6 +310,8 @@ Decidido durante a fase, com o padrão adotado:
   `setup-e2e.ts` força `simulado`. Selo "homologação — sem valor fiscal" na tela
   enquanto o ambiente não for produção, pela mesma razão do selo de sandbox da
   cobrança.
+- **Carta de correção (CC-e)**, com sequência e o texto de 15 a 1.000
+  caracteres — veio da N2b, porque o formato é do emissor real.
 - Uma nota de entrada e uma de saída autorizadas em homologação, e um
   cancelamento.
 
@@ -338,6 +355,9 @@ NF-e — e esse ponto já foi resolvido na Fase 0.
 
 - `packages/shared/src/domain/chave-nfe.ts` — **ninguém edita**; precisou mudar,
   pede no PR.
+- **Quem entregou o veículo** — mora em `acquisition_suppliers`, da sessão 1
+  (N2b): nome, CPF/CNPJ e endereço de quem vendeu, trocou ou consignou. É o
+  vendedor que o RENAVE pede na entrada do estoque — a sessão 2 **lê** daqui.
 - **RENAVAM do veículo** — mora em `vehicle_fiscal_details`, da sessão 1 (N1). A
   sessão 2 **lê**; se precisar antes de N1 chegar à `main`, pede no PR em vez de
   criar coluna própria — dois RENAVAM para o mesmo carro é o começo da história
@@ -414,7 +434,7 @@ NF-e — e esse ponto já foi resolvido na Fase 0.
 | R4 — consignação | 2 | ⬜ (depende da Clicksign em produção e do advogado) |
 | N1 — perfil fiscal e montagem | 1 | ✅ 14/10/2026 |
 | N2 — camada neutra NF-e (saída) | 1 | ✅ 14/10/2026 |
-| N2b — nota de entrada e carta de correção | 1 | ⬜ |
-| N3 — certificado e adaptador do emissor | 1 | ⬜ (depende da conta no emissor) |
+| N2b — nota de entrada | 1 | ✅ 14/10/2026 |
+| N3 — certificado, adaptador do emissor e carta de correção | 1 | ⬜ (depende da conta no emissor) |
 | N4 — ponte com o contador | 1 | ⬜ |
 | C — a mesma história | 1 | ⬜ (depois de R2 e N2) |

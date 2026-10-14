@@ -7,6 +7,7 @@ import {
   normalizarNcm,
   normalizarRenavam,
   operacaoDeSaidaDoNegocio,
+  entradaDaAquisicao,
   OPERACOES_FISCAIS,
   REGIMES_TRIBUTARIOS,
   situacaoTributariaValida,
@@ -241,3 +242,41 @@ describe('montarNota', () => {
       })]);
   });
 });
+
+describe('entradaDaAquisicao', () => {
+  it.each([
+    ['direct_purchase', '529.982.247-25', 'compra_de_particular'],
+    ['trade_in', '52998224725', 'entrada_de_troca'],
+    ['consignment', null, 'entrada_em_consignacao'],
+    ['direct_purchase', null, 'compra_de_particular'],
+  ])('%s com documento %s → nota nossa de %s', (origem, doc, operacao) => {
+    expect(entradaDaAquisicao(origem, doc)).toEqual({ precisaDeNota: true, operacao });
+  });
+
+  it.each([
+    ['direct_purchase', '11.444.777/0001-61', 'pessoa jurídica'],
+    ['trade_in', '12.ABC.345/01DE-35', 'pessoa jurídica'],
+    ['auction', '52998224725', 'leiloeiro'],
+    ['dealer_transfer', null, 'estabelecimento que enviou'],
+    ['factory', null, 'montadora'],
+  ])('%s com documento %s → sem nota nossa (%s)', (origem, doc, trecho) => {
+    const r = entradaDaAquisicao(origem, doc);
+    expect(r.precisaDeNota).toBe(false);
+    if (!r.precisaDeNota) expect(r.motivo).toContain(trecho);
+  });
+});
+
+describe('CNPJ alfanumérico na nota', () => {
+  it('emitente e contraparte com letras no CNPJ saem com as letras', () => {
+    const base = contexto();
+    const { nota, faltas } = montarNota({
+      ...base,
+      emitente: { ...base.emitente, cnpj: '12.ABC.345/01DE-35' },
+      contraparte: { ...base.contraparte, documento: '12.abc.345/01de-35' },
+    });
+    expect(faltas).toEqual([]);
+    expect(nota?.emitente.cnpj).toBe('12ABC34501DE35');
+    expect(nota?.contraparte).toMatchObject({ tipoDeDocumento: 'cnpj', documento: '12ABC34501DE35' });
+  });
+});
+

@@ -287,6 +287,7 @@ model Tenant {
   vehicleFiscalDetails      VehicleFiscalDetails[]
   fiscalDocuments           FiscalDocument[]
   fiscalDocumentEvents      FiscalDocumentEvent[]
+  acquisitionSuppliers      AcquisitionSupplier[]
 
   @@map("tenants")
 }
@@ -1489,10 +1490,13 @@ model VehicleAcquisition {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vehicle        Vehicle         @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle         Vehicle              @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   /// A conta a pagar que esta compra gerou — uma só, por construção.
-  financialEntry FinancialEntry?
+  financialEntry  FinancialEntry?
+  /// Trilha fiscal (fim do arquivo): quem entregou o veículo e a nota de entrada.
+  supplier        AcquisitionSupplier?
+  fiscalDocuments FiscalDocument[]
 
   @@index([tenantId])
   @@map("vehicle_acquisitions")
@@ -2373,13 +2377,15 @@ enum StatusDaNota {
 /// corrige com o evento que a lei prevê. Só pode haver uma nota viva
 /// (processando ou autorizada) por negócio — índice único parcial na migration.
 model FiscalDocument {
-  id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId  String         @map("tenant_id") @db.Uuid
-  dealId    String?        @map("deal_id") @db.Uuid
-  operation OperacaoFiscal
-  status    StatusDaNota   @default(processando)
-  provider  String
-  ambiente  AmbienteFiscal
+  id                   String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String         @map("tenant_id") @db.Uuid
+  dealId               String?        @map("deal_id") @db.Uuid
+  /// Nota de entrada (N2b). Exatamente uma origem: negócio **ou** aquisição.
+  vehicleAcquisitionId String?        @map("vehicle_acquisition_id") @db.Uuid
+  operation            OperacaoFiscal
+  status               StatusDaNota   @default(processando)
+  provider             String
+  ambiente             AmbienteFiscal
 
   /// A nota como foi enviada (`NotaMontada`). Snapshot, não join.
   snapshot  Json
@@ -2406,12 +2412,14 @@ model FiscalDocument {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
-  tenant Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  deal   Deal?                 @relation(fields: [dealId], references: [id], onDelete: Restrict)
-  events FiscalDocumentEvent[]
+  tenant             Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deal               Deal?                 @relation(fields: [dealId], references: [id], onDelete: Restrict)
+  vehicleAcquisition VehicleAcquisition?   @relation(fields: [vehicleAcquisitionId], references: [id], onDelete: Restrict)
+  events             FiscalDocumentEvent[]
 
   @@index([tenantId, createdAt(sort: Desc)])
   @@index([dealId])
+  @@index([vehicleAcquisitionId])
   @@map("fiscal_documents")
 }
 
@@ -2436,4 +2444,39 @@ model FiscalDocumentEvent {
   @@unique([provider, eventKey])
   @@index([documentId, receivedAt])
   @@map("fiscal_document_events")
+}
+
+/// Quem entregou o veículo à loja, qualificado para documento — fase N2b.
+///
+/// É o remetente da nota de entrada e o vendedor que o RENAVE pede na entrada
+/// do estoque. Fica separado da `VehicleAcquisition` pela mesma razão do
+/// `DealBuyer`: o nome e o documento que vão no papel podem diferir do que foi
+/// digitado no cadastro rápido — e a tela da aquisição nunca pediu nenhum dos
+/// dois. Nasce preenchido com o que a aquisição tiver.
+model AcquisitionSupplier {
+  acquisitionId String @id @map("acquisition_id") @db.Uuid
+  tenantId      String @map("tenant_id") @db.Uuid
+
+  fullName  String  @map("full_name")
+  /// CPF (11) ou CNPJ (14, inclusive alfanumérico), sem pontuação.
+  documento String
+  rg        String?
+
+  addressLine   String? @map("address_line")
+  addressNumber String? @map("address_number")
+  complement    String?
+  neighborhood  String?
+  city          String?
+  state         String? @db.Char(2)
+  postalCode    String? @map("postal_code")
+  email         String?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  acquisition VehicleAcquisition @relation(fields: [acquisitionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("acquisition_suppliers")
 }

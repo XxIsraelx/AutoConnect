@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.458 testes (1.014 na API, 444 no `shared`):
+são 1.478 testes (1.024 na API, 454 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -794,7 +794,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
   foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
   migrations (ver *Testes e CI*).
-- Migrations atuais (33): `init`, `trade_in_and_dealer_setting`,
+- Migrations atuais (34): `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
   `add_announcements_invites_alerts_searches_goals`,
   `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`,
@@ -808,7 +808,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   `cortesia_de_cobranca`, `preco_travado_e_ciclo`,
   `plano_pendente_de_pagamento`, `whatsapp_oficial`, `leads_dos_portais`,
   `push_do_vendedor`, `financeiro_gerencial`, `financeiro_origem`,
-  `conciliacao_ofx`, `perfil_fiscal`, `emissao_de_nota`.
+  `conciliacao_ofx`, `perfil_fiscal`, `emissao_de_nota`, `nota_de_entrada`.
 
 ---
 
@@ -940,6 +940,14 @@ dividido entre duas sessões (N = NF-e, sessão 1; R = RENAVE, sessão 2):
 - **Uma nota viva por negócio** (`fiscal_documents_nota_viva_idx`), e **nota
   autorizada é imutável** por trigger: só o cancelamento e o arquivamento do
   XML/DANFE mudam a linha. O banco grava `processando` antes de chamar o emissor.
+- **Nota de entrada (N2b):** da aquisição, com o remetente em
+  `acquisition_suppliers` (quem entregou o veículo — a tela da aquisição nunca
+  pediu nome nem documento). **A loja só emite quando do outro lado não há quem
+  emita** (`entradaDaAquisicao`): pessoa jurídica, leilão, transferência e 0 km
+  chegam com nota de outro. Cada nota tem **exatamente uma origem** (negócio ou
+  aquisição), por CHECK.
+- **Documento na nota é `normalizarDocumento`**, nunca `replace(/\D/g, '')` — o
+  CNPJ alfanumérico perderia as letras.
 - **Variáveis:** `NFE_FORNECEDOR` (vazio = desligado, a prévia continua;
   `simulado` recusado em produção) e `NFE_WEBHOOK_TOKEN` (sem ele nenhum emissor
   liga). O `setup-e2e.ts` força `simulado`.
