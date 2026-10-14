@@ -29,6 +29,7 @@
 | **WhatsApp oficial** | ✅ estrutura | ✅ completo | desde 27/09/2026 (sessão 2, item C1): camada neutra com provedor simulado, webhook com HMAC do corpo cru e idempotente, cliente que escreve vira lead pelo caminho do formulário (dedupe, rodízio, prazo), resposta pelo chat com a janela de 24 h conferida na API, modelos aprovados, status de entrega, uso do mês em **Canais**. **Adaptador da Meta escrito e NÃO exercitado — falta a conta** ([decisão](../decisoes/2026-09-27%20whatsapp%20oficial.md)) |
 | **Leads dos portais** | ✅ estrutura | ✅ completo | desde 27/09/2026 (sessão 2, item C2): endereço de entrada por loja e portal (URL de webhook e e-mail de encaminhamento, token só em hash), entregas guardadas cruas e reprocessáveis, formato AutoConnect no webhook e leitor genérico de e-mail com rótulos, código de confirmação do Gmail na tela, lead pelo caminho do formulário com origem `portal`. **Falta a conta do e-mail de entrada (Postmark) e uma notificação real da OLX** ([decisão](../decisoes/2026-09-27%20leads%20dos%20portais.md)) |
 | **Push do vendedor** | ✅ completo | ✅ completo | desde 27/09/2026 (sessão 2, item C3): Web Push com VAPID pelo service worker (sem app de loja), lead novo para o vendedor da vez (ou a gerência, sem responsável), mensagem do cliente para quem cuida da conversa, aparelho que muda de dono, logout que desinscreve. Verificado de ponta a ponta com o serviço de push real. **Falta só cadastrar as chaves VAPID no Railway** ([decisão](../decisoes/2026-09-27%20push%20do%20vendedor.md)) |
+| **Fiscal — NF-e** | ◐ estrutura | ✅ completo | desde 14/10/2026 (plano fiscal, sessão 1): perfil fiscal da loja (regime, série, ambiente, CFOP e CST/CSOSN por operação), confirmação do contador apagada a cada mudança, NCM/RENAVAM do veículo, **prévia da nota no negócio** **emissão da nota de saída** e, desde a N2b, **da nota de entrada** a partir da aquisição (com quem entregou o veículo), com emissor simulado (uma nota viva por origem, autorizada imutável, webhook idempotente, cancelamento, XML/DANFE). a aba **Notas fiscais** do financeiro com o **pacote do mês para o contador** (N4) e, desde a N3, **carta de correção**, **certificado A1** e o **adaptador da Focus NFe** escrito e testado com `fetch` dublado. **Falta a conta na Focus** — [plano](plano-fiscal-renave-nfe.md), N3 |
 
 ## Pendências conhecidas
 
@@ -67,6 +68,14 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
   Falta: uma assinatura de ponta a ponta para confirmar o cabeçalho do HMAC, o
   link do PDF assinado e o `signer.key` do webhook. Para ter validade: conta de
   produção na Clicksign (URL, token e webhook novos) e revisão jurídica do contrato.
+
+- **NF-e pela Focus sem conta** (14/10/2026): o adaptador está escrito a partir da
+  documentação e testado com `fetch` dublado, mas nenhuma nota foi emitida na Focus.
+  Falta: conta, token master, as quatro variáveis no Railway, um CNPJ real com A1
+  válido (a Focus exige até em homologação) e cinco premissas a conferir na primeira
+  nota — a lista e o passo a passo estão na fase N3 do
+  [plano fiscal](plano-fiscal-renave-nfe.md). Enquanto isso, a prévia mostra os dados
+  para a loja usar no emissor dela.
 
 **Da definição de pronto do plano, um item nunca foi cumprido**
 - **Feature flag.** O plano pede "feature nova atrás de flag até o piloto
@@ -586,6 +595,62 @@ validador da chave da NF-e
   - Como testar: o POST no sandbox devolve `cus_…` e o `GET` do cliente traz o CNPJ com as letras.
   - Encontrado em: 14/10/2026 · Claude Code · tarefa do CNPJ alfanumérico (sem credencial de
     sandbox nesta sessão).
+
+**Encontrada em 14/10/2026** — Claude Code (sessão 1 do plano fiscal), na fase N1
+
+- **Os enums do financeiro não estão no teste de paridade com o Prisma.**
+  - Onde: `packages/shared/src/schemas/paridade-enums.spec.ts`; as constantes ficam em
+    `packages/shared/src/domain/financeiro.ts:25–35` (`FINANCIAL_ACCOUNT_KINDS`,
+    `FINANCIAL_DIRECTIONS`, `FINANCIAL_ENTRY_STATUSES`, `FINANCIAL_CATEGORY_GROUPS`).
+  - O que é: o CLAUDE.md manda atualizar a constante do shared ao mudar enum no
+    `schema.prisma`, e o teste de paridade é o que pega o esquecimento. Os quatro enums do
+    financeiro entraram em 27/09/2026 sem a linha no teste.
+  - Evidência: `git grep FINANCIAL_ACCOUNT_KINDS -- '*.spec.ts'` não acha nada.
+  - Impacto: um valor novo no Prisma sem o Zod faz a API recusar o que o banco aceita — foi
+    assim que `LeadSource.trade_in` derrubou a rota pública de troca.
+  - Sugestão: quatro `it(...)` no `paridade-enums.spec.ts`, como os outros. Os enums fiscais
+    já têm o seu, em `schemas/nota-fiscal.spec.ts`.
+  - Como testar: acrescentar um valor ao `FinancialAccountKind` no `schema.prisma` e ver o
+    teste quebrar.
+  - Encontrado em: 14/10/2026 · Claude Code · fase N1 do plano fiscal (o financeiro não é
+    módulo das sessões fiscais).
+
+- **As tabelas do financeiro estão fora da varredura de isolamento.**
+  - Onde: `apps/api/src/common/prisma/isolamento.spec.ts`, lista `MODELOS_DE_TENANT` — não tem
+    `financialAccount`, `financialCategory`, `financialEntry`, `financialPeriod` nem
+    `bankTransaction`.
+  - O que é: o teste estático só pega acesso fora de `withTenant` para os modelos da lista. O
+    código do financeiro hoje usa `withTenant` (conferido por leitura), mas nada impede o
+    próximo acesso direto de passar.
+  - Evidência: `grep -n financial apps/api/src/common/prisma/isolamento.spec.ts` não acha nada;
+    o RLS das tabelas existe (`rls-policies.e2e-spec.ts` passa), então em produção a consulta
+    sem contexto voltaria vazia, não vazaria — o risco é bug silencioso, não vazamento.
+  - Sugestão: acrescentar os cinco modelos à lista, com o comentário do porquê, como os outros.
+    Os modelos fiscais já estão lá desde a N2.
+  - Como testar: escrever `this.prisma.financialEntry.findMany()` num arquivo e ver o teste
+    quebrar.
+  - Encontrado em: 14/10/2026 · Claude Code · fase N2 do plano fiscal.
+
+**Encontrada em 14/10/2026** — Claude Code (sessão 1 do plano fiscal), na fase N3
+
+- **A nota só sai em situações tributárias sem valor calculado.**
+  - Onde: `packages/shared/src/domain/nota-fiscal.ts`, `ICMS_SEM_VALOR_CALCULADO` e
+    `PIS_COFINS_SEM_VALOR_CALCULADO`; a montagem (`montarNota`) recusa o resto como falta.
+  - O que é: CST de ICMS 00, 10, 20, 51, 70, 90, CSOSN 101, 201–203 e PIS/COFINS 01, 02,
+    49, 99 pedem base de cálculo, alíquota e valor no item. O AutoConnect não calcula
+    tributo (regra 5 do plano fiscal), então essas notas não são montadas.
+  - Evidência: a referência "Emitir NF-e" da Focus lista os campos de valor por CST; o
+    perfil fiscal não tem alíquota nem redução de base.
+  - Impacto: loja do **regime normal** que tribute ICMS na saída do usado (base reduzida
+    do Convênio ICMS 15/81, por exemplo) **não emite pelo AutoConnect** — a prévia diz
+    isso e manda usar o emissor da loja. O Simples Nacional com CSOSN 102/103/500/900 e
+    PIS/COFINS 04–09 sai.
+  - Sugestão: com o contador da primeira loja do regime normal, decidir quais alíquotas e
+    reduções o perfil passa a guardar (por operação e UF), e só então ampliar as listas.
+    Não estimar alíquota no código.
+  - Como testar: perfil com CST 20 vira falta na prévia; depois da mudança, a mesma nota sai
+    com base reduzida conferida pelo contador.
+  - Encontrado em: 14/10/2026 · Claude Code · fase N3 do plano fiscal.
 
 **Lacunas frente ao mercado** — Claude Cowork, 27/09/2026, na pesquisa de preços
 ([plano de preços](https://claude.ai/code/artifact/daf7ac7d-5114-4621-9028-3759dbb07be8)).
