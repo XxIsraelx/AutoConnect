@@ -442,7 +442,7 @@ conserto do plano pendente de pagamento
 **Encontradas em 28/09/2026** — Claude Code (sessão 2), ao alimentar o financeiro da loja
 de demonstração
 
-- ~~**A geração do financeiro cria conta a receber para o carro dado na troca.**~~ — **resolvido em 14/10/2026**, nas duas pontas ([decisão](../decisoes/2026-10-14%20troca%20no%20financeiro.md), opção A do Israel): nem a forma de pagamento `trade_in` vira conta a receber, nem a aquisição de origem `trade_in` vira conta a pagar; `financeiro-troca.e2e-spec.ts`. Lançamentos de troca gerados antes ficam e, se previstos, a loja cancela à mão.
+- ~~**A geração do financeiro cria conta a receber para o carro dado na troca.**~~ — **resolvido em 14/10/2026**, nas duas pontas ([decisão](../decisoes/2026-10-14%20troca%20no%20financeiro.md), opção A do Israel): nem a forma de pagamento `trade_in` vira conta a receber, nem a aquisição de origem `trade_in` vira conta a pagar; `financeiro-troca.e2e-spec.ts`. Produção conferida em 14/10/2026 (só leitura): nenhum lançamento de troca gerado antes.
   - Onde: `apps/api/src/modules/financeiro/geracao.service.ts` (`aoFaturarNegocio`, que lê
     os `deal_payments` com `status in (pending, confirmed)` sem olhar o `kind`).
   - O que é: a forma de pagamento `trade_in` é o usado que o cliente entregou, não dinheiro.
@@ -788,6 +788,23 @@ consulta, conta da Clicksign, revisão jurídica, feature flag e região da API 
     A resposta honesta para o FAQ e o roteiro continua valendo, agora com mais: "o AutoConnect
     guarda os protocolos e avisa o que falta; o envio é pela sua integradora" — a landing não é da
     trilha R e o texto foi pedido no PR.
+- **⚠ A senha da equipe da loja de demonstração está no repositório público.**
+  - Onde: `packages/db/prisma/demo.ts:110` (`SENHA_DA_EQUIPE`), repositório
+    `XxIsraelx/AutoConnect` **público** no GitHub; os usuários da Aurora Seminovos em produção
+    são exatamente os do gerador (`demo.dono@example.com` como `tenant_admin`, `demo.gerente`,
+    três vendedores), todos ativos e todos já com login registrado.
+  - O que é: se a loja de produção foi criada pelo gerador (os e-mails batem), quem ler o código
+    pode entrar no painel dela como dono. Não foi testado — testar seria entrar numa conta.
+  - Impacto: hoje, mexer na vitrine `/c/demo` que a landing mostra a quem está avaliando o
+    produto, e ver os leads e agendamentos que visitantes deixaram nela (14 nos últimos 30 dias:
+    podem ser testes, podem ser pessoas reais com telefone). E **tornaria qualquer lead real
+    mandado para lá visível a estranhos** — foi por isso que a Aurora não serve para receber o
+    Raio-X, mesmo com a cortesia concedida em 14/10/2026.
+  - Sugestão: trocar a senha dos cinco usuários da Aurora em produção por uma que não esteja no
+    código (quem faz: o Israel, pela redefinição de senha, ou um comando sem senha em variável);
+    tirar a constante do `demo.ts` e ler de `DEMO_SENHA`, recusando rodar sem ela.
+  - Como testar: o `demo.ts` sem `DEMO_SENHA` aborta; `git grep "Demo@2026"` vazio.
+  - Encontrado por: Claude (sessão 2), 14/10/2026, ao pegar o id da Aurora para o Raio-X.
 - **`proposta-chat.e2e-spec.ts` falhou uma vez sob RLS, inteiro, e passou em seguida.**
   - Onde: `apps/api/test/proposta-chat.e2e-spec.ts`, na rodada da suíte de integração como
     `autoconnect_app` (o passo de RLS do CI), rodando local junto dos outros 34 arquivos.

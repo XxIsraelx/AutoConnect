@@ -48,9 +48,10 @@ DRE não muda, porque receita e CMV vêm do negócio faturado e do
 
 ## O que fica para trás
 
-Lançamentos de troca gerados **antes** desta decisão continuam no banco. Se
-houver algum previsto, a loja cancela à mão, com motivo — não há migração que
-os apague, porque mês fechado não muda.
+Lançamentos de troca gerados **antes** desta decisão continuariam no banco —
+e se houvesse algum previsto, a loja cancelaria à mão, com motivo (mês fechado
+não muda). **Conferido em produção em 14/10/2026, só leitura: nenhum** — zero
+contas a receber de `trade_in` e zero contas a pagar de aquisição por troca.
 
 ⚠ Como todo o financeiro, entra na revisão do contador.
 
