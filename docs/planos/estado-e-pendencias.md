@@ -404,7 +404,7 @@ conserto do plano pendente de pagamento
 
 **Encontradas em 27/09/2026** — Claude Code (sessão 2), nos logs do deploy da Onda C (`fd8c0b8`)
 
-- **Lembrete de agendamento com e-mail recusado é tentado de novo a cada hora.**
+- ~~**Lembrete de agendamento com e-mail recusado é tentado de novo a cada hora.**~~ — **resolvido em 14/10/2026** (branch `claude/s2-pendencias-antigas`: recusa de validação da Resend vira `EmailRecusado` e conta como tratada; erro passageiro tenta de novo; loja `isDemo` fora do cron; `lembrete-de-agendamento.e2e-spec.ts`).
   - Onde: `apps/api/src/modules/tasks/tasks.service.ts` (`enviarLembretes`, o `catch`) e os
     agendamentos da loja de demonstração (`packages/db/prisma/demo.ts`, e-mails `@example.com`).
   - O que é: quando o envio lança, `reminderSentAt` não é gravado, e o cron da hora seguinte
@@ -463,7 +463,15 @@ de demonstração
     financiamento), não dois.
   - Encontrado em: 28/09/2026 · Claude Code (sessão 2) · ao alimentar o financeiro da demo.
 
-- **O lançamento gerado pela venda escreve a forma de pagamento em inglês.**
+  - **Alerta da sessão 1 (14/10/2026), conferido no código:** a outra ponta da troca também
+    é gerada — `aoRegistrarAquisicao` cria "Compra do veículo" **a pagar** para a aquisição de
+    origem `trade_in`, e esse dinheiro também não sai (a loja paga o usado com desconto na
+    venda). Hoje as duas pontas se anulam no fluxo; tirar só a conta a receber deixaria o fluxo
+    prometendo uma saída de caixa no valor da troca. A correção tem de tratar as duas juntas —
+    ignorar as duas, ou lançá-las compensadas na mesma data —, e a escolha é do Israel. O DRE
+    não muda (o CMV vem do `vehicleCostSnapshot`), mas um e2e de saldo e fluxo antes e depois de
+    uma venda com troca deve acompanhar a correção.
+- ~~**O lançamento gerado pela venda escreve a forma de pagamento em inglês.**~~ — **resolvido em 14/10/2026** (`ROTULO_DA_FORMA_DE_PAGAMENTO` no shared, usado na descrição: "Venda do … — financiamento").
   - Onde: `apps/api/src/modules/financeiro/geracao.service.ts` (`aoFaturarNegocio`,
     a descrição é montada como "Venda do ${nomeDoCarro} — ${p.kind}").
   - O que é: o `kind` cru do enum vai para a descrição: "Venda do Nissan Kicks — financing",
@@ -603,7 +611,7 @@ validador da chave da NF-e
 
 **Encontrada em 14/10/2026** — Claude Code (sessão 1 do plano fiscal), na fase N1
 
-- **Os enums do financeiro não estão no teste de paridade com o Prisma.**
+- ~~**Os enums do financeiro não estão no teste de paridade com o Prisma.**~~ — **resolvido em 14/10/2026** (`packages/shared/src/domain/financeiro-paridade.spec.ts`, arquivo próprio).
   - Onde: `packages/shared/src/schemas/paridade-enums.spec.ts`; as constantes ficam em
     `packages/shared/src/domain/financeiro.ts:25–35` (`FINANCIAL_ACCOUNT_KINDS`,
     `FINANCIAL_DIRECTIONS`, `FINANCIAL_ENTRY_STATUSES`, `FINANCIAL_CATEGORY_GROUPS`).
@@ -620,7 +628,7 @@ validador da chave da NF-e
   - Encontrado em: 14/10/2026 · Claude Code · fase N1 do plano fiscal (o financeiro não é
     módulo das sessões fiscais).
 
-- **As tabelas do financeiro estão fora da varredura de isolamento.**
+- ~~**As tabelas do financeiro estão fora da varredura de isolamento.**~~ — **resolvido em 14/10/2026** (os cinco modelos `financial*`/`bankTransaction` em `MODELOS_DE_TENANT`; o código já passava).
   - Onde: `apps/api/src/common/prisma/isolamento.spec.ts`, lista `MODELOS_DE_TENANT` — não tem
     `financialAccount`, `financialCategory`, `financialEntry`, `financialPeriod` nem
     `bankTransaction`.
@@ -828,7 +836,7 @@ consulta, conta da Clicksign, revisão jurídica, feature flag e região da API 
   - Como testar: veículo com aquisição há mais dias que o prazo aparece como vencido; um dia antes,
     não.
   - Encontrado por: Claude (sessão 2), 14/10/2026, R1 do plano fiscal.
-- **Excluir um veículo apaga os registros RENAVE dele.**
+- ~~**Excluir um veículo apaga os registros RENAVE dele.**~~ — **resolvido em 14/10/2026** (`DELETE /vehicles/:id` responde 409 "arquive" com registro no RENAVE, e a FK passou a NO ACTION na migration `20261014203000_renave_veiculo_sem_cascata`).
   - Onde: `apps/api/src/modules/vehicles/vehicles.service.ts` (`remove`, `DELETE /vehicles/:id`) e a
     FK `renave_registros_vehicle_id_fkey` (`ON DELETE CASCADE`), migration
     `20261014200000_renave_registro_manual`.

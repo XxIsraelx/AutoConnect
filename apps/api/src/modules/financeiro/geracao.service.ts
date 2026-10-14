@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@autoconnect/db';
 import type { ScopedClient } from '../../common/prisma/prisma.service';
-import { CATEGORIAS_PADRAO, mesEstaFechado, type ChaveDeOrigem } from '@autoconnect/shared';
+import {
+  CATEGORIAS_PADRAO, ROTULO_DA_FORMA_DE_PAGAMENTO, mesEstaFechado, type ChaveDeOrigem,
+} from '@autoconnect/shared';
 
 /**
  * O dinheiro que nasce do que a loja já fez.
@@ -139,7 +141,7 @@ export class GeracaoFinanceiraService {
             status: 'previsto',
             value: p.value,
             dueDate: data,
-            description: `Venda do ${nomeDoCarro} — ${p.kind}${p.institution ? ` (${p.institution})` : ''}`,
+            description: `Venda do ${nomeDoCarro} — ${ROTULO_DA_FORMA_DE_PAGAMENTO[p.kind]}${p.institution ? ` (${p.institution})` : ''}`,
             notes: [
               p.status === 'confirmed'
                 ? 'Pagamento já confirmado no negócio: dê baixa escolhendo a conta que recebeu.'

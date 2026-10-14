@@ -45,6 +45,9 @@ const MODELOS_DE_TENANT = [
   'portalConnection', 'portalDelivery',
   // Push do vendedor: as chaves com que o aparelho de cada vendedor recebe o aviso.
   'pushSubscription',
+  // Financeiro: o caixa da loja. O código já usava `withTenant`; sem estar
+  // aqui, nada impedia o próximo acesso direto de passar.
+  'financialAccount', 'financialCategory', 'financialEntry', 'financialPeriod', 'bankTransaction',
   // RENAVE: protocolo, valor de compra e de venda, CPF do comprador no snapshot.
   'renaveRegistro',
   // Webhooks crus da integradora e a chave cifrada de cada loja nela.

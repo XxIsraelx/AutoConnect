@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import type { LeadInteractionKind } from '@autoconnect/shared';
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
-import { EmailService } from '../../common/email/email.service';
+import { EmailRecusado, EmailService } from '../../common/email/email.service';
 import { executarEmUmaReplica } from './execucao-unica';
 
 const TYPE_LABELS: Record<string, string> = {
@@ -64,6 +64,9 @@ export class TasksService {
         status: { in: ['scheduled', 'confirmed'] },
         reminderSentAt: null,
         scheduledStart: { gt: now, lte: in24h },
+        // A loja de demonstração tem clientes de `@example.com`: o lembrete
+        // seria recusado, e a vitrine de exemplo não tem quem lembrar.
+        tenant: { isDemo: false },
       },
       include: {
         customer: { select: { email: true, fullName: true } },
@@ -105,6 +108,18 @@ export class TasksService {
           data: { reminderSentAt: new Date() },
         });
       } catch (err) {
+        if (err instanceof EmailRecusado) {
+          // Endereço que o provedor recusa não passa a ser aceito na próxima
+          // hora. Marcar como tratado é o que impede 24 tentativas e 24 linhas
+          // de log escondendo a falha que importa.
+          this.logger.warn(`Lembrete do agendamento ${appt.id} não enviado, endereço recusado: ${err.message}`);
+          await this.privilegiado.appointment.update({
+            where: { id: appt.id },
+            data: { reminderSentAt: new Date() },
+          });
+          continue;
+        }
+        // Passageiro (rede, cota, 5xx): a hora seguinte tenta de novo.
         this.logger.warn(`Falha no lembrete do agendamento ${appt.id}: ${err}`);
       }
     }
