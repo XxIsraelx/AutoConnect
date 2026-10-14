@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.632 testes (1.135 na API, 497 no `shared`):
+são 1.644 testes (1.138 na API, 506 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -1019,6 +1019,9 @@ dividido entre duas sessões (N = NF-e, sessão 1; R = RENAVE, sessão 2):
   silêncio**: sem XML ou com hash divergente, vai nomeada no LEIA-ME. Período
   pela autorização, em horário de Brasília, fim exclusivo
   (`periodoEmBrasilia`). ZIP pelo `common/zip/zip.ts` (zlib, sem dependência).
+- **Conferência estoque × nota × RENAVE (Fase C):** `GET /fiscal/conferencia` e
+  `conferirOperacao` (shared). Divergência é **lista, não bloqueio**; só lê as
+  tabelas das outras trilhas (`renave_registros` inclusive).
 - **Documento na nota é `normalizarDocumento`**, nunca `replace(/\D/g, '')` — o
   CNPJ alfanumérico perderia as letras.
 - **Focus NFe (N3):** nenhum token de loja no banco — só o id da empresa
