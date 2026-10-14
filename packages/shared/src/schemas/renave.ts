@@ -110,3 +110,11 @@ export type EnviarRenaveInput = z.infer<typeof enviarRenaveSchema>;
 export const simularRenaveSchema = z.object({
   acao: z.enum(['confirmar', 'recusar']),
 }).strict();
+
+/**
+ * A chave de API da loja na integradora. Vai para o cofre, cifrada, e não volta
+ * por rota nenhuma (decisão de 14/10/2026).
+ */
+export const credencialDaIntegradoraSchema = z.object({
+  chave: z.string().trim().min(8, 'A chave parece incompleta').max(500),
+}).strict();

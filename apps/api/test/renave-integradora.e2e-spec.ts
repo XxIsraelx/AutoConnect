@@ -37,6 +37,7 @@ describe('RENAVE — integradora simulada (e2e)', () => {
   let simulado: ProvedorRenaveSimulado;
   let f: DoisTenants;
   let comoGerente: string;
+  let comoDono: string;
   let comoOutraLoja: string;
   let veiculo: string;
   let entradaId: string;
@@ -66,12 +67,14 @@ describe('RENAVE — integradora simulada (e2e)', () => {
     await dono.vehicle.update({ where: { id: veiculo }, data: { licensePlate: 'RNV2A26', mileageKm: 41000 } });
 
     comoGerente = jwt.sign({ sub: f.a.usuarioId, role: 'manager', tenantId: f.a.id });
+    comoDono = jwt.sign({ sub: f.a.usuarioId, role: 'tenant_admin', tenantId: f.a.id });
     comoOutraLoja = jwt.sign({ sub: f.b.usuarioId, role: 'tenant_admin', tenantId: f.b.id });
   }, 90_000);
 
   afterAll(async () => {
     const lojas = { in: [f.a.id, f.b.id] };
     await dono.renaveRegistro.deleteMany({ where: { tenantId: lojas } });
+    await dono.credencialDeIntegracao.deleteMany({ where: { tenantId: lojas } });
     await dono.dealBuyer.deleteMany({ where: { tenantId: lojas } });
     await dono.deal.deleteMany({ where: { tenantId: lojas } });
     await dono.vehicleAcquisition.deleteMany({ where: { tenantId: lojas } });
@@ -82,7 +85,72 @@ describe('RENAVE — integradora simulada (e2e)', () => {
   it('a fábrica montou o simulado, e o cartão diz isso', async () => {
     expect(simulado).toBeInstanceOf(ProvedorRenaveSimulado);
     const res = await get(`/veiculos/${veiculo}`);
-    expect(res.body.integradora).toEqual({ disponivel: true, provedor: 'simulado', sandbox: true, simulado: true });
+    expect(res.body.integradora).toEqual({
+      disponivel: true, provedor: 'simulado', sandbox: true, simulado: true,
+      exigeCredencialDaLoja: true, credencialCadastrada: false,
+    });
+  });
+
+  describe('chave da loja na integradora (cofre)', () => {
+    const CHAVE = 'sim_chave_da_loja_a_9f3c';
+    const OUTRA = 'sim_chave_nova_da_loja_a_77aa';
+
+    it('sem chave cadastrada, o envio é 422 e diz onde cadastrar', async () => {
+      await dono.tenant.update({ where: { id: f.a.id }, data: { taxId: '11222333000181' } });
+      const res = await post('/envios', { vehicleId: veiculo, tipo: 'entrada_compra', crv: crv() });
+      expect(res.status).toBe(422);
+      expect(res.body.message).toMatch(/Configurações › Integrações/);
+      await dono.tenant.update({ where: { id: f.a.id }, data: { taxId: null } });
+    });
+
+    it('o gerente não cadastra — a chave gasta o dinheiro da loja', async () => {
+      const res = await post('/credencial', { chave: CHAVE });
+      expect(res.status).toBe(403);
+    });
+
+    it('chave que a integradora não aceita não entra no cofre', async () => {
+      const res = await post('/credencial', { chave: 'chave_de_outro_lugar' }, comoDono);
+      expect(res.status).toBe(422);
+      expect(await dono.credencialDeIntegracao.count({ where: { tenantId: f.a.id } })).toBe(0);
+    });
+
+    it('o dono cadastra; a resposta e o banco nunca têm a chave em texto', async () => {
+      const res = await post('/credencial', { chave: CHAVE }, comoDono);
+      expect(res.status).toBe(201);
+      expect(res.body.credencial.ultimos4).toBe('9f3c');
+      expect(JSON.stringify(res.body)).not.toContain(CHAVE);
+
+      const lida = await get('/credencial');
+      expect(lida.body.credencial.ultimos4).toBe('9f3c');
+      expect(JSON.stringify(lida.body)).not.toContain(CHAVE);
+
+      const linhas = await dono.$queryRawUnsafe<{ t: string }[]>(
+        "SELECT row_to_json(c)::text AS t FROM credenciais_de_integracao c WHERE tenant_id = $1::uuid", f.a.id,
+      );
+      expect(linhas).toHaveLength(1);
+      expect(linhas[0]!.t).not.toContain(CHAVE);
+      expect(linhas[0]!.t).not.toContain(Buffer.from(CHAVE).toString('hex'));
+    });
+
+    it('trocar aposenta a anterior sem guardar a cifra dela; revogar faz o mesmo', async () => {
+      expect((await post('/credencial', { chave: OUTRA }, comoDono)).status).toBe(201);
+      const todas = await dono.credencialDeIntegracao.findMany({ where: { tenantId: f.a.id }, orderBy: { cadastradaEm: 'asc' } });
+      expect(todas).toHaveLength(2);
+      expect(todas[0]).toMatchObject({ cifra: null, vetor: null, etiqueta: null });
+      expect(todas[0]!.substituidaEm).not.toBeNull();
+
+      expect((await post('/credencial/revogar', {}, comoDono)).status).toBe(201);
+      expect((await get('/credencial')).body.credencial).toBeNull();
+      expect((await post('/credencial/revogar', {}, comoDono)).status).toBe(404);
+
+      // De volta, para o resto do arquivo.
+      expect((await post('/credencial', { chave: CHAVE }, comoDono)).status).toBe(201);
+    });
+
+    it('a outra loja não vê a chave da A', async () => {
+      const res = await get('/credencial', comoOutraLoja);
+      expect(res.body.credencial).toBeNull();
+    });
   });
 
   describe('entrada', () => {

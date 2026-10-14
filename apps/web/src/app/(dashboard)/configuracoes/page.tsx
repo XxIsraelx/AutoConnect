@@ -16,6 +16,7 @@ import {
 import { AjustesDeCrm } from './AjustesDeCrm';
 import ExportarDados from './ExportarDados';
 import Filiais from './Filiais';
+import CredencialDaIntegradora from '@/components/renave/CredencialDaIntegradora';
 import AvisoDeEnvioDeFotos from '@/components/AvisoDeEnvioDeFotos';
 import { CATALOGO_DE_PLANOS, mascararTelefoneBr } from '@autoconnect/shared';
 
@@ -817,6 +818,8 @@ export default function ConfiguracoesPage() {
             </Link>
           </div>
         </Section>
+
+        <CredencialDaIntegradora />
 
         {/* ── Portabilidade ──────────────────────────────────────
             Fica em Configurações, e não em Relatórios, porque "levar meus

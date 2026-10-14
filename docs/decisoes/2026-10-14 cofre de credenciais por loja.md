@@ -1,13 +1,13 @@
 ---
 tipo: decisao
 data: 2026-10-14
-estado: proposta
+estado: aceita
 ---
 
 # Cofre de credenciais por loja: a chave da integradora RENAVE
 
-> **Proposta, aguardando o Israel.** Nada disto foi programado. Aprovada, vira a
-> primeira tarefa da R3, antes do adaptador.
+> **Aprovada pelo Israel em 14/10/2026.** É a primeira tarefa da R3, antes do
+> adaptador.
 
 ## Contexto
 
@@ -36,7 +36,8 @@ uma loja é deixar alguém registrar a venda de um carro que não foi vendido.
    dependência nova). Cada credencial tem o seu vetor aleatório, e o `tenant_id`
    e o fornecedor entram como dado autenticado: a cifra copiada para a linha de
    outra loja **não abre**.
-2. **A chave-mestra fica no Railway** (`COFRE_CHAVE_MESTRA`, 32 bytes) e numa
+2. **A chave-mestra fica no Railway** (`COFRE_CHAVES_MESTRAS`, 32 bytes em
+   base64 por versão, no formato `1:<base64>`; na troca, `1:<antiga>,2:<nova>`) e numa
    cópia de segurança fora dele, no gerenciador de senhas do Israel. Perdê-la
    não é catástrofe — cada loja cola a sua chave de novo —, mas é trabalho para
    todas as lojas de uma vez.
@@ -101,4 +102,13 @@ chave-mestra no Railway, quem leva só um dos dois não leva nada.
 
 ## Onde está no código
 
-Nada ainda — proposta.
+- `apps/api/src/common/cofre/` — `cifra.ts` (AES-256-GCM e leitura das chaves),
+  `cofre.service.ts` (guardar, situação, abrir, revogar) e o comando
+  `scripts/recifrar-cofre.ts`.
+- Migration `20261014202000_cofre_de_credenciais` — `credenciais_de_integracao`,
+  com RLS por loja e CHECK de que linha inativa não guarda cifra.
+- `apps/api/src/modules/renave/` — a chave da loja entra em cada chamada ao
+  provedor; `POST /renave/credencial` (só `tenant_admin`) e
+  `POST /renave/credencial/revogar`.
+- `apps/web/src/components/renave/CredencialDaIntegradora.tsx`, em
+  `/configuracoes`.

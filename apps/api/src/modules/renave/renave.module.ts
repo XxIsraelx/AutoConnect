@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrivilegedPrismaModule } from '../../common/prisma/privileged-prisma.module';
+import { CofreModule } from '../../common/cofre/cofre.module';
 import { RenaveController, WebhookRenaveController } from './renave.controller';
 import { RenaveService } from './renave.service';
 import { RenaveIntegracaoService } from './renave-integracao.service';
@@ -16,7 +17,8 @@ import { PROVEDOR_DE_RENAVE, provedorDeRenaveConfigurado } from './provedor';
  * contexto — uma leitura, por chave única.
  */
 @Module({
-  imports: [PrivilegedPrismaModule],
+  // Cofre: a chave de API de cada loja na integradora, cifrada.
+  imports: [PrivilegedPrismaModule, CofreModule],
   controllers: [RenaveController, WebhookRenaveController],
   providers: [
     RenaveService,

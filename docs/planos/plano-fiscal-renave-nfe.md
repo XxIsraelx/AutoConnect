@@ -253,6 +253,21 @@ do envio e, se faltar, responder 422 apontando para "Quem entregou o veículo" �
 dois cadastros do mesmo vendedor é a história que não bate. O RENAVAM pode vir
 pré-preenchido de `vehicle_fiscal_details` (N1), mesma lógica.
 
+**Cofre de credenciais entregue (14/10/2026)** — a primeira tarefa da R3,
+aprovada pelo Israel ([decisão](../decisoes/2026-10-14%20cofre%20de%20credenciais%20por%20loja.md)):
+- `common/cofre/`: AES-256-GCM com dado autenticado (loja + fornecedor + versão),
+  chave-mestra em `COFRE_CHAVES_MESTRAS` com versão, e o comando
+  `scripts/recifrar-cofre.ts` para trocá-la.
+- `credenciais_de_integracao` com RLS, uma ativa por loja e fornecedor, e CHECK
+  de que linha substituída ou revogada não guarda cifra.
+- `ProvedorDeRenave` ganhou `exigeCredencialDaLoja` e `verificarCredencial`, e
+  cada chamada leva a chave da loja. O simulado exige chave, para a suíte passar
+  pelo cofre em todo envio. Chave recusada pela integradora vira 422 que aponta
+  para Configurações.
+- `POST /renave/credencial` (só `tenant_admin`), `/revogar`, e a seção
+  "Integradora RENAVE" em `/configuracoes`, que some enquanto nenhuma
+  integradora exigir chave — o estado da produção hoje.
+
 **Perguntas para mandar às integradoras** (as mesmas para todas): documentação
 completa com o corpo de criação da requisição de entrada e de saída; quando
 saem a consulta de requisição e o webhook; se há conta de parceiro para

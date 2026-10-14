@@ -57,6 +57,7 @@ import {
   chaveNfeRenaveSchema,
   enviarRenaveSchema,
   simularRenaveSchema,
+  credencialDaIntegradoraSchema,
 } from '@autoconnect/shared';
 import { acceptInviteSchema } from '../modules/invitations/invitations.controller';
 import { anularSchema, assinarSchema } from '../modules/contracts/contracts.controller';
@@ -248,6 +249,8 @@ const ROTAS: Record<string, Declaracao> = {
   'POST /renave/envios': { schema: enviarRenaveSchema },
   'POST /renave/registros/:p/atualizar': { semCorpo: true },
   'POST /renave/registros/:p/simular': { schema: simularRenaveSchema },
+  'POST /renave/credencial': { schema: credencialDaIntegradoraSchema },
+  'POST /renave/credencial/revogar': { semCorpo: true },
 
   'POST /public/conversations/:p/messages': { schema: mensagemDeVisitanteSchema },
   'PATCH /conversations/:p/close': { semCorpo: true },

@@ -1,5 +1,6 @@
 import {
-  BadGatewayException, ConflictException, Inject, Injectable, Logger, NotFoundException,
+  BadGatewayException, ConflictException, ForbiddenException, HttpException, Inject, Injectable, Logger,
+  NotFoundException,
   ServiceUnavailableException, UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -7,6 +8,7 @@ import { Prisma } from '@autoconnect/db';
 import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.service';
 import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.service';
 import { DocumentosStorage } from '../../common/armazenamento/documentos.storage';
+import { CofreService } from '../../common/cofre/cofre.service';
 import type { Escopo } from '../../common/escopo';
 import {
   ehEntrada, normalizarCnpj, statusDepoisDoEvento, tipoDoDocumento,
@@ -61,6 +63,7 @@ export class RenaveIntegracaoService {
     private readonly storage: DocumentosStorage,
     private readonly config: ConfigService,
     private readonly renave: RenaveService,
+    private readonly cofre: CofreService,
     @Inject(PROVEDOR_DE_RENAVE) private readonly provedor: ProvedorDeRenave,
   ) {}
 
@@ -76,6 +79,7 @@ export class RenaveIntegracaoService {
       provedor: this.provedor.disponivel ? this.provedor.nome : null,
       sandbox: Boolean(this.provedor.sandbox),
       simulado: this.simulado,
+      exigeCredencialDaLoja: this.provedor.disponivel && this.provedor.exigeCredencialDaLoja,
     };
   }
 
@@ -89,6 +93,93 @@ export class RenaveIntegracaoService {
     }
   }
 
+  /* ── Chave da loja na integradora ──────────────────────── */
+
+  /**
+   * A chave da loja, aberta do cofre dentro da transação de quem chama. Sem
+   * ela, 422 apontando onde cadastrar — nunca uma chamada à integradora que
+   * ela recusaria com 401.
+   */
+  private async abrirCredencial(tx: ScopedClient, tenantId: string): Promise<string | null> {
+    if (!this.provedor.exigeCredencialDaLoja) return null;
+    const chave = await this.cofre.abrir(tx, tenantId, this.provedor.nome);
+    if (!chave) {
+      throw new UnprocessableEntityException(
+        'Cadastre a chave da sua integradora em Configurações › Integrações: é com ela que o envio ' +
+          'sai em nome da loja (e é a loja que paga cada registro).',
+      );
+    }
+    return chave;
+  }
+
+  /** O que a tela mostra: os 4 últimos caracteres, quando e por quem — nunca a chave. */
+  async credencial(escopo: Escopo) {
+    const tenantId = this.renave.tenantDe(escopo);
+    if (!this.provedor.disponivel || !this.provedor.exigeCredencialDaLoja) {
+      return { exigida: false, credencial: null };
+    }
+    const credencial = await this.prisma.withTenant(tenantId, (tx: ScopedClient) =>
+      this.cofre.situacao(tx, tenantId, this.provedor.nome));
+    return { exigida: true, fornecedor: this.provedor.nome, cofre: this.cofre.disponivel, credencial };
+  }
+
+  /**
+   * Só o dono da loja cadastra: a chave gasta o dinheiro dela. Conferida na
+   * integradora antes de gravar — chave errada não entra no cofre.
+   */
+  async guardarCredencial(escopo: Escopo, chave: string, autor: { id: string; role: string }) {
+    if (autor.role !== 'tenant_admin' && autor.role !== 'super_admin') {
+      throw new ForbiddenException('Só o administrador da loja cadastra a chave da integradora.');
+    }
+    const tenantId = this.renave.tenantDe(escopo);
+    this.exigirProvedor();
+    if (!this.provedor.exigeCredencialDaLoja) {
+      throw new ConflictException('Esta integradora usa a conta da plataforma: não há chave da loja para cadastrar.');
+    }
+    if (!this.cofre.disponivel) {
+      // Checar antes evita conferir a chave na integradora para depois não ter onde guardá-la.
+      throw new ServiceUnavailableException(
+        'O cofre de credenciais não está configurado nesta instalação (COFRE_CHAVES_MESTRAS).',
+      );
+    }
+
+    let valida: boolean;
+    try {
+      valida = await this.provedor.verificarCredencial(chave);
+    } catch {
+      throw new BadGatewayException('A integradora não respondeu à conferência da chave. Tente de novo.');
+    }
+    if (!valida) {
+      throw new UnprocessableEntityException('A integradora não aceitou esta chave. Confira se copiou a chave inteira.');
+    }
+
+    const credencial = await this.prisma.withTenant(tenantId, (tx: ScopedClient) =>
+      this.cofre.guardar(tx, tenantId, this.provedor.nome, chave, autor.id));
+    return { exigida: true, fornecedor: this.provedor.nome, cofre: true, credencial };
+  }
+
+  async revogarCredencial(escopo: Escopo, autor: { id: string; role: string }) {
+    if (autor.role !== 'tenant_admin' && autor.role !== 'super_admin') {
+      throw new ForbiddenException('Só o administrador da loja revoga a chave da integradora.');
+    }
+    const tenantId = this.renave.tenantDe(escopo);
+    const revogada = await this.prisma.withTenant(tenantId, (tx: ScopedClient) =>
+      this.cofre.revogar(tx, tenantId, this.provedor.nome, autor.id));
+    if (!revogada) throw new NotFoundException('Não há chave cadastrada para revogar.');
+    return { exigida: this.provedor.exigeCredencialDaLoja, fornecedor: this.provedor.nome, cofre: this.cofre.disponivel, credencial: null };
+  }
+
+  /** Erro da integradora, traduzido: chave recusada é problema da loja, não da rede. */
+  private chaveRecusada(e: unknown): boolean {
+    return e instanceof HttpException && e.getStatus() === 401;
+  }
+
+  private recusaDeChave(): UnprocessableEntityException {
+    return new UnprocessableEntityException(
+      'A integradora recusou a chave da loja. O administrador pode cadastrar de novo em Configurações › Integrações.',
+    );
+  }
+
   /* ── Envio ──────────────────────────────────────────────── */
 
   async enviar(escopo: Escopo, dados: EnviarRenaveInput, autor: { id: string }) {
@@ -96,13 +187,14 @@ export class RenaveIntegracaoService {
     this.exigirProvedor();
 
     // ── 1. Reservar ──────────────────────────────────────────
-    const { linha, cnpj } = await this.prisma.withTenant(tenantId, async (tx: ScopedClient) => {
+    const { linha, cnpj, credencial } = await this.prisma.withTenant(tenantId, async (tx: ScopedClient) => {
       const tenant = await tx.tenant.findUnique({ where: { id: tenantId }, select: { taxId: true } });
       if (!tenant?.taxId) {
         throw new UnprocessableEntityException(
           'Cadastre o CNPJ da loja em Configurações: é por ele que a integradora identifica o estabelecimento.',
         );
       }
+      const credencial = await this.abrirCredencial(tx, tenantId);
 
       // Envio que ficou no meio do caminho (a integradora não respondeu): o
       // mesmo pedido, com a mesma chave. Não é registro novo.
@@ -113,7 +205,7 @@ export class RenaveIntegracaoService {
         },
         select: SELECAO_DO_REGISTRO,
       });
-      if (retomavel) return { linha: retomavel, cnpj: tenant.taxId };
+      if (retomavel) return { linha: retomavel, cnpj: tenant.taxId, credencial };
 
       const p = await this.renave.prepararRegistro(tx, tenantId, dados);
       if (!p.veiculo.placa) {
@@ -173,7 +265,7 @@ export class RenaveIntegracaoService {
           },
           select: SELECAO_DO_REGISTRO,
         });
-        return { linha: criada, cnpj: tenant.taxId };
+        return { linha: criada, cnpj: tenant.taxId, credencial };
       } catch (e) {
         throw traduzirUnicidade(e);
       }
@@ -182,8 +274,9 @@ export class RenaveIntegracaoService {
     // ── 2. Enviar ────────────────────────────────────────────
     let resposta: RespostaDoRenave;
     try {
-      resposta = await this.chamar(linha, dados, cnpj);
+      resposta = await this.chamar(linha, dados, cnpj, credencial);
     } catch (e) {
+      if (this.chaveRecusada(e)) throw this.recusaDeChave();
       this.logger.warn(`Envio RENAVE ${linha.id} sem resposta da integradora: ${(e as Error).message}`);
       throw new BadGatewayException(
         'A integradora não respondeu. O envio ficou guardado como pendente: envie de novo ' +
@@ -196,7 +289,9 @@ export class RenaveIntegracaoService {
   }
 
   /** O pedido à integradora, montado da linha reservada — é o que torna o reenvio igual. */
-  private chamar(linha: LinhaDoRegistro, dados: EnviarRenaveInput, cnpj: string): Promise<RespostaDoRenave> {
+  private chamar(
+    linha: LinhaDoRegistro, dados: EnviarRenaveInput, cnpj: string, credencial: string | null,
+  ): Promise<RespostaDoRenave> {
     const snap = linha.snapshot as {
       veiculo?: { placa?: string | null; chassi?: string | null };
       vendedor?: { documento?: string | null };
@@ -227,7 +322,7 @@ export class RenaveIntegracaoService {
         quilometragem: snap.hodometro?.km ?? 0,
         medidoEm: new Date(snap.hodometro?.medidoEm ?? linha.dataOperacao),
         proprietario: documento && tipoDoc ? { tipoDocumento: tipoDoc, documento } : null,
-      });
+      }, credencial);
     }
 
     const c = snap.comprador ?? null;
@@ -235,7 +330,7 @@ export class RenaveIntegracaoService {
       ...base,
       tipo: linha.tipo as PedidoDeSaidaRenave['tipo'],
       comprador: c ? { tipoDocumento: 'CPF', documento: c.cpf, nome: c.nome, email: c.email } : null,
-    });
+    }, credencial);
   }
 
   /**
@@ -323,6 +418,25 @@ export class RenaveIntegracaoService {
     return this.renave.serializar(r);
   }
 
+  /** O registro e a chave da loja, numa transação só — a ~0,6 s do banco, cada ida conta. */
+  private async lerComCredencial(tenantId: string, id: string): Promise<{ r: LinhaDoRegistro; credencial: string | null }> {
+    return this.prisma.withTenant(tenantId, async (tx: ScopedClient) => {
+      const r = await tx.renaveRegistro.findFirst({ where: { id, tenantId }, select: SELECAO_DO_REGISTRO });
+      if (!r) throw new NotFoundException('Registro RENAVE não encontrado.');
+      return { r, credencial: r.provider ? await this.abrirCredencial(tx, tenantId) : null };
+    });
+  }
+
+  /** Chama a integradora traduzindo a chave recusada em 422. */
+  private async naIntegradora<T>(chamada: () => Promise<T>): Promise<T> {
+    try {
+      return await chamada();
+    } catch (e) {
+      if (this.chaveRecusada(e)) throw this.recusaDeChave();
+      throw e;
+    }
+  }
+
   private async exigirDaIntegradora(tenantId: string, id: string): Promise<LinhaDoRegistro> {
     const r = await this.prisma.withTenant(tenantId, (tx: ScopedClient) =>
       tx.renaveRegistro.findFirst({ where: { id, tenantId }, select: SELECAO_DO_REGISTRO }));
@@ -341,7 +455,9 @@ export class RenaveIntegracaoService {
       throw new ConflictException('O envio não chegou à integradora. Envie de novo.');
     }
     this.exigirProvedor();
-    return this.aplicarResposta(tenantId, id, await this.provedor.consultar(r.externalId));
+    const { credencial } = await this.lerComCredencial(tenantId, id);
+    const externo = r.externalId;
+    return this.aplicarResposta(tenantId, id, await this.naIntegradora(() => this.provedor.consultar(externo, credencial)));
   }
 
   /**
@@ -355,7 +471,9 @@ export class RenaveIntegracaoService {
     if (!r.provider || !r.externalId) return this.renave.cancelar(escopo, id, dados, true);
 
     this.exigirProvedor();
-    const resposta = await this.provedor.cancelar(r.externalId, dados.motivo);
+    const { credencial } = await this.lerComCredencial(tenantId, id);
+    const externo = r.externalId;
+    const resposta = await this.naIntegradora(() => this.provedor.cancelar(externo, dados.motivo, credencial));
     if (resposta.status !== 'cancelado') {
       // Assíncrono na integradora: o cancelamento chega pelo webhook ou pela
       // consulta, com o mesmo caminho de qualquer outro evento.
@@ -375,7 +493,9 @@ export class RenaveIntegracaoService {
         throw new ConflictException('A NF-e vai à integradora depois que o registro é confirmado.');
       }
       this.exigirProvedor();
-      await this.provedor.informarNotaFiscal(r.externalId, chaveNfe);
+      const { credencial } = await this.lerComCredencial(tenantId, id);
+      const externo = r.externalId;
+      await this.naIntegradora(() => this.provedor.informarNotaFiscal(externo, chaveNfe, credencial));
     }
     return this.renave.informarNfe(escopo, id, chaveNfe, true);
   }
@@ -388,9 +508,9 @@ export class RenaveIntegracaoService {
    */
   private async guardarAtpv(tenantId: string, id: string): Promise<void> {
     try {
-      const r = await this.exigirDaIntegradora(tenantId, id);
+      const { r, credencial } = await this.lerComCredencial(tenantId, id);
       if (!r.externalId || r.atpvKey) return;
-      const pdf = await this.provedor.baixarAtpv(r.externalId);
+      const pdf = await this.provedor.baixarAtpv(r.externalId, credencial);
       if (!pdf) return;
       const guardado = await this.storage.guardar(tenantId, `renave/${id}/atpv.pdf`, Buffer.from(pdf));
       if (!guardado) return;
@@ -412,7 +532,9 @@ export class RenaveIntegracaoService {
     }
     if (!r.externalId) throw new NotFoundException('Este registro não tem ATPV-e.');
     this.exigirProvedor();
-    const pdf = await this.provedor.baixarAtpv(r.externalId);
+    const { credencial } = await this.lerComCredencial(tenantId, id);
+    const externo = r.externalId;
+    const pdf = await this.naIntegradora(() => this.provedor.baixarAtpv(externo, credencial));
     if (!pdf) throw new NotFoundException('O ATPV-e ainda não está disponível na integradora.');
     return Buffer.from(pdf);
   }

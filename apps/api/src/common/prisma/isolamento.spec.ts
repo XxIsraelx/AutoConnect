@@ -47,6 +47,8 @@ const MODELOS_DE_TENANT = [
   'pushSubscription',
   // RENAVE: protocolo, valor de compra e de venda, CPF do comprador no snapshot.
   'renaveRegistro',
+  // Webhooks crus da integradora e a chave cifrada de cada loja nela.
+  'renaveEvento', 'credencialDeIntegracao',
 ];
 
 /**

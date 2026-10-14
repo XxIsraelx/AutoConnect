@@ -14,6 +14,11 @@ import { CABECALHO_HMAC, cabecalhoHmac, hmacConfere, sha256Hex } from '../contra
  */
 export const CODIGO_RECUSADO_NO_SIMULADO = '00000000000';
 
+/** A chave de API que a integradora simulada aceita: `sim_` e ao menos 12 caracteres. */
+export function chaveSimuladaValida(credencial: string | null | undefined): boolean {
+  return typeof credencial === 'string' && credencial.startsWith('sim_') && credencial.length >= 12;
+}
+
 /**
  * Formato do webhook simulado. Não é o de integradora nenhuma — nada fora deste
  * arquivo o conhece, e o adaptador real (R3) traduz o dele.
@@ -64,12 +69,29 @@ export class ProvedorRenaveSimulado implements ProvedorDeRenave {
   readonly nome = 'simulado';
   readonly disponivel = true;
   readonly sandbox = true;
+  /**
+   * Exige, como a integradora real que a loja paga: é o que faz a suíte passar
+   * pelo cofre em todo envio, em vez de testar um caminho que a produção não usa.
+   */
+  readonly exigeCredencialDaLoja = true;
 
   private readonly operacoes = new Map<string, OperacaoEmMemoria>();
   private readonly porChave = new Map<string, string>();
   private eventos = 0;
 
   constructor(private readonly segredo: string) {}
+
+  /** Aceita chave que começa com `sim_` e tem ao menos 12 caracteres. */
+  verificarCredencial(credencial: string): Promise<boolean> {
+    return Promise.resolve(chaveSimuladaValida(credencial));
+  }
+
+  /** A integradora recusa a chamada sem chave válida — 401, como uma real. */
+  private exigirChave(credencial: string | null): void {
+    if (!chaveSimuladaValida(credencial)) {
+      throw new UnauthorizedException('Chave da integradora recusada (simulação).');
+    }
+  }
 
   private registrar(chave: string, codigo: string, saida: boolean): Promise<RespostaDoRenave> {
     const existente = this.porChave.get(chave);
@@ -99,16 +121,19 @@ export class ProvedorRenaveSimulado implements ProvedorDeRenave {
     return op;
   }
 
-  registrarEntrada(p: PedidoDeEntradaRenave): Promise<RespostaDoRenave> {
+  registrarEntrada(p: PedidoDeEntradaRenave, credencial: string | null): Promise<RespostaDoRenave> {
+    try { this.exigirChave(credencial); } catch (e) { return Promise.reject(e); }
     return this.registrar(p.chaveDeIdempotencia, p.veiculo.codigoSegurancaCrv, false);
   }
 
-  registrarSaida(p: PedidoDeSaidaRenave): Promise<RespostaDoRenave> {
+  registrarSaida(p: PedidoDeSaidaRenave, credencial: string | null): Promise<RespostaDoRenave> {
+    try { this.exigirChave(credencial); } catch (e) { return Promise.reject(e); }
     return this.registrar(p.chaveDeIdempotencia, p.veiculo.codigoSegurancaCrv, true);
   }
 
-  cancelar(idExterno: string): Promise<RespostaDoRenave> {
+  cancelar(idExterno: string, _motivo: string, credencial: string | null): Promise<RespostaDoRenave> {
     try {
+      this.exigirChave(credencial);
       const op = this.exigir(idExterno);
       op.status = 'cancelado';
       return Promise.resolve(this.resposta(op));
@@ -117,8 +142,9 @@ export class ProvedorRenaveSimulado implements ProvedorDeRenave {
     }
   }
 
-  consultar(idExterno: string): Promise<RespostaDoRenave> {
+  consultar(idExterno: string, credencial: string | null): Promise<RespostaDoRenave> {
     try {
+      this.exigirChave(credencial);
       return Promise.resolve(this.resposta(this.exigir(idExterno)));
     } catch (e) {
       return Promise.reject(e);
@@ -126,8 +152,9 @@ export class ProvedorRenaveSimulado implements ProvedorDeRenave {
   }
 
   /** O manual só aceita a NF-e de operação que existe e não foi cancelada. */
-  informarNotaFiscal(idExterno: string, chaveNfe: string): Promise<void> {
+  informarNotaFiscal(idExterno: string, chaveNfe: string, credencial: string | null): Promise<void> {
     try {
+      this.exigirChave(credencial);
       const op = this.exigir(idExterno);
       if (op.status === 'cancelado' || op.status === 'recusado') {
         throw new ConflictException(`Operação simulada está ${op.status}: não recebe NF-e.`);
@@ -140,7 +167,10 @@ export class ProvedorRenaveSimulado implements ProvedorDeRenave {
   }
 
   /** Um "PDF" mínimo, marcado como simulado — só existe para a saída confirmada. */
-  baixarAtpv(idExterno: string): Promise<Uint8Array | null> {
+  baixarAtpv(idExterno: string, credencial: string | null): Promise<Uint8Array | null> {
+    if (!chaveSimuladaValida(credencial)) {
+      return Promise.reject(new UnauthorizedException('Chave da integradora recusada (simulação).'));
+    }
     const op = this.operacoes.get(idExterno);
     if (!op || !op.saida || op.status !== 'confirmado') return Promise.resolve(null);
     return Promise.resolve(Buffer.from(
