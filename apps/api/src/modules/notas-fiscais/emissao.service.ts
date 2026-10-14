@@ -497,15 +497,7 @@ export class EmissaoDeNotaService {
       throw new ConflictException('A nota ainda não foi autorizada: não há XML nem DANFE.');
     }
 
-    const chave = tipo === 'xml' ? nota.xmlKey : nota.danfeKey;
-    let conteudo = chave ? await this.storage.baixar(chave) : null;
-    if (!conteudo) {
-      this.exigirEmissor();
-      conteudo = Buffer.from(
-        tipo === 'xml' ? await this.provedor.baixarXml(notaId) : await this.provedor.baixarDanfe(notaId),
-      );
-    }
-
+    const conteudo = await this.conteudoConferido(nota, tipo);
     if (tipo === 'xml' && nota.xmlSha256 && sha256(conteudo) !== nota.xmlSha256) {
       this.logger.error(`XML da nota ${notaId} não confere com o hash da autorização.`);
       throw new ConflictException(
@@ -518,6 +510,42 @@ export class EmissaoDeNotaService {
       nome: `nfe-${nota.chave ?? notaId}${tipo === 'xml' ? '.xml' : '-danfe.pdf'}`,
       tipo: tipo === 'xml' ? 'application/xml' : 'application/pdf',
     };
+  }
+
+  /** Do bucket quando arquivado; do emissor quando não. */
+  private async conteudoConferido(
+    nota: { id: string; xmlKey: string | null; danfeKey: string | null },
+    tipo: 'xml' | 'danfe',
+  ): Promise<Buffer> {
+    const chave = tipo === 'xml' ? nota.xmlKey : nota.danfeKey;
+    const doBucket = chave ? await this.storage.baixar(chave) : null;
+    if (doBucket) return doBucket;
+    this.exigirEmissor();
+    return Buffer.from(
+      tipo === 'xml' ? await this.provedor.baixarXml(nota.id) : await this.provedor.baixarDanfe(nota.id),
+    );
+  }
+
+  /**
+   * O XML de uma nota para o pacote do contador — nunca lança.
+   *
+   * Uma nota sem XML (emissor fora, bucket vazio) ou com hash divergente não
+   * pode derrubar o pacote do mês inteiro: ela vai para o LEIA-ME com o motivo,
+   * e as outras seguem.
+   */
+  async xmlParaPacote(nota: {
+    id: string; xmlKey: string | null; danfeKey: string | null; xmlSha256: string | null;
+  }): Promise<{ xml: Buffer } | { falha: string }> {
+    try {
+      const xml = await this.conteudoConferido(nota, 'xml');
+      if (nota.xmlSha256 && sha256(xml) !== nota.xmlSha256) {
+        this.logger.error(`XML da nota ${nota.id} não confere com o hash da autorização.`);
+        return { falha: 'o XML recebido não confere com o da autorização (fora do pacote)' };
+      }
+      return { xml };
+    } catch (e) {
+      return { falha: `XML indisponível: ${(e as Error).message}` };
+    }
   }
 
   /* ── Simulação ───────────────────────────────────────────── */

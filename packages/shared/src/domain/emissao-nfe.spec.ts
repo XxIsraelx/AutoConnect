@@ -1,6 +1,6 @@
 import {
-  aplicarRetorno, podeCancelar, PRAZO_DE_CANCELAMENTO_HORAS,
-  type EstadoDaNota, type RetornoDoEmissor,
+  aplicarRetorno, notaEstaPendente, podeCancelar, PRAZO_DE_CANCELAMENTO_HORAS, resumoDasNotas,
+  type EstadoDaNota, type NotaParaRelatorio, type RetornoDoEmissor,
 } from './emissao-nfe';
 
 const CHAVE = '35261011222333000181550010000012341123456787';
@@ -72,5 +72,42 @@ describe('podeCancelar', () => {
   it('nota que não está autorizada não se cancela', () => {
     expect(podeCancelar({ status: 'processando', autorizadaEm: null }, depois(1)).pode).toBe(false);
     expect(podeCancelar({ status: 'cancelada', autorizadaEm }, depois(1)).pode).toBe(false);
+  });
+});
+
+describe('relatório do período', () => {
+  const nota = (n: Partial<NotaParaRelatorio>): NotaParaRelatorio => ({
+    id: 'x', status: 'autorizada', operacao: 'venda', origemId: 'negocio-1',
+    valorTotal: '100.00', emitidaEm: '2026-10-10T12:00:00Z', ...n,
+  });
+
+  it('soma em centavos, e só autorizada vale para entrada e saída', () => {
+    const r = resumoDasNotas([
+      nota({ id: 'a', valorTotal: '84900.10' }),
+      nota({ id: 'b', valorTotal: '0.20', origemId: 'negocio-2' }),
+      nota({ id: 'c', operacao: 'compra_de_particular', valorTotal: '42000.00', origemId: 'aq-1' }),
+      nota({ id: 'd', status: 'cancelada', valorTotal: '999.99', origemId: 'negocio-3' }),
+    ]);
+    expect(r.saidas).toEqual({ quantidade: 2, valor: '84900.30' });
+    expect(r.entradas).toEqual({ quantidade: 1, valor: '42000.00' });
+    expect(r.porStatus.cancelada).toEqual({ quantidade: 1, valor: '999.99' });
+    expect(r.porStatus.rejeitada).toEqual({ quantidade: 0, valor: '0.00' });
+    expect(r.pendentes).toEqual([]);
+  });
+
+  it('processando é pendente; rejeitada só enquanto não houver substituta', () => {
+    const rejeitada = nota({ id: 'r', status: 'rejeitada', emitidaEm: '2026-10-31T10:00:00Z' });
+    expect(notaEstaPendente(nota({ status: 'processando' }), [])).toBe(true);
+    expect(notaEstaPendente(rejeitada, [rejeitada])).toBe(true);
+
+    // A substituta saiu no mês seguinte: a rejeição está resolvida.
+    const substituta = nota({ id: 's', emitidaEm: '2026-11-01T09:00:00Z' });
+    expect(notaEstaPendente(rejeitada, [rejeitada, substituta])).toBe(false);
+
+    // Uma nota anterior autorizada (e depois cancelada) não resolve a rejeição de agora.
+    const antiga = nota({ id: 'v', status: 'cancelada', emitidaEm: '2026-10-01T09:00:00Z' });
+    expect(notaEstaPendente(rejeitada, [antiga, rejeitada])).toBe(true);
+
+    expect(resumoDasNotas([rejeitada], [rejeitada, substituta]).pendentes).toEqual([]);
   });
 });

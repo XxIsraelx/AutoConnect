@@ -315,11 +315,34 @@ Decidido durante a fase, com o padrão adotado:
 - Uma nota de entrada e uma de saída autorizadas em homologação, e um
   cancelamento.
 
-### N4 — a ponte com o contador
+### N4 — a ponte com o contador ✅ 14/10/2026
 
-- O pacote do mês para o contador ganha os **XML das notas** (zip), ao lado do
-  CSV que o financeiro já exporta.
-- Relatório de notas do período: autorizadas, canceladas, rejeitadas pendentes.
+**Entregue em 14/10/2026:** aba **Notas fiscais** em `/financeiro` — o mês, os
+totais (saídas e entradas autorizadas, canceladas, o que pede ação) e a lista,
+com link para o negócio ou o veículo de cada nota —, o **pacote do mês para o
+contador** (`GET /fiscal/notas/pacote.zip`: o XML de cada nota autorizada ou
+cancelada em `xml/saida/` e `xml/entrada/`, o índice `notas.csv` e um
+`LEIA-ME.txt`), o índice avulso em CSV e a linha "Notas fiscais (índice)" em
+*Levar seus dados*. 6 testes de regra, 8 de unidade (ZIP e período) e 5 e2e.
+Conferido no navegador e com o `unzip` do sistema sobre o pacote que a API
+gerou.
+
+Decidido durante a fase, com o padrão adotado:
+
+- **Nenhuma nota some do pacote em silêncio.** A que não tem XML (emissor fora,
+  bucket vazio) ou cujo XML não confere com o hash da autorização vai para o
+  LEIA-ME com o motivo e marcada no índice; o resto do pacote sai.
+- **O período é o da autorização, em horário de Brasília**, com o fim
+  exclusivo: nota autorizada às 22h de 31/10 é de outubro, e a autorizada em
+  outubro e cancelada em novembro também — com o cancelamento no índice.
+- **"Pede ação"**: nota processando, e rejeitada ou denegada **sem outra nota
+  emitida depois na mesma origem** — a substituta pode ter saído no mês
+  seguinte, então a regra olha todas as notas da origem, não só as do período.
+- **ZIP sem dependência nova:** um gravador mínimo com o `zlib` do Node
+  (`common/zip/zip.ts`), testado por leitura de volta. Nomes só em ASCII — há
+  leitor de ZIP que ainda mostra acento como lixo.
+- **Teto de 1.000 notas por período**, com 422 pedindo um período menor em vez
+  de cortar: nota que falta no pacote é nota que o contador não escritura.
 
 ---
 
@@ -436,5 +459,5 @@ NF-e — e esse ponto já foi resolvido na Fase 0.
 | N2 — camada neutra NF-e (saída) | 1 | ✅ 14/10/2026 |
 | N2b — nota de entrada | 1 | ✅ 14/10/2026 |
 | N3 — certificado, adaptador do emissor e carta de correção | 1 | ⬜ (depende da conta no emissor) |
-| N4 — ponte com o contador | 1 | ⬜ |
+| N4 — ponte com o contador | 1 | ✅ 14/10/2026 |
 | C — a mesma história | 1 | ⬜ (depois de R2 e N2) |

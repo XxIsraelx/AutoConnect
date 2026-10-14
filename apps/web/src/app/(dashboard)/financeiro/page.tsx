@@ -16,12 +16,13 @@ import Dre from './Dre';
 import Fluxo from './Fluxo';
 import ListaDeLancamentos from './ListaDeLancamentos';
 import NovoLancamentoModal from './NovoLancamentoModal';
+import NotasDoPeriodo from '@/components/fiscal/NotasDoPeriodo';
 import {
   buscarCategorias, buscarContas, buscarResumo, semearCategorias,
   type CategoriaFinanceira, type ContaFinanceira, type ResumoFinanceiro,
 } from './dados';
 
-type Aba = 'visao' | 'fluxo' | 'dre' | 'pagar' | 'receber' | 'todos' | 'conciliacao' | 'contas' | 'categorias';
+type Aba = 'visao' | 'fluxo' | 'dre' | 'pagar' | 'receber' | 'todos' | 'conciliacao' | 'contas' | 'categorias' | 'notas';
 
 const ABAS: { chave: Aba; rotulo: string }[] = [
   { chave: 'visao', rotulo: 'Visão' },
@@ -33,6 +34,8 @@ const ABAS: { chave: Aba; rotulo: string }[] = [
   { chave: 'conciliacao', rotulo: 'Conciliação' },
   { chave: 'contas', rotulo: 'Contas' },
   { chave: 'categorias', rotulo: 'Categorias' },
+  // Trilha fiscal (N4): as notas do mês e o pacote para o contador.
+  { chave: 'notas', rotulo: 'Notas fiscais' },
 ];
 
 /**
@@ -240,6 +243,7 @@ export default function FinanceiroPage() {
       {aba === 'conciliacao' && <Conciliacao contas={contas} />}
       {aba === 'contas' && <Contas contas={contas} onMudou={carregar} />}
       {aba === 'categorias' && <Categorias categorias={categorias} onMudou={carregar} />}
+      {aba === 'notas' && <NotasDoPeriodo />}
 
       {novo && (
         <NovoLancamentoModal

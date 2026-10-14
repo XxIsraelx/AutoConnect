@@ -5,12 +5,13 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { PerfilFiscalService, PAPEIS_DO_FISCAL } from './perfil-fiscal.service';
 import { EmissaoDeNotaService } from './emissao.service';
+import { periodoEmBrasilia, RelatorioFiscalService } from './relatorio-fiscal.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { escopoDa } from '../../common/escopo';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import {
-  cancelarNotaSchema, confirmacaoDoContadorSchema, dadosFiscaisDoVeiculoSchema,
+  cancelarNotaSchema, confirmacaoDoContadorSchema, periodoDeExportacaoSchema, dadosFiscaisDoVeiculoSchema,
   emitirNotaDoNegocioSchema, perfilDeOperacaoSchema, perfilFiscalSchema, quemEntregouSchema,
   simularRetornoDaNotaSchema,
 } from '@autoconnect/shared';
@@ -38,7 +39,38 @@ export class NotasFiscaisController {
   constructor(
     private readonly perfil: PerfilFiscalService,
     private readonly emissao: EmissaoDeNotaService,
+    private readonly relatorios: RelatorioFiscalService,
   ) {}
+
+  /* ── Ponte com o contador (N4) ────────────────────────── */
+
+  /** GET /fiscal/notas?from=&to= — as notas do período, com totais e pendências. */
+  @Get('notas')
+  notasDoPeriodo(@Req() req: AuthRequest, @Query() query: unknown): Promise<unknown> {
+    const { from, to } = periodoDeExportacaoSchema.parse(query);
+    return this.relatorios.relatorio(escopoDa(req.user), periodoEmBrasilia(from, to));
+  }
+
+  /** GET /fiscal/notas.csv?from=&to= — o índice do período, para planilha. */
+  @Get('notas.csv')
+  async notasCsv(@Req() req: AuthRequest, @Query() query: unknown, @Res() res: Response): Promise<void> {
+    const { from, to } = periodoDeExportacaoSchema.parse(query);
+    const csv = await this.relatorios.csv(escopoDa(req.user), periodoEmBrasilia(from, to));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="notas-fiscais_${from.slice(0, 10)}_a_${to.slice(0, 10)}.csv"`);
+    res.send(csv);
+  }
+
+  /** GET /fiscal/notas/pacote.zip?from=&to= — XMLs + índice, o que o contador pede todo mês. */
+  @Get('notas/pacote.zip')
+  async pacote(@Req() req: AuthRequest, @Query() query: unknown, @Res() res: Response): Promise<void> {
+    const { from, to } = periodoDeExportacaoSchema.parse(query);
+    const zip = await this.relatorios.pacote(escopoDa(req.user), periodoEmBrasilia(from, to));
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="notas-fiscais_${from.slice(0, 10)}_a_${to.slice(0, 10)}.zip"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.end(zip);
+  }
 
   /** GET /fiscal/perfil — configuração, operações (com sugestões) e dados da loja. */
   @Get('perfil')

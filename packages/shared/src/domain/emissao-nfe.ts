@@ -11,7 +11,8 @@
  * caminhos, uma regra. Foi a mesma razão de `aplicarEventoDeCobranca`.
  */
 import { lerChaveNfe } from './chave-nfe';
-import type { NotaMontada } from './nota-fiscal';
+import { deCentavos, emCentavos } from './dinheiro';
+import { DEFINICAO_DAS_OPERACOES, type NotaMontada, type OperacaoFiscal } from './nota-fiscal';
 
 export const STATUS_DA_NOTA = ['processando', 'autorizada', 'rejeitada', 'denegada', 'cancelada'] as const;
 export type StatusDaNota = (typeof STATUS_DA_NOTA)[number];
@@ -190,4 +191,82 @@ export interface ProvedorDeNotaFiscal {
     cabecalhos: CabecalhosDoEmissor,
     corpoCru: Uint8Array,
   ): { idDaEntrega: string; retorno: RetornoDoEmissor | null };
+}
+
+/* ── Relatório do período (N4) ───────────────────────────────── */
+
+export interface NotaParaRelatorio {
+  id: string;
+  status: StatusDaNota;
+  operacao: OperacaoFiscal;
+  /** Negócio ou aquisição de onde a nota saiu. */
+  origemId: string;
+  valorTotal: string;
+  /** ISO. */
+  emitidaEm: string;
+}
+
+export interface TotalDoRelatorio {
+  quantidade: number;
+  valor: string;
+}
+
+export interface ResumoDasNotas {
+  porStatus: Record<StatusDaNota, TotalDoRelatorio>;
+  /** Só autorizadas: é o que vale para o contador. Cancelada não soma. */
+  entradas: TotalDoRelatorio;
+  saidas: TotalDoRelatorio;
+  /** Ids das notas que pedem ação da loja — ver `notaEstaPendente`. */
+  pendentes: string[];
+}
+
+/**
+ * A nota pede ação da loja?
+ *
+ * - **processando** — a SEFAZ ainda não respondeu: consultar;
+ * - **rejeitada ou denegada sem substituta** — a venda (ou a compra) segue sem
+ *   nota. Se a mesma origem já tem outra nota depois dela, viva ou cancelada,
+ *   a rejeição foi resolvida e sai da lista.
+ *
+ * `daMesmaOrigem` são **todas** as notas da origem, não só as do período: a
+ * substituta da rejeição de dia 31 pode ter saído no dia 1º.
+ */
+export function notaEstaPendente(nota: NotaParaRelatorio, daMesmaOrigem: readonly NotaParaRelatorio[]): boolean {
+  if (nota.status === 'processando') return true;
+  if (nota.status !== 'rejeitada' && nota.status !== 'denegada') return false;
+  return !daMesmaOrigem.some((n) =>
+    n.id !== nota.id
+    && n.emitidaEm >= nota.emitidaEm
+    && (n.status === 'processando' || n.status === 'autorizada' || n.status === 'cancelada'));
+}
+
+export function resumoDasNotas(
+  notas: readonly NotaParaRelatorio[],
+  todasDasOrigens: readonly NotaParaRelatorio[] = notas,
+): ResumoDasNotas {
+  const zero = (): { quantidade: number; centavos: bigint } => ({ quantidade: 0, centavos: 0n });
+  const porStatus = Object.fromEntries(STATUS_DA_NOTA.map((s) => [s, zero()])) as Record<StatusDaNota, ReturnType<typeof zero>>;
+  const entradas = zero();
+  const saidas = zero();
+
+  for (const n of notas) {
+    const centavos = emCentavos(n.valorTotal);
+    porStatus[n.status].quantidade += 1;
+    porStatus[n.status].centavos += centavos;
+    if (n.status === 'autorizada') {
+      const alvo = DEFINICAO_DAS_OPERACOES[n.operacao].direcao === 'entrada' ? entradas : saidas;
+      alvo.quantidade += 1;
+      alvo.centavos += centavos;
+    }
+  }
+
+  const fechar = (t: ReturnType<typeof zero>): TotalDoRelatorio => ({ quantidade: t.quantidade, valor: deCentavos(t.centavos) });
+  return {
+    porStatus: Object.fromEntries(STATUS_DA_NOTA.map((s) => [s, fechar(porStatus[s])])) as Record<StatusDaNota, TotalDoRelatorio>,
+    entradas: fechar(entradas),
+    saidas: fechar(saidas),
+    pendentes: notas
+      .filter((n) => notaEstaPendente(n, todasDasOrigens.filter((o) => o.origemId === n.origemId)))
+      .map((n) => n.id),
+  };
 }
