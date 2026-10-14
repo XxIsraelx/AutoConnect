@@ -7,7 +7,7 @@ import { PrismaService, type ScopedClient } from '../../common/prisma/prisma.ser
 import { ehGlobal, type Escopo } from '../../common/escopo';
 import {
   DEAL_FATURADO_STATUSES, ROTULO_DO_STATUS_RENAVE, ehEntrada, operacaoRenaveDaAquisicao,
-  operacaoTemValor, pendenciasRenave, podeTransitarRenave, situacaoNoRenave,
+  normalizarCnpj, operacaoTemValor, pendenciasRenave, podeTransitarRenave, situacaoNoRenave,
   type CancelarRenaveInput, type ConfirmarRenaveInput, type RegistrarRenaveInput,
   type RenaveOperacaoValue, type RenaveStatusValue,
 } from '@autoconnect/shared';
@@ -41,8 +41,11 @@ export type LinhaDoRegistro = Prisma.RenaveRegistroGetPayload<{ select: typeof S
 export interface RegistroPreparado {
   veiculo: {
     id: string; placa: string | null; chassi: string | null; km: number;
-    documentoDoFornecedor: string | null;
   };
+  /** De `acquisition_suppliers` (cartão "Nota de entrada"), documento normalizado. */
+  vendedor: { nome: string; documento: string } | null;
+  /** De `vehicle_fiscal_details` (cartão "Dados fiscais"). */
+  renavam: string | null;
   valor: Prisma.Decimal | null;
   dataOperacao: Date;
   snapshot: Record<string, unknown>;
@@ -106,7 +109,13 @@ export class RenaveService {
         where: { id: vehicleId, tenantId },
         select: {
           id: true, status: true, condition: true,
-          acquisition: { select: { origin: true, enteredAt: true, purchaseValue: true } },
+          acquisition: {
+            select: {
+              origin: true, enteredAt: true, purchaseValue: true,
+              supplier: { select: { fullName: true } },
+            },
+          },
+          fiscalDetails: { select: { renavam: true } },
           deals: {
             select: { id: true, status: true, closedAt: true, saleValue: true },
             orderBy: { createdAt: 'desc' },
@@ -146,7 +155,14 @@ export class RenaveService {
             valor: veiculo.acquisition?.purchaseValue.toFixed(2) ?? null,
             dataOperacao: veiculo.acquisition?.enteredAt ?? null,
             temAquisicao: veiculo.acquisition !== null,
+            /**
+             * Quem vendeu, do cartão "Nota de entrada" (`acquisition_suppliers`,
+             * trilha N). Só o nome: o documento a tela não precisa ver.
+             */
+            vendedor: veiculo.acquisition?.supplier ? { nome: veiculo.acquisition.supplier.fullName } : null,
           },
+          /** Do cartão "Dados fiscais" (`vehicle_fiscal_details`, trilha N): o RENAVAM do carro. */
+          renavam: veiculo.fiscalDetails?.renavam ?? null,
           saidas: veiculo.deals
             .filter((d) => (NEGOCIO_QUE_SAI as readonly string[]).includes(d.status))
             .map((d) => ({
@@ -250,9 +266,16 @@ export class RenaveService {
         yearMake: true, mileageKm: true,
         brand: { select: { name: true } },
         model: { select: { name: true } },
+        // Quem vendeu e o RENAVAM vêm dos cadastros da trilha N — um dado, um
+        // lugar: digitar o CPF do vendedor de novo no envio ao RENAVE é como a
+        // nota e o RENAVE passam a contar histórias diferentes.
         acquisition: {
-          select: { origin: true, purchaseValue: true, enteredAt: true, supplierName: true, supplierDocument: true },
+          select: {
+            origin: true, purchaseValue: true, enteredAt: true,
+            supplier: { select: { fullName: true, documento: true } },
+          },
         },
+        fiscalDetails: { select: { renavam: true } },
         renaveRegistros: {
           select: {
             id: true, tipo: true, status: true, dealId: true, chaveNfe: true,
@@ -296,10 +319,10 @@ export class RenaveService {
       }
       if (aq && operacaoTemValor(dados.tipo)) valor = aq.purchaseValue;
       dataOperacao ??= aq?.enteredAt ?? null;
-      if (aq) {
+      if (aq?.supplier) {
         snapshot = {
           veiculo: snapshotDoVeiculo,
-          vendedor: { nome: aq.supplierName, documento: aq.supplierDocument },
+          vendedor: { nome: aq.supplier.fullName, documento: normalizarCnpj(aq.supplier.documento) },
         };
       }
     }
@@ -343,8 +366,12 @@ export class RenaveService {
     return {
       veiculo: {
         id: veiculo.id, placa: veiculo.licensePlate, chassi: veiculo.vin,
-        km: veiculo.mileageKm, documentoDoFornecedor: veiculo.acquisition?.supplierDocument ?? null,
+        km: veiculo.mileageKm,
       },
+      vendedor: veiculo.acquisition?.supplier
+        ? { nome: veiculo.acquisition.supplier.fullName, documento: normalizarCnpj(veiculo.acquisition.supplier.documento) }
+        : null,
+      renavam: veiculo.fiscalDetails?.renavam ?? null,
       valor,
       dataOperacao: dataOperacao ?? new Date(),
       snapshot,

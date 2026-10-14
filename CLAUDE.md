@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.642 testes (1.136 na API, 506 no `shared`):
+são 1.644 testes (1.138 na API, 506 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -942,6 +942,11 @@ seção "R1 entregue". Manual técnico do renave-ws (SERPRO) lido em 14/10/2026.
   aplicar: a linha nasce `pendente` com `sequencia` antes da chamada, e o reenvio
   manda a mesma chave `veículo:tipo:sequência`. Registro da integradora tem o
   estado ditado por ela — anotação manual nele é 409.
+- **Vendedor e RENAVAM vêm da trilha N, não do formulário de envio:** quem
+  vendeu de `acquisition_suppliers` (cartão "Nota de entrada"), o RENAVAM de
+  `vehicle_fiscal_details` (cartão "Dados fiscais"). Um dado, um lugar —
+  faltando, o envio é 422 apontando o cartão. Do corpo só vêm tipo, número e
+  código de segurança do CRV.
 - **O código de segurança do CRV nunca é gravado**
   ([decisão](docs/decisoes/2026-10-14%20renave%20dados%20do%20crv%20e%20credencial.md)):
   vai no envio e some, e reenviar pede de novo. Coluna, snapshot ou evento com

@@ -243,7 +243,10 @@ Lido nos sites públicos em 14/10/2026. Só uma das candidatas publica a API.
    deixou para depois, e que precisa de decisão própria antes do adaptador.
 
 **Antes do adaptador, ler do que a trilha N já cadastra** (aviso da sessão 1,
-14/10/2026). Quem vendeu, trocou ou consignou o carro passou a ter cadastro
+14/10/2026) — ✅ **feito em 14/10/2026**, depois do merge da trilha N: o envio lê o
+vendedor de `acquisition_suppliers` e o RENAVAM de `vehicle_fiscal_details`, e os
+dois campos saíram do formulário; faltando, 422 apontando o cartão "Nota de
+entrada" ou "Dados fiscais". O registro manual usa o mesmo vendedor no snapshot. Quem vendeu, trocou ou consignou o carro passou a ter cadastro
 próprio em `acquisition_suppliers` (N2b, PR #30): nome, CPF/CNPJ normalizado e
 endereço, por aquisição. A R2 ainda pede o documento de quem consta no CRV no
 próprio formulário de envio (`documentoDoProprietario`) e cai no

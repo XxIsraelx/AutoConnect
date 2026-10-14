@@ -272,11 +272,16 @@ describe('camada neutra (R2)', () => {
 
   describe('enviarRenaveSchema', () => {
     const vehicleId = '7b0f8c8e-5a0b-4c1e-9d55-1d2f3a4b5c6d';
-    const crv = { renavam: '123456789', tipoCrv: 'DIGITAL', codigoSegurancaCrv: '73915264801' };
+    const crv = { tipoCrv: 'DIGITAL', codigoSegurancaCrv: '73915264801' };
 
-    it('RENAVAM antigo ganha os zeros à esquerda', () => {
-      const r = enviarRenaveSchema.parse({ vehicleId, tipo: 'entrada_compra', crv });
-      expect(r.crv.renavam).toBe('00123456789');
+    it('RENAVAM e vendedor não entram pelo corpo — vêm dos cadastros da nota fiscal', () => {
+      expect(enviarRenaveSchema.safeParse({ vehicleId, tipo: 'entrada_compra', crv }).success).toBe(true);
+      expect(enviarRenaveSchema.safeParse({
+        vehicleId, tipo: 'entrada_compra', crv: { ...crv, renavam: '00123456789' },
+      }).success).toBe(false);
+      expect(enviarRenaveSchema.safeParse({
+        vehicleId, tipo: 'entrada_compra', crv, documentoDoProprietario: '52998224725',
+      }).success).toBe(false);
     });
 
     it('sem o documento do veículo, ou com letra no código de segurança, é recusado', () => {

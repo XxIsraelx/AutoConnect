@@ -15,7 +15,8 @@ import { comoApp, criarDoisTenants, type DoisTenants } from './helpers/tenant-fi
 const CHAVE_NFE = '35261011222333000181550010000012341123456787';
 /** O código de segurança do CRV dos testes — não pode aparecer em lugar nenhum do banco. */
 const CODIGO_CRV = '73915264801';
-const crv = (codigo = CODIGO_CRV) => ({ renavam: '123456789', tipoCrv: 'DIGITAL', codigoSegurancaCrv: codigo });
+/** RENAVAM e vendedor não vão no corpo: vêm de `vehicle_fiscal_details` e `acquisition_suppliers`. */
+const crv = (codigo = CODIGO_CRV) => ({ tipoCrv: 'DIGITAL', codigoSegurancaCrv: codigo });
 
 /**
  * RENAVE pela integradora — R2 do plano fiscal, com a integradora simulada.
@@ -43,6 +44,7 @@ describe('RENAVE — integradora simulada (e2e)', () => {
   let entradaId: string;
   let entradaExterna: string;
   let negocioId: string;
+  let aquisicaoId: string;
   let saidaId: string;
 
   const http = () => request(app.getHttpServer());
@@ -77,6 +79,8 @@ describe('RENAVE — integradora simulada (e2e)', () => {
     await dono.credencialDeIntegracao.deleteMany({ where: { tenantId: lojas } });
     await dono.dealBuyer.deleteMany({ where: { tenantId: lojas } });
     await dono.deal.deleteMany({ where: { tenantId: lojas } });
+    await dono.acquisitionSupplier.deleteMany({ where: { tenantId: lojas } });
+    await dono.vehicleFiscalDetails.deleteMany({ where: { tenantId: lojas } });
     await dono.vehicleAcquisition.deleteMany({ where: { tenantId: lojas } });
     await f?.limpar();
     await app?.close();
@@ -161,22 +165,36 @@ describe('RENAVE — integradora simulada (e2e)', () => {
       await dono.tenant.update({ where: { id: f.a.id }, data: { taxId: '11222333000181' } });
     });
 
-    it('sem o documento de quem consta no CRV é 422', async () => {
-      await dono.vehicleAcquisition.create({
+    it('sem o RENAVAM nos dados fiscais do veículo é 422, apontando o cartão', async () => {
+      aquisicaoId = (await dono.vehicleAcquisition.create({
         data: {
           tenantId: f.a.id, vehicleId: veiculo, origin: 'direct_purchase',
-          purchaseValue: '38000.00', enteredAt: new Date('2026-10-05T12:00:00Z'), supplierName: 'Ciclano',
+          purchaseValue: '38000.00', enteredAt: new Date('2026-10-05T12:00:00Z'),
         },
-      });
+      })).id;
       const res = await post('/envios', { vehicleId: veiculo, tipo: 'entrada_compra', crv: crv() });
       expect(res.status).toBe(422);
-      expect(res.body.message).toMatch(/CPF ou CNPJ/);
+      expect(res.body.message).toMatch(/Dados fiscais/);
+    });
+
+    it('sem quem entregou o veículo é 422, apontando o cartão da nota de entrada', async () => {
+      await dono.vehicleFiscalDetails.create({ data: { vehicleId: veiculo, tenantId: f.a.id, renavam: '00123456789' } });
+      const res = await post('/envios', { vehicleId: veiculo, tipo: 'entrada_compra', crv: crv() });
+      expect(res.status).toBe(422);
+      expect(res.body.message).toMatch(/Nota de entrada/);
+    });
+
+    it('o cartão mostra de onde vêm o RENAVAM e o vendedor', async () => {
+      await dono.acquisitionSupplier.create({
+        data: { acquisitionId: aquisicaoId, tenantId: f.a.id, fullName: 'Ciclano da Silva', documento: '52998224725' },
+      });
+      const res = await get(`/veiculos/${veiculo}`);
+      expect(res.body.sugestao.renavam).toBe('00123456789');
+      expect(res.body.sugestao.entrada.vendedor).toEqual({ nome: 'Ciclano da Silva' });
     });
 
     it('enviada, fica pendente com o id da integradora — e o código do CRV não fica em lugar nenhum', async () => {
-      const res = await post('/envios', {
-        vehicleId: veiculo, tipo: 'entrada_compra', crv: crv(), documentoDoProprietario: '52998224725',
-      });
+      const res = await post('/envios', { vehicleId: veiculo, tipo: 'entrada_compra', crv: crv() });
       expect(res.status).toBe(201);
       expect(res.body).toMatchObject({
         status: 'pendente', origem: 'integradora', provider: 'simulado', valor: '38000.00', sequencia: 1,
@@ -192,7 +210,7 @@ describe('RENAVE — integradora simulada (e2e)', () => {
       // O resto do documento do veículo fica: está impresso no CRLV.
       expect(linha.snapshot).toMatchObject({
         documento: { renavam: '00123456789', tipoCrv: 'DIGITAL' },
-        vendedor: { documento: '52998224725' },
+        vendedor: { nome: 'Ciclano da Silva', documento: '52998224725' },
         hodometro: { km: 41000 },
       });
     });
@@ -204,9 +222,7 @@ describe('RENAVE — integradora simulada (e2e)', () => {
     });
 
     it('enviar de novo com o carro em estoque é 409, não segundo registro', async () => {
-      const res = await post('/envios', {
-        vehicleId: veiculo, tipo: 'entrada_compra', crv: crv(), documentoDoProprietario: '52998224725',
-      });
+      const res = await post('/envios', { vehicleId: veiculo, tipo: 'entrada_compra', crv: crv() });
       expect(res.status).toBe(409);
     });
 
@@ -312,6 +328,7 @@ describe('RENAVE — integradora simulada (e2e)', () => {
     it('envio que a integradora nunca respondeu é retomado na mesma linha, com a mesma chave', async () => {
       const outro = f.a.veiculoPrivadoId;
       await dono.vehicle.update({ where: { id: outro }, data: { licensePlate: 'RNV2B26', status: 'available' } });
+      await dono.vehicleFiscalDetails.create({ data: { vehicleId: outro, tenantId: f.a.id, renavam: '00987654321' } });
       await dono.vehicleAcquisition.create({
         data: {
           tenantId: f.a.id, vehicleId: outro, origin: 'dealer_transfer',
