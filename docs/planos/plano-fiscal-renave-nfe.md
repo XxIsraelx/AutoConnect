@@ -242,6 +242,17 @@ Lido nos sites públicos em 14/10/2026. Só uma das candidatas publica a API.
    loja que a [decisão de 14/10/2026](../decisoes/2026-10-14%20renave%20dados%20do%20crv%20e%20credencial.md)
    deixou para depois, e que precisa de decisão própria antes do adaptador.
 
+**Antes do adaptador, ler do que a trilha N já cadastra** (aviso da sessão 1,
+14/10/2026). Quem vendeu, trocou ou consignou o carro passou a ter cadastro
+próprio em `acquisition_suppliers` (N2b, PR #30): nome, CPF/CNPJ normalizado e
+endereço, por aquisição. A R2 ainda pede o documento de quem consta no CRV no
+próprio formulário de envio (`documentoDoProprietario`) e cai no
+`VehicleAcquisition.supplierDocument`, que a tela da aquisição nunca preencheu.
+Depois do merge do #30: ler o vendedor de `acquisition_suppliers`, tirar o campo
+do envio e, se faltar, responder 422 apontando para "Quem entregou o veículo" —
+dois cadastros do mesmo vendedor é a história que não bate. O RENAVAM pode vir
+pré-preenchido de `vehicle_fiscal_details` (N1), mesma lógica.
+
 **Perguntas para mandar às integradoras** (as mesmas para todas): documentação
 completa com o corpo de criação da requisição de entrada e de saída; quando
 saem a consulta de requisição e o webhook; se há conta de parceiro para

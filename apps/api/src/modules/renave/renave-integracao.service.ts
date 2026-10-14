@@ -9,7 +9,7 @@ import { PrivilegedPrismaService } from '../../common/prisma/privileged-prisma.s
 import { DocumentosStorage } from '../../common/armazenamento/documentos.storage';
 import type { Escopo } from '../../common/escopo';
 import {
-  ehEntrada, statusDepoisDoEvento, tipoDoDocumento,
+  ehEntrada, normalizarCnpj, statusDepoisDoEvento, tipoDoDocumento,
   type CancelarRenaveInput, type EnviarRenaveInput, type EventoDoRenave,
   type PedidoDeEntradaRenave, type PedidoDeSaidaRenave, type ProvedorDeRenave,
   type RespostaDoRenave, type TipoDeEventoRenave,
@@ -130,7 +130,10 @@ export class RenaveIntegracaoService {
       };
 
       if (ehEntrada(dados.tipo)) {
-        const documento = p.veiculo.documentoDoFornecedor ?? dados.documentoDoProprietario ?? null;
+        // `normalizarCnpj` e não `replace(/\D/g, '')`: o CNPJ alfanumérico
+        // perderia as letras. Serve para o CPF também.
+        const bruto = p.veiculo.documentoDoFornecedor ?? dados.documentoDoProprietario ?? null;
+        const documento = bruto ? normalizarCnpj(bruto) : null;
         if (dados.tipo === 'entrada_compra' && !tipoDoDocumento(documento)) {
           throw new UnprocessableEntityException(
             'Informe o CPF ou CNPJ de quem consta no CRV: o RENAVE confere o vendedor pelo documento.',
