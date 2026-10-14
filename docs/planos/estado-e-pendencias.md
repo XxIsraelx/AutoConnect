@@ -880,7 +880,7 @@ consulta, conta da Clicksign, revisão jurídica, feature flag e região da API 
   - Sugestão: fazer (a) e (b) com a primeira loja fundadora, na semana de implantação; (c) antes de
     começar RENAVE ou COAF.
   - Como testar: ata de cada validação em `docs/produto/`, com o que mudou por causa dela.
-- **Portões do plano de vendas não foram marcados.**
+- ~~**Portões do plano de vendas não foram marcados.**~~ — **resolvido em 14/10/2026**: as 28 caixas conferidas contra o código; 22 marcadas, cada uma com o teste ou a checagem do CI que a prova, e 6 desmarcadas com o motivo (advogado, feature flag e quatro regras sem guarda automática). A tabela abaixo ganhou a data.
   - Onde: `plano-implementacao-vendas.md`, portões das Fases 0, 1 e 2 e a "Definição de pronto" —
     todas as caixas seguem `[ ]`. A tabela "Onde o plano de vendas está", abaixo, diz "Estado em
     03/09/2026".
@@ -955,7 +955,7 @@ Dívidas que os itens 10 e 11 da Onda 1 deixaram declaradas:
 
 ## Onde o plano de vendas está
 
-`docs/planos/plano-implementacao-vendas.md` governa o trabalho. Estado em 03/09/2026:
+`docs/planos/plano-implementacao-vendas.md` governa o trabalho. Estado em 14/10/2026:
 
 | Fase | Estado |
 |---|---|
@@ -964,7 +964,7 @@ Dívidas que os itens 10 e 11 da Onda 1 deixaram declaradas:
 | 2 — Contrato | ✅ 4 de 5 (falta a revisão por advogado) |
 | 3 — Consultas veiculares e assinatura externa | 🟡 estrutura pronta nas duas; adaptador Clicksign escrito e testado no sandbox; Clicksign ligada em sandbox; falta fornecedor de consulta e conta de produção da Clicksign |
 | 4 — Crédito e F&I | ⬜ |
-| 5 — Obrigações fiscais | ⬜ |
+| 5 — Obrigações fiscais | 🟡 NF-e e RENAVE andam no [plano fiscal](plano-fiscal-renave-nfe.md); COAF sem começar |
 
 Duas correções ao plano já registradas **dentro dele**:
 

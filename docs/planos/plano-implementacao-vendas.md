@@ -161,11 +161,11 @@ No mesmo PR: remover `db:push` do `package.json` da raiz, ou renomear para `db:p
 
 ### ✅ Portão da Fase 0 — só passa se
 
-- [ ] `pnpm exec turbo run typecheck lint test` verde localmente e no CI
-- [ ] Teste de vazamento entre tenants passando para `vehicles`, `leads` e `appointments`
-- [ ] Banco criado do zero (`migrate deploy` em base vazia) nasce com RLS ativo — verificado por teste, não por inspeção
-- [ ] Catálogo público e painel do super admin continuam funcionando
-- [ ] `prisma migrate diff` sem drift
+- [x] `pnpm exec turbo run typecheck lint test` verde localmente e no CI — *conferido em 14/10/2026: job `typecheck · lint · test · drift` em `.github/workflows/`, verde em todo PR*
+- [x] Teste de vazamento entre tenants passando para `vehicles`, `leads` e `appointments` — *`test/tenant-leak.e2e-spec.ts`*
+- [x] Banco criado do zero (`migrate deploy` em base vazia) nasce com RLS ativo — verificado por teste, não por inspeção — *`test/rls-policies.e2e-spec.ts`, contra o banco que o CI cria do zero*
+- [x] Catálogo público e painel do super admin continuam funcionando — *`tenant-leak.e2e-spec.ts` (catálogo sem autenticação) e `admin.e2e-spec.ts`*
+- [x] `prisma migrate diff` sem drift — *passo "Drift entre schema.prisma e migrations" do CI*
 
 ---
 
@@ -336,12 +336,12 @@ E não repetir o padrão `catch { }` das quatro telas citadas no `CLAUDE.md`: fa
 
 ### ✅ Portão da Fase 1
 
-- [ ] Invariante testado: soma dos `DealPayment` = `saleValue`
-- [ ] Invariante testado: nenhum veículo com dois negócios ativos, garantido pelo banco
-- [ ] Transições inválidas recusadas com 409, com teste para cada aresta proibida
-- [ ] Margem calculada em `Decimal`, com teste de caso com centavos
-- [ ] Teste de vazamento nos endpoints novos
-- [ ] Fluxo manual completo: lead → negócio → pagamento composto → entregue
+- [x] Invariante testado: soma dos `DealPayment` = `saleValue` — *`deal-state.service.spec.ts` (falta, sobra e composto com centavos) e `deals.e2e-spec.ts`*
+- [x] Invariante testado: nenhum veículo com dois negócios ativos, garantido pelo banco — *índice `deals_veiculo_negocio_vivo_idx`; `deals-invariantes.e2e-spec.ts`*
+- [x] Transições inválidas recusadas com 409, com teste para cada aresta proibida — *`deal-state.service.spec.ts` ("recusa toda aresta que não existe na máquina de estados") e o 409 em `deals.e2e-spec.ts`*
+- [x] Margem calculada em `Decimal`, com teste de caso com centavos — *`dinheiro.spec.ts` ("margem com centavo quebrado") e `deals.e2e-spec.ts` (margem `23765.44`)*
+- [x] Teste de vazamento nos endpoints novos — *blocos de isolamento em `deals.e2e-spec.ts` e `deals-invariantes.e2e-spec.ts`*
+- [x] Fluxo manual completo: lead → negócio → pagamento composto → entregue — *coberto por `deals.e2e-spec.ts` ("fluxo completo" e "lead ganho exige negócio"); o mesmo fluxo feito por um vendedor de verdade é o Nível 5, ainda pendente*
 
 ---
 
@@ -396,11 +396,11 @@ Quando entrar provedor externo, o webhook precisa de verificação de assinatura
 
 ### ✅ Portão da Fase 2
 
-- [ ] Emitir o mesmo contrato duas vezes produz o mesmo hash — teste determinístico
-- [ ] Editar o template não altera contrato já emitido — teste explícito
-- [ ] Contrato em `signed` é imutável: `PATCH` retorna 409
-- [ ] URL de documento expira e não é pública — teste que a URL crua devolve 403
-- [ ] Template padrão revisado por advogado antes de qualquer cliente real usar
+- [x] Emitir o mesmo contrato duas vezes produz o mesmo hash — teste determinístico — *`contract-pdf.service.spec.ts`*
+- [x] Editar o template não altera contrato já emitido — teste explícito — *`contrato.e2e-spec.ts`, "editar o template não altera contrato já emitido"*
+- [x] Contrato em `signed` é imutável: `PATCH` retorna 409 — *não há rota que edite conteúdo; o trigger `contrato_emitido_e_imutavel` recusa no banco (`contrato-imutavel.e2e-spec.ts`)*
+- [x] URL de documento expira e não é pública — teste que a URL crua devolve 403 — *URL assinada de 10 min (`DocumentosStorage`); a crua devolve **404 "Bucket not found"**, negação mais forte que 403 (conferido em 22/09/2026)*
+- [ ] Template padrão revisado por advogado antes de qualquer cliente real usar — *ainda não; bloqueia uso real (estado-e-pendencias)*
 
 ---
 
@@ -526,18 +526,23 @@ Playwright, um único cenário feliz cobrindo o ciclo inteiro: cliente vê veíc
 
 Aplicável a qualquer PR deste plano. Se um item não puder ser marcado, o PR não é pronto — é rascunho.
 
-- [ ] Migration gerada por `migrate dev`, aplicada em banco limpo sem erro, e `migrate diff` sem drift
-- [ ] Tabela nova com `tenant_id` tem policy de RLS na mesma migration
-- [ ] Entrada HTTP validada por Zod, com enums derivados do Prisma
-- [ ] Acesso a dado de tenant passa por `withTenant` — sem exceção
-- [ ] Valor monetário em `Decimal` do início ao fim, sem `Number` no meio
-- [ ] Teste unitário das regras de negócio, incluindo os caminhos que devem falhar
-- [ ] Teste de vazamento entre tenants para cada endpoint novo
-- [ ] Erro de API distinguível de "sem dados" na tela, com ação de tentar de novo
-- [ ] Sem `catch { }` silencioso introduzido
-- [ ] `typecheck`, `lint` e `test` verdes no CI
-- [ ] `CLAUDE.md` atualizado se algum padrão mudou
-- [ ] Feature nova atrás de flag até o piloto validar
+> **Conferido em 14/10/2026.** A lista vale para cada PR, não se marca uma vez só. As
+> marcadas abaixo têm **guarda automática** — um teste ou uma checagem do CI que quebra
+> sem elas. As desmarcadas são seguidas como regra, mas nada pega o próximo deslize
+> sozinho; o motivo está ao lado de cada uma.
+
+- [x] Migration gerada por `migrate dev`, aplicada em banco limpo sem erro, e `migrate diff` sem drift — *o CI aplica todas num banco vazio e confere o drift*
+- [x] Tabela nova com `tenant_id` tem policy de RLS na mesma migration — *`rls-policies.e2e-spec.ts` quebra sem ela*
+- [x] Entrada HTTP validada por Zod, com enums derivados do Prisma — *os enums são repetidos no shared, de propósito, e vigiados pelos testes de paridade; `corpos-do-web.spec.ts` confere cada corpo que a tela manda*
+- [x] Acesso a dado de tenant passa por `withTenant` — sem exceção — *`isolamento.spec.ts` (lista de pendências vazia)*
+- [ ] Valor monetário em `Decimal` do início ao fim, sem `Number` no meio — *regra seguida e testada módulo a módulo, mas sem guarda automática que pegue um `Number` novo*
+- [x] Teste unitário das regras de negócio, incluindo os caminhos que devem falhar — *as regras moram no shared (`domain/*.spec.ts`)*
+- [ ] Teste de vazamento entre tenants para cada endpoint novo — *cada módulo novo tem bloco de isolamento no seu e2e, mas não endpoint por endpoint*
+- [ ] Erro de API distinguível de "sem dados" na tela, com ação de tentar de novo — *`ErroAoCarregar` em todas as telas, por convenção (auditoria de 22/09/2026); sem guarda automática*
+- [ ] Sem `catch { }` silencioso introduzido — *os ~20 que existem são deliberados e comentados; sem guarda automática para um novo*
+- [x] `typecheck`, `lint` e `test` verdes no CI — *nenhum PR fecha sem*
+- [x] `CLAUDE.md` atualizado se algum padrão mudou — *cada fase entregue acrescenta a sua seção*
+- [ ] Feature nova atrás de flag até o piloto validar — *não cumprido: não há infraestrutura de flag (estado-e-pendencias)*
 
 ---
 
