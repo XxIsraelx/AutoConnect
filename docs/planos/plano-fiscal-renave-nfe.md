@@ -522,6 +522,12 @@ Decidido durante a fase, com o padrão adotado:
   mesma data do negócio. Divergência vira lista, não bloqueio.
 - O registro RENAVE de saída passa a vir **pré-preenchido** com a chave da nota
   autorizada (leitura de `fiscal_documents`; a escrita continua na trilha R).
+  ✅ **14/10/2026, trilha R:** o cartão traz as notas autorizadas da compra e de
+  cada venda (`sugestao.notasAutorizadas`, leitura dentro do `withTenant`); o
+  campo da chave — no registro novo e no "informar NF-e" — vem preenchido quando
+  está vazio, com "da nota autorizada nº X", e nunca sobrescreve o que a loja
+  digitou. Chave diferente da autorizada é aviso: quem marca a divergência é a
+  conferência.
 
 ---
 

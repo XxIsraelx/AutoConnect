@@ -5,13 +5,14 @@ import Link from 'next/link';
 import { ClipboardCheck, AlertTriangle, Info, Loader2, Plus, Send } from 'lucide-react';
 import {
   OPERACOES_DE_ENTRADA, OPERACOES_DE_SAIDA, ROTULO_DA_OPERACAO_RENAVE, ROTULO_DO_STATUS_RENAVE,
-  ehEntrada, formatarBRL, formatarChaveNfe, operacaoTemValor,
+  ehEntrada, formatarBRL, formatarChaveNfe, normalizarChaveNfe, operacaoTemValor,
   type PendenciaRenave, type RenaveOperacaoValue, type RenaveStatusValue, type SituacaoNoRenave,
 } from '@autoconnect/shared';
 import { useAuthStore } from '@/store/auth';
 import { baixarArquivo } from '@/lib/api';
 import { ErroAoCarregar } from '@/components/ErroAoCarregar';
 import {
+  notaSugerida, rotuloDaNota, type NotaAutorizada, type NotasAutorizadas,
   PAPEIS_FISCAIS, erroDaAcao, useAcaoRenave, useRegistrarRenave, useRenaveDoVeiculo,
   type AcaoNoRegistro, type RegistroRenave, type RenaveDoVeiculo,
 } from './dados';
@@ -87,7 +88,10 @@ export default function CartaoRenave({
       ) : (
         <div className="space-y-4">
           <Pendencias pendencias={data.pendencias} />
-          <Registros registros={data.registros} podeRegistrar={podeRegistrar} simulado={data.integradora.simulado} />
+          <Registros
+            registros={data.registros} podeRegistrar={podeRegistrar} simulado={data.integradora.simulado}
+            notas={data.sugestao.notasAutorizadas}
+          />
           {podeRegistrar && <Formularios dados={data} dealId={dealId} />}
           <p className="text-[11px] text-slate-400">
             O AutoConnect guarda os protocolos e avisa o que falta; o envio é pela sua integradora.
@@ -172,22 +176,42 @@ function Formularios({ dados, dealId }: { dados: RenaveDoVeiculo; dealId?: strin
   );
 }
 
+/**
+ * De onde veio a chave que está no campo. Igual à da nota autorizada: diz qual
+ * nota. Diferente: avisa e segue — a loja pode ter enviado outra ao RENAVE, e
+ * quem marca a divergência é a conferência da Fase C, não este formulário.
+ */
+function SugestaoDaNota({ sugerida, digitada }: { sugerida: NotaAutorizada | null; digitada: string }) {
+  if (!sugerida || !digitada.trim()) return null;
+  if (normalizarChaveNfe(digitada) === sugerida.chave) {
+    return <p className="text-[11px] text-slate-400">Da nota autorizada {rotuloDaNota(sugerida)}.</p>;
+  }
+  return (
+    <p className="text-[11px] text-amber-700 dark:text-amber-400">
+      Diferente da nota autorizada {rotuloDaNota(sugerida)}. Se for a certa, salve; a conferência aponta a divergência.
+    </p>
+  );
+}
+
 function Registros({
-  registros, podeRegistrar, simulado,
-}: { registros: RegistroRenave[]; podeRegistrar: boolean; simulado: boolean }) {
+  registros, podeRegistrar, simulado, notas,
+}: { registros: RegistroRenave[]; podeRegistrar: boolean; simulado: boolean; notas: NotasAutorizadas }) {
   if (registros.length === 0) return null;
   return (
     <ul className="divide-y divide-slate-100 dark:divide-slate-800 border-y border-slate-100 dark:border-slate-800">
       {registros.map((r) => (
-        <LinhaDoRegistro key={r.id} r={r} podeRegistrar={podeRegistrar} simulado={simulado} />
+        <LinhaDoRegistro
+          key={r.id} r={r} podeRegistrar={podeRegistrar} simulado={simulado}
+          sugerida={notaSugerida(notas, r.tipo, r.dealId)}
+        />
       ))}
     </ul>
   );
 }
 
 function LinhaDoRegistro({
-  r, podeRegistrar, simulado,
-}: { r: RegistroRenave; podeRegistrar: boolean; simulado: boolean }) {
+  r, podeRegistrar, simulado, sugerida,
+}: { r: RegistroRenave; podeRegistrar: boolean; simulado: boolean; sugerida: NotaAutorizada | null }) {
   const acao = useAcaoRenave();
   const token = useAuthStore((s) => s.token) ?? undefined;
   const [erroAtpv, setErroAtpv] = useState<unknown>(null);
@@ -210,7 +234,8 @@ function LinhaDoRegistro({
   type AcaoComCampo = 'confirmar' | 'recusar' | 'cancelar' | 'nfe';
   const abrir = (a: AcaoComCampo) => {
     setAberta((atual) => (atual === a ? null : a));
-    setTexto(a === 'nfe' ? (r.chaveNfe ?? '') : '');
+    // A chave já anotada vence; sem ela, a da nota autorizada vem sugerida.
+    setTexto(a === 'nfe' ? (r.chaveNfe ?? sugerida?.chave ?? '') : '');
     setExtra('');
     acao.reset();
   };
@@ -245,6 +270,11 @@ function LinhaDoRegistro({
       {daIntegradora && r.status === 'pendente' && !r.externalId && (
         <p className="text-xs text-amber-700 dark:text-amber-400">
           A integradora não respondeu a este envio. Envie de novo: o pedido é o mesmo, não duplica.
+        </p>
+      )}
+      {r.chaveNfe && sugerida && r.chaveNfe !== sugerida.chave && (
+        <p className="text-[11px] text-amber-700 dark:text-amber-400">
+          A NF-e anotada é diferente da nota autorizada {rotuloDaNota(sugerida)}.
         </p>
       )}
       {r.chaveNfe && (
@@ -328,6 +358,7 @@ function LinhaDoRegistro({
           </button>
         </div>
       )}
+      {aberta === 'nfe' && <SugestaoDaNota sugerida={sugerida} digitada={texto} />}
       {erroAtpv !== null && (
         <p className="mt-1.5 text-sm text-rose-600 dark:text-rose-400">{erroDaAcao(erroAtpv)}</p>
       )}
@@ -358,9 +389,13 @@ function NovoRegistro({
   const [protocolo, setProtocolo] = useState('');
   const [registradoEm, setRegistradoEm] = useState('');
   const [dataOperacao, setDataOperacao] = useState('');
-  const [chaveNfe, setChaveNfe] = useState('');
+  // `null` = a loja não mexeu no campo: ele mostra a chave da nota autorizada
+  // da operação escolhida. Digitou, vale o que ela digitou — nunca sobrescrevemos.
+  const [chaveDigitada, setChaveNfe] = useState<string | null>(null);
 
   const saida = saidas.find((s) => s.dealId === negocio);
+  const sugerida = notaSugerida(dados.sugestao.notasAutorizadas, tipo, negocio);
+  const chaveNfe = chaveDigitada ?? sugerida?.chave ?? '';
   const valor = tipo === 'saida_venda' ? saida?.valor : ehEntrada(tipo) ? entrada.valor : null;
   const dataSugerida = tipo === 'saida_venda' ? saida?.dataOperacao : ehEntrada(tipo) ? entrada.dataOperacao : null;
   const faltaAquisicao = tipo === 'entrada_compra' && !entrada.temAquisicao;
@@ -443,6 +478,7 @@ function NovoRegistro({
           <span className="block">Chave da NF-e {ehEntrada(tipo) ? 'de entrada' : 'de saída'} (opcional)</span>
           <input value={chaveNfe} onChange={(e) => setChaveNfe(e.target.value)}
             placeholder="44 dígitos, como no DANFE" className={`${campo} w-full font-mono`} />
+          <SugestaoDaNota sugerida={sugerida} digitada={chaveNfe} />
         </label>
       </div>
 

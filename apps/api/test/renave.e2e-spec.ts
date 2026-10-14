@@ -7,6 +7,7 @@ import { configureApp } from '../src/app.setup';
 import { PrivilegedPrismaService } from '../src/common/prisma/privileged-prisma.service';
 import { PrismaService } from '../src/common/prisma/prisma.service';
 import { comoApp, criarDoisTenants, type DoisTenants } from './helpers/tenant-fixture';
+import { digitoVerificadorDaChave } from '@autoconnect/shared';
 
 /** NF-e de SP, outubro de 2026 — a mesma chave dos testes de `chave-nfe.ts`. */
 const CHAVE_NFE = '35261011222333000181550010000012341123456787';
@@ -76,6 +77,8 @@ describe('RENAVE — registro manual (e2e)', () => {
   afterAll(async () => {
     const lojas = { in: [f.a.id, f.b.id] };
     await dono.renaveRegistro.deleteMany({ where: { tenantId: lojas } });
+    // Notas antes dos negócios e das aquisições: as FKs da trilha N são RESTRICT.
+    await dono.fiscalDocument.deleteMany({ where: { tenantId: lojas } });
     await dono.deal.deleteMany({ where: { tenantId: lojas } });
     await dono.acquisitionSupplier.deleteMany({ where: { tenantId: lojas } });
     await dono.vehicleAcquisition.deleteMany({ where: { tenantId: lojas } });
@@ -210,6 +213,35 @@ describe('RENAVE — registro manual (e2e)', () => {
       const item = (lista.body.itens as { veiculo: { id: string } }[]).find((i) => i.veiculo.id === veiculo);
       expect(item).toBeDefined();
       expect(lista.body.total.obrigatorias).toBeGreaterThanOrEqual(1);
+    });
+
+    it('o cartão sugere a chave das notas autorizadas da compra e da venda — e só das autorizadas', async () => {
+      const comDigito = (c: string) => c + digitoVerificadorDaChave(c);
+      const chaveDaVenda = comDigito('3526101122233300018155001000000777112345678');
+      const chaveDaCompra = comDigito('3526101122233300018155001000000555112345678');
+      const aquisicao = await dono.vehicleAcquisition.findUniqueOrThrow({ where: { vehicleId: veiculo } });
+      const autorizada = { provider: 'simulado', ambiente: 'homologacao' as const, snapshot: {},
+        status: 'autorizada' as const, protocolo: 'P', autorizadaEm: new Date() };
+      await dono.fiscalDocument.create({
+        data: { ...autorizada, tenantId: f.a.id, dealId: negocioId, operation: 'venda', chave: chaveDaVenda, numero: 777, serie: 1 },
+      });
+      await dono.fiscalDocument.create({
+        data: { ...autorizada, tenantId: f.a.id, vehicleAcquisitionId: aquisicao.id, operation: 'entrada_de_troca',
+          chave: chaveDaCompra, numero: 555, serie: 1 },
+      });
+      // Rejeitada não é sugerida: a chave dela não existe para o RENAVE.
+      await dono.fiscalDocument.create({
+        data: { provider: 'simulado', ambiente: 'homologacao', snapshot: {}, status: 'rejeitada', motivo: 'x',
+          tenantId: f.a.id, dealId: negocioId, operation: 'venda' },
+      });
+
+      const res = await get(`/veiculos/${veiculo}`);
+      expect(res.body.sugestao.notasAutorizadas).toEqual({
+        entrada: { chave: chaveDaCompra, numero: 555, serie: 1 },
+        porNegocio: { [negocioId]: { chave: chaveDaVenda, numero: 777, serie: 1 } },
+      });
+      // A outra loja não vê nota nenhuma da A — nem o veículo.
+      expect((await get(`/veiculos/${veiculo}`, comoOutraLoja)).status).toBe(404);
     });
 
     it('sem protocolo, a saída fica aguardando, com o valor do negócio', async () => {

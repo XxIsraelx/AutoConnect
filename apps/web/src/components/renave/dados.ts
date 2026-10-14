@@ -76,9 +76,39 @@ export interface RenaveDoVeiculo {
     };
     /** Do cartão "Dados fiscais". */
     renavam: string | null;
+    /** NF-e autorizadas desta compra e destas vendas (trilha N), para sugerir a chave. */
+    notasAutorizadas: NotasAutorizadas;
     saidas: { dealId: string; valor: string; dataOperacao: string | null }[];
   };
   integradora: CapacidadeDaIntegradora;
+}
+
+export interface NotaAutorizada {
+  chave: string;
+  numero: number | null;
+  serie: number | null;
+}
+
+export interface NotasAutorizadas {
+  entrada: NotaAutorizada | null;
+  porNegocio: Record<string, NotaAutorizada | null>;
+}
+
+/**
+ * A nota autorizada que corresponde a uma operação do RENAVE: a de entrada
+ * para as entradas, a do negócio para a saída por venda. As demais operações
+ * (transferência, devolução de consignado) não têm nota emitida aqui.
+ */
+export function notaSugerida(
+  notas: NotasAutorizadas, tipo: RenaveOperacaoValue, dealId: string | null | undefined,
+): NotaAutorizada | null {
+  if (tipo === 'entrada_compra' || tipo === 'entrada_consignacao') return notas.entrada;
+  if (tipo === 'saida_venda' && dealId) return notas.porNegocio[dealId] ?? null;
+  return null;
+}
+
+export function rotuloDaNota(n: NotaAutorizada): string {
+  return `nº ${n.numero ?? '—'}${n.serie !== null ? `, série ${n.serie}` : ''}`;
 }
 
 export interface PendenciasDaLoja {
