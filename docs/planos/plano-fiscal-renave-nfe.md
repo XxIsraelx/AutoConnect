@@ -219,7 +219,45 @@ já faz.
   e o botão "o contador confirmou" com quem e quando. No veículo, um cartão
   "Dados fiscais" com NCM e RENAVAM.
 
-### N2 — camada neutra, simulado e o ciclo de vida da nota
+### N2 — camada neutra, simulado e o ciclo de vida da nota ✅ 14/10/2026 (saída)
+
+**Entregue em 14/10/2026, para a nota de saída do negócio:** migration
+`emissao_de_nota` (notas e eventos com RLS, **índice único parcial de uma nota
+viva por negócio**, CHECKs de coerência por estado e o trigger
+`nota_autorizada_e_imutavel`), `aplicarRetorno` e `podeCancelar` puros no
+shared, `ProvedorDeNotaFiscal` com o emissor **simulado** (gera chave de acesso
+válida e entrega o webhook pelo caminho real), webhook autenticado por token em
+tempo constante e idempotente por `(provider, eventKey)`, consulta,
+cancelamento com justificativa, XML e DANFE no bucket privado com o hash do XML
+conferido em todo download, e o cartão do negócio passando de prévia a
+emissão. 9 testes de regra e 18 e2e. Conferido no navegador: emitir →
+processando → autorizada (chave, número, protocolo) → cancelada → a prévia volta.
+
+Decidido durante a fase, com o padrão adotado:
+
+- **O banco grava antes de o emissor ouvir.** A nota nasce `processando` e só
+  então o emissor é chamado, com o id dela como referência; se a chamada cair, a
+  consulta resolve. O contrário seria nota autorizada que nenhuma tela mostra.
+- **Perfil em produção com emissor de homologação é 409**: a nota sairia sem
+  valor fiscal com o snapshot dizendo produção.
+- **Cancelamento feito fora do AutoConnect** (painel do emissor) entra com a
+  justificativa "Cancelada fora do AutoConnect", em vez de travar no CHECK.
+- **Saiu da N2, com fase própria (N2b):** a nota de **entrada** e a **carta de
+  correção** — ver abaixo.
+
+### N2b — nota de entrada e carta de correção
+
+- **Nota de entrada** (compra de particular, troca, consignação), a partir da
+  aquisição. Esbarra num dado que não existe: a `VehicleAcquisition` guarda nome
+  e documento do fornecedor, **sem endereço** — e a NF-e exige o do remetente.
+  Padrão que vou adotar: uma tabela da trilha fiscal para o endereço do
+  fornecedor, como o NCM do veículo, em vez de colunas novas em
+  `vehicle_acquisitions` (o módulo de estoque não muda de comportamento).
+  Compra de **pessoa jurídica** não gera nota nossa — quem emite é o vendedor.
+- **Carta de correção (CC-e)**, com sequência e o texto de 15 a 1.000
+  caracteres. Fica depois da N3 de propósito: a numeração de sequência e o que o
+  emissor devolve são do emissor real, e simular sem ele seria inventar formato.
+
 
 - **`fiscal_documents`**: `tipo` (entrada, saída), `status`
   (`processando | autorizada | rejeitada | denegada | cancelada`), número, série,
@@ -352,9 +390,10 @@ NF-e — e esse ponto já foi resolvido na Fase 0.
 3. **Emitir nota no modo somente leitura.** Padrão: bloqueado, como toda escrita
    — o `SomenteLeituraGuard` não ganha exceção nova sem motivo forte. Revisar se
    aparecer o caso "vendi ontem, fui bloqueado hoje, preciso faturar".
-4. **Nota de entrada de compra de pessoa física.** Padrão: entra junto da de
-   saída, em N2 — é ela que documenta o carro que a loja comprou de um
-   particular, e sem ela a conferência da Fase C fica pela metade.
+4. **Nota de entrada de compra de pessoa física.** Padrão: entra logo depois da
+   de saída, na N2b — é ela que documenta o carro que a loja comprou de um
+   particular, e sem ela a conferência da Fase C fica pela metade. Saiu da N2
+   porque a aquisição não guarda o endereço do fornecedor.
 
 ## O que teste não cobre
 
@@ -374,7 +413,8 @@ NF-e — e esse ponto já foi resolvido na Fase 0.
 | R3 — adaptador da integradora | 2 | ⬜ (depende da escolha da integradora) |
 | R4 — consignação | 2 | ⬜ (depende da Clicksign em produção e do advogado) |
 | N1 — perfil fiscal e montagem | 1 | ✅ 14/10/2026 |
-| N2 — camada neutra NF-e | 1 | ⬜ |
+| N2 — camada neutra NF-e (saída) | 1 | ✅ 14/10/2026 |
+| N2b — nota de entrada e carta de correção | 1 | ⬜ |
 | N3 — certificado e adaptador do emissor | 1 | ⬜ (depende da conta no emissor) |
 | N4 — ponte com o contador | 1 | ⬜ |
 | C — a mesma história | 1 | ⬜ (depois de R2 e N2) |

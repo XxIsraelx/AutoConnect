@@ -363,80 +363,95 @@ export class PerfilFiscalService {
    */
   async previaDoNegocio(escopo: Escopo, dealId: string, presencial: boolean) {
     const tenantId = this.tenantDe(escopo);
-
     return this.prisma.withTenant(tenantId, async (tx: ScopedClient) => {
-      const negocio = await tx.deal.findFirst({
-        where: { id: dealId, tenantId },
-        select: {
-          saleValue: true,
-          buyer: true,
-          vehicle: {
-            select: {
-              vin: true, licensePlate: true, versionName: true, yearMake: true, yearModel: true,
-              color: true, mileageKm: true,
-              brand: { select: { name: true } },
-              model: { select: { name: true } },
-              acquisition: { select: { origin: true } },
-              fiscalDetails: true,
-            },
-          },
-        },
-      });
-      if (!negocio) throw new NotFoundException('Negócio não encontrado.');
-
-      const operacao = operacaoDeSaidaDoNegocio(negocio.vehicle.acquisition?.origin ?? null);
-      const [cfg, perfil, loja, matriz] = await Promise.all([
-        tx.fiscalSettings.findUnique({ where: { tenantId } }),
-        tx.fiscalOperationProfile.findUnique({ where: { tenantId_operation: { tenantId, operation: operacao } } }),
-        tx.tenant.findUnique({
-          where: { id: tenantId },
-          select: { taxId: true, stateRegistration: true, legalName: true, tradeName: true },
-        }),
-        tx.dealershipBranch.findFirst({ where: { tenantId, isHeadquarters: true } }),
-      ]);
-
-      const enderecoDaMatriz: EnderecoFiscal | null = matriz && {
-        logradouro: matriz.addressLine, numero: matriz.addressNumber, complemento: matriz.complement,
-        bairro: matriz.neighborhood, cidade: matriz.city, uf: matriz.state, cep: matriz.postalCode,
-      };
-      const b = negocio.buyer;
-      const v = negocio.vehicle;
-
-      const { nota, faltas } = montarNota({
-        operacao,
-        configuracao: cfg && {
-          regime: cfg.regime, serie: cfg.serie, ambiente: cfg.ambiente,
-          contadorConfirmouEm: cfg.contadorConfirmouEm?.toISOString() ?? null,
-        },
-        perfil,
-        emitente: {
-          cnpj: loja?.taxId ?? null,
-          inscricaoEstadual: loja?.stateRegistration ?? null,
-          razaoSocial: loja?.legalName ?? '',
-          nomeFantasia: loja?.tradeName ?? '',
-          endereco: enderecoDaMatriz,
-        },
-        contraparte: {
-          nome: b?.fullName ?? null,
-          documento: b?.cpf ?? null,
-          email: b?.email ?? null,
-          endereco: b && {
-            logradouro: b.addressLine, numero: b.addressNumber, bairro: b.neighborhood,
-            cidade: b.city, uf: b.state, cep: b.postalCode,
-          },
-        },
-        veiculo: {
-          marca: v.brand.name, modelo: v.model.name, versao: v.versionName,
-          anoFabricacao: v.yearMake, anoModelo: v.yearModel, cor: v.color, quilometragem: v.mileageKm,
-          chassi: v.vin, placa: v.licensePlate,
-          renavam: v.fiscalDetails?.renavam ?? null, ncm: v.fiscalDetails?.ncm ?? null,
-          origem: v.fiscalDetails?.origem ?? 0,
-        },
-        valor: negocio.saleValue.toFixed(2),
-        presencial,
-      });
-
-      return { operacao, rotulo: DEFINICAO_DAS_OPERACOES[operacao].rotulo, nota, faltas };
+      const { operacao, rotulo, nota, faltas } = await this.montarDoNegocio(tx, tenantId, dealId, presencial);
+      return { operacao, rotulo, nota, faltas };
     });
+  }
+
+  /**
+   * A montagem que a prévia e a emissão compartilham — recebe a transação de
+   * quem chama para a emissão montar e gravar dentro da mesma.
+   */
+  async montarDoNegocio(tx: ScopedClient, tenantId: string, dealId: string, presencial: boolean) {
+    const negocio = await tx.deal.findFirst({
+      where: { id: dealId, tenantId },
+      select: {
+        status: true,
+        saleValue: true,
+        buyer: true,
+        vehicle: {
+          select: {
+            vin: true, licensePlate: true, versionName: true, yearMake: true, yearModel: true,
+            color: true, mileageKm: true,
+            brand: { select: { name: true } },
+            model: { select: { name: true } },
+            acquisition: { select: { origin: true } },
+            fiscalDetails: true,
+          },
+        },
+      },
+    });
+    if (!negocio) throw new NotFoundException('Negócio não encontrado.');
+
+    const operacao = operacaoDeSaidaDoNegocio(negocio.vehicle.acquisition?.origin ?? null);
+    const [cfg, perfil, loja, matriz] = await Promise.all([
+      tx.fiscalSettings.findUnique({ where: { tenantId } }),
+      tx.fiscalOperationProfile.findUnique({ where: { tenantId_operation: { tenantId, operation: operacao } } }),
+      tx.tenant.findUnique({
+        where: { id: tenantId },
+        select: { taxId: true, stateRegistration: true, legalName: true, tradeName: true },
+      }),
+      tx.dealershipBranch.findFirst({ where: { tenantId, isHeadquarters: true } }),
+    ]);
+
+    const enderecoDaMatriz: EnderecoFiscal | null = matriz && {
+      logradouro: matriz.addressLine, numero: matriz.addressNumber, complemento: matriz.complement,
+      bairro: matriz.neighborhood, cidade: matriz.city, uf: matriz.state, cep: matriz.postalCode,
+    };
+    const b = negocio.buyer;
+    const v = negocio.vehicle;
+
+    const { nota, faltas } = montarNota({
+      operacao,
+      configuracao: cfg && {
+        regime: cfg.regime, serie: cfg.serie, ambiente: cfg.ambiente,
+        contadorConfirmouEm: cfg.contadorConfirmouEm?.toISOString() ?? null,
+      },
+      perfil,
+      emitente: {
+        cnpj: loja?.taxId ?? null,
+        inscricaoEstadual: loja?.stateRegistration ?? null,
+        razaoSocial: loja?.legalName ?? '',
+        nomeFantasia: loja?.tradeName ?? '',
+        endereco: enderecoDaMatriz,
+      },
+      contraparte: {
+        nome: b?.fullName ?? null,
+        documento: b?.cpf ?? null,
+        email: b?.email ?? null,
+        endereco: b && {
+          logradouro: b.addressLine, numero: b.addressNumber, bairro: b.neighborhood,
+          cidade: b.city, uf: b.state, cep: b.postalCode,
+        },
+      },
+      veiculo: {
+        marca: v.brand.name, modelo: v.model.name, versao: v.versionName,
+        anoFabricacao: v.yearMake, anoModelo: v.yearModel, cor: v.color, quilometragem: v.mileageKm,
+        chassi: v.vin, placa: v.licensePlate,
+        renavam: v.fiscalDetails?.renavam ?? null, ncm: v.fiscalDetails?.ncm ?? null,
+        origem: v.fiscalDetails?.origem ?? 0,
+      },
+      valor: negocio.saleValue.toFixed(2),
+      presencial,
+    });
+
+    return {
+      operacao,
+      rotulo: DEFINICAO_DAS_OPERACOES[operacao].rotulo,
+      nota,
+      faltas,
+      statusDoNegocio: negocio.status,
+    };
   }
 }

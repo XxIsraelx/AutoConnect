@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   AMBIENTES_FISCAIS, normalizarNcm, normalizarRenavam, REGIMES_TRIBUTARIOS,
 } from '../domain/nota-fiscal';
+import { JUSTIFICATIVA_MAXIMA, JUSTIFICATIVA_MINIMA } from '../domain/emissao-nfe';
 
 /**
  * Corpos do perfil fiscal (trilha N1 do plano fiscal).
@@ -68,3 +69,24 @@ export const dadosFiscaisDoVeiculoSchema = z.object({
   origem: z.number().int().min(0).max(8),
 }).strict();
 export type DadosFiscaisDoVeiculoInput = z.infer<typeof dadosFiscaisDoVeiculoSchema>;
+
+/* ── Emissão (N2) ─────────────────────────────────────────── */
+
+/** `?presencial=false` quando o carro é entregue em outro estado. */
+export const emitirNotaDoNegocioSchema = z.object({
+  presencial: z.boolean().default(true),
+}).strict();
+export type EmitirNotaDoNegocioInput = z.infer<typeof emitirNotaDoNegocioSchema>;
+
+/** A justificativa vai para a SEFAZ no evento de cancelamento (`xJust`). */
+export const cancelarNotaSchema = z.object({
+  justificativa: z.string().trim()
+    .min(JUSTIFICATIVA_MINIMA, `A SEFAZ exige ao menos ${JUSTIFICATIVA_MINIMA} caracteres na justificativa`)
+    .max(JUSTIFICATIVA_MAXIMA),
+}).strict();
+export type CancelarNotaInput = z.infer<typeof cancelarNotaSchema>;
+
+/** Só com o emissor simulado, fora de produção: o que a SEFAZ "responde". */
+export const simularRetornoDaNotaSchema = z.object({
+  acao: z.enum(['autorizar', 'rejeitar', 'denegar']),
+}).strict();

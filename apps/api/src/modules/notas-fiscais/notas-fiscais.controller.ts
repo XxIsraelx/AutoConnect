@@ -1,14 +1,17 @@
 import {
-  Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards,
+  Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, Res, UseGuards,
 } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { PerfilFiscalService, PAPEIS_DO_FISCAL } from './perfil-fiscal.service';
+import { EmissaoDeNotaService } from './emissao.service';
+import { Public } from '../../common/decorators/public.decorator';
 import { escopoDa } from '../../common/escopo';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import {
-  confirmacaoDoContadorSchema, dadosFiscaisDoVeiculoSchema,
-  perfilDeOperacaoSchema, perfilFiscalSchema,
+  cancelarNotaSchema, confirmacaoDoContadorSchema, dadosFiscaisDoVeiculoSchema,
+  emitirNotaDoNegocioSchema, perfilDeOperacaoSchema, perfilFiscalSchema, simularRetornoDaNotaSchema,
 } from '@autoconnect/shared';
 
 interface AuthRequest {
@@ -31,7 +34,10 @@ const previaQuerySchema = z.object({
 @UseGuards(RolesGuard)
 @Roles(...PAPEIS_DO_FISCAL)
 export class NotasFiscaisController {
-  constructor(private readonly perfil: PerfilFiscalService) {}
+  constructor(
+    private readonly perfil: PerfilFiscalService,
+    private readonly emissao: EmissaoDeNotaService,
+  ) {}
 
   /** GET /fiscal/perfil — configuração, operações (com sugestões) e dados da loja. */
   @Get('perfil')
@@ -94,5 +100,93 @@ export class NotasFiscaisController {
   ): Promise<unknown> {
     const { presencial } = previaQuerySchema.parse(query);
     return this.perfil.previaDoNegocio(escopoDa(req.user), id, presencial);
+  }
+
+  /* ── Emissão (N2) ─────────────────────────────────────── */
+
+  /** GET /fiscal/emissor — se há emissor, se é homologação, se é simulado. */
+  @Get('emissor')
+  emissor(): unknown {
+    return this.emissao.capacidade();
+  }
+
+  @Get('negocios/:id/notas')
+  notasDoNegocio(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string): Promise<unknown> {
+    return this.emissao.listarDoNegocio(escopoDa(req.user), id);
+  }
+
+  /** POST /fiscal/negocios/:id/notas — emite a nota de saída do negócio. */
+  @Post('negocios/:id/notas')
+  emitir(
+    @Req() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const { presencial } = emitirNotaDoNegocioSchema.parse(body ?? {});
+    return this.emissao.emitir(escopoDa(req.user), req.user, id, presencial);
+  }
+
+  /** POST /fiscal/notas/:id/consultar — pergunta ao emissor em que pé a nota está. */
+  @Post('notas/:id/consultar')
+  consultar(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string): Promise<unknown> {
+    return this.emissao.consultar(escopoDa(req.user), id);
+  }
+
+  @Post('notas/:id/cancelar')
+  cancelar(
+    @Req() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const { justificativa } = cancelarNotaSchema.parse(body);
+    return this.emissao.cancelar(escopoDa(req.user), req.user, id, justificativa);
+  }
+
+  @Get('notas/:id/xml')
+  xml(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response): Promise<void> {
+    return this.entregar(req, id, 'xml', res);
+  }
+
+  @Get('notas/:id/danfe')
+  danfe(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response): Promise<void> {
+    return this.entregar(req, id, 'danfe', res);
+  }
+
+  private async entregar(req: AuthRequest, id: string, tipo: 'xml' | 'danfe', res: Response): Promise<void> {
+    const arquivo = await this.emissao.arquivo(escopoDa(req.user), id, tipo);
+    res.setHeader('Content-Type', arquivo.tipo);
+    res.setHeader('Content-Disposition', `attachment; filename="${arquivo.nome}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.end(arquivo.conteudo);
+  }
+
+  /** Só com o emissor simulado, fora de produção (404 no resto). */
+  @Post('notas/:id/simular')
+  simular(
+    @Req() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const { acao } = simularRetornoDaNotaSchema.parse(body);
+    return this.emissao.simular(escopoDa(req.user), id, acao);
+  }
+}
+
+/**
+ * Entrada do emissor. Pública porque quem chama é o emissor, não um usuário:
+ * a autenticação é o token do cabeçalho, conferido pelo adaptador em tempo
+ * constante. O corpo chega **cru** (`corpoCru` no `app.setup.ts`), porque o
+ * evento é guardado como veio.
+ */
+@Controller('webhooks')
+export class WebhookNotaFiscalController {
+  constructor(private readonly emissao: EmissaoDeNotaService) {}
+
+  @Public()
+  @Post('nota-fiscal')
+  @HttpCode(200)
+  receber(@Req() req: Request): Promise<unknown> {
+    const corpo = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    return this.emissao.receberWebhook(req.headers, corpo);
   }
 }
