@@ -419,9 +419,15 @@ NF-e — e esse ponto já foi resolvido na Fase 0.
    (conta de parceiro, várias empresas por API) e a NF-e entra em todos os
    planos; o custo por CNPJ é revisto na primeira fatura do emissor. Mudar preço
    ou faixa é em `CATALOGO_DE_PLANOS`, numa decisão própria — não neste plano.
-2. **Quem paga o RENAVE.** Padrão: a loja contrata a integradora (a obrigação e a
-   indicação no RENAVE são dela); o AutoConnect conecta. Não revendemos
-   requisição.
+2. **Quem paga o RENAVE.** ✅ **Confirmado pelo Israel em 14/10/2026:** a loja
+   contrata e paga a integradora (a obrigação e a indicação no RENAVE são dela);
+   o AutoConnect conecta e **não tem custo fixo nenhum** com integradora. Não
+   revendemos requisição. O porquê: o AutoConnect ainda busca os primeiros
+   clientes, e mensalidade de despachante sem ninguém usando é custo sem
+   receita. Consequência para a R3: integradora **sem mensalidade** (a
+   IntegraRenave cobra por requisição, da loja, e tem sandbox gratuito), e a
+   chave de API é **da loja** — o cofre por loja deixa de ser hipótese e precisa
+   de decisão antes do adaptador.
 3. **Emitir nota no modo somente leitura.** Padrão: bloqueado, como toda escrita
    — o `SomenteLeituraGuard` não ganha exceção nova sem motivo forte. Revisar se
    aparecer o caso "vendi ontem, fui bloqueado hoje, preciso faturar".
