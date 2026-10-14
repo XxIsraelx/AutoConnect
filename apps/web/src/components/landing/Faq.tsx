@@ -36,6 +36,13 @@ const PERGUNTAS = [
     r: 'Cada pessoa vê só o que o papel dela pede: o vendedor vê a carteira dele e o prazo de cada lead, a gerência vê a equipe inteira. Não há tela de gerente no caminho de quem só precisa atender.',
   },
   {
+    // R1 e R2 do plano fiscal: o registro manual e as pendências estão no ar;
+    // o envio pela integradora existe no código mas fica desligado até haver
+    // adaptador real (R3). A frase "ainda não envia" é a que mantém isto honesto.
+    p: 'E o RENAVE?',
+    r: 'Quem registra no RENAVE é a integradora credenciada que a sua loja escolheu — o AutoConnect não a substitui e ainda não envia automaticamente. O que ele faz hoje: guarda o protocolo de cada entrada e saída e avisa o que está faltando — carro no estoque sem entrada, venda faturada sem saída, chave da nota fiscal não informada — no cartão do veículo e numa lista para a gerência.',
+  },
+  {
     p: 'Funciona com o WhatsApp da loja?',
     r: 'Ainda não integra. O que existe hoje: o clique do cliente no botão de WhatsApp da vitrine vira registro no lead, e o que chega direto pelo WhatsApp o vendedor cadastra no painel — dali em diante, com prazo e rodízio como qualquer outro lead.',
   },
