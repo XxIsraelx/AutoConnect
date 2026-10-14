@@ -288,6 +288,7 @@ model Tenant {
   fiscalDocuments           FiscalDocument[]
   fiscalDocumentEvents      FiscalDocumentEvent[]
   acquisitionSuppliers      AcquisitionSupplier[]
+  fiscalCorrectionLetters   FiscalCorrectionLetter[]
 
   @@map("tenants")
 }
@@ -2307,6 +2308,17 @@ model FiscalSettings {
   contadorNome         String?   @map("contador_nome")
   contadorCrc          String?   @map("contador_crc")
 
+  /// A empresa da loja no emissor (N3) — o id, nunca um token. O token da
+  /// empresa é buscado pela conta da plataforma quando precisa, e o único
+  /// segredo fica no `.env`.
+  emissorConta          String?   @map("emissor_conta")
+  /// O certificado A1 passa pela API e vai ao emissor; aqui fica só o que ele
+  /// devolve sobre o certificado, para avisar antes de vencer.
+  certificadoValidoAte  DateTime? @map("certificado_valido_ate") @db.Timestamptz()
+  certificadoCnpj       String?   @map("certificado_cnpj")
+  certificadoEnviadoEm  DateTime? @map("certificado_enviado_em") @db.Timestamptz()
+  certificadoEnviadoPor String?   @map("certificado_enviado_por") @db.Uuid
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
@@ -2321,12 +2333,14 @@ model FiscalOperationProfile {
   tenantId  String         @map("tenant_id") @db.Uuid
   operation OperacaoFiscal
 
-  natureza                  String
-  cfopInterno               String  @map("cfop_interno") @db.Char(4)
-  cfopInterestadual         String  @map("cfop_interestadual") @db.Char(4)
+  natureza                    String
+  cfopInterno                 String  @map("cfop_interno") @db.Char(4)
+  cfopInterestadual           String  @map("cfop_interestadual") @db.Char(4)
   /// CST (2 dígitos) ou CSOSN (3). Nasce nulo: quem define é o contador.
-  situacaoTributaria        String? @map("situacao_tributaria") @db.VarChar(3)
-  informacoesComplementares String? @map("informacoes_complementares")
+  situacaoTributaria          String? @map("situacao_tributaria") @db.VarChar(3)
+  /// CST de PIS e de COFINS (N3). Nasce nulo, como o de ICMS.
+  pisCofinsSituacaoTributaria String? @map("pis_cofins_situacao_tributaria") @db.Char(2)
+  informacoesComplementares   String? @map("informacoes_complementares")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
@@ -2412,10 +2426,11 @@ model FiscalDocument {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
-  tenant             Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  deal               Deal?                 @relation(fields: [dealId], references: [id], onDelete: Restrict)
-  vehicleAcquisition VehicleAcquisition?   @relation(fields: [vehicleAcquisitionId], references: [id], onDelete: Restrict)
+  tenant             Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deal               Deal?                    @relation(fields: [dealId], references: [id], onDelete: Restrict)
+  vehicleAcquisition VehicleAcquisition?      @relation(fields: [vehicleAcquisitionId], references: [id], onDelete: Restrict)
   events             FiscalDocumentEvent[]
+  correcoes          FiscalCorrectionLetter[]
 
   @@index([tenantId, createdAt(sort: Desc)])
   @@index([dealId])
@@ -2479,4 +2494,29 @@ model AcquisitionSupplier {
 
   @@index([tenantId])
   @@map("acquisition_suppliers")
+}
+
+/// Carta de correção (CC-e) de uma nota autorizada — fase N3.
+///
+/// Recusada também fica: é a trilha do que a loja tentou corrigir. A
+/// sequência é a do emissor; vale sempre a última autorizada.
+model FiscalCorrectionLetter {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  /// autorizada | rejeitada
+  status     String
+  sequencia  Int?     @db.SmallInt
+  correcao   String
+  protocolo  String?
+  motivo     String?
+  createdBy  String?  @map("created_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  document FiscalDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([documentId, createdAt])
+  @@map("fiscal_correction_letters")
 }

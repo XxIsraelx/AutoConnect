@@ -87,7 +87,7 @@ describe('Relatório e pacote fiscal (e2e)', () => {
     await post('/perfil/operacoes/padrao');
     for (const [op, st] of [['venda', '102'], ['compra_de_particular', '900']] as const) {
       const def = (await get('/perfil')).body.operacoes.find((o: { operacao: string }) => o.operacao === op).sugestao;
-      await put(`/perfil/operacoes/${op}`, { ...def, situacaoTributaria: st, informacoesComplementares: null });
+      await put(`/perfil/operacoes/${op}`, { ...def, situacaoTributaria: st, pisCofinsSituacaoTributaria: '07', informacoesComplementares: null });
     }
 
     // Três veículos completos: venda autorizada, venda cancelada, venda rejeitada.

@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  ArrowLeft, BadgeCheck, Building2, FileText, Loader2, Save, Sparkles, TriangleAlert,
+  ArrowLeft, BadgeCheck, Building2, FileText, KeyRound, Loader2, Save, Sparkles, TriangleAlert,
 } from 'lucide-react';
 import { api, ApiError, type FieldError } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
+import CertificadoA1 from '@/components/fiscal/CertificadoA1';
 import {
-  AMBIENTES_FISCAIS, REGIMES_TRIBUTARIOS, ROTULO_DA_DIRECAO, ROTULO_DO_REGIME,
+  AMBIENTES_FISCAIS, PIS_COFINS_SEM_VALOR_CALCULADO, REGIMES_TRIBUTARIOS, ROTULO_DA_DIRECAO, ROTULO_DO_REGIME,
   type AmbienteFiscal, type OperacaoFiscal, type RegimeTributario,
 } from '@autoconnect/shared';
 
@@ -20,6 +21,7 @@ interface PerfilDaOperacao {
   cfopInterno: string;
   cfopInterestadual: string;
   situacaoTributaria: string | null;
+  pisCofinsSituacaoTributaria: string | null;
   informacoesComplementares: string | null;
 }
 
@@ -41,6 +43,7 @@ interface PerfilFiscal {
     contadorConfirmouEm: string | null;
     contadorNome: string | null;
     contadorCrc: string | null;
+    certificado: { validoAte: string | null; cnpj: string | null; enviadoEm: string | null } | null;
   } | null;
   loja: { cnpj: string | null; inscricaoEstadual: string | null; razaoSocial: string | null; ufDaMatriz: string | null };
   operacoes: Operacao[];
@@ -92,11 +95,14 @@ const erroDoCampo = (erros: FieldError[], nome: string) => erros.find((e) => e.f
 function CartaoDaOperacao({ op, usaCsosn, token, onSalvo }: {
   op: Operacao; usaCsosn: boolean; token?: string; onSalvo: (p: PerfilFiscal) => void;
 }) {
-  const inicial = op.perfil ?? { ...op.sugestao, situacaoTributaria: null, informacoesComplementares: null };
+  const inicial = op.perfil ?? {
+    ...op.sugestao, situacaoTributaria: null, pisCofinsSituacaoTributaria: null, informacoesComplementares: null,
+  };
   const [natureza, setNatureza] = useState(inicial.natureza);
   const [cfopInterno, setCfopInterno] = useState(inicial.cfopInterno);
   const [cfopInterestadual, setCfopInterestadual] = useState(inicial.cfopInterestadual);
   const [situacao, setSituacao] = useState(inicial.situacaoTributaria ?? '');
+  const [pisCofins, setPisCofins] = useState(inicial.pisCofinsSituacaoTributaria ?? '');
   const [info, setInfo] = useState(inicial.informacoesComplementares ?? '');
   const [salvando, setSalvando] = useState(false);
   const [erros, setErros] = useState<FieldError[]>([]);
@@ -115,6 +121,7 @@ function CartaoDaOperacao({ op, usaCsosn, token, onSalvo }: {
           cfopInterno,
           cfopInterestadual,
           situacaoTributaria: situacao.trim() || null,
+          pisCofinsSituacaoTributaria: pisCofins.trim() || null,
           informacoesComplementares: info.trim() || null,
         }),
       });
@@ -156,6 +163,17 @@ function CartaoDaOperacao({ op, usaCsosn, token, onSalvo }: {
             onChange={(e) => setSituacao(e.target.value.replace(/\D/g, ''))}
           />
         </Rotulo>
+        <Rotulo texto="CST de PIS/COFINS (2 dígitos)" erro={erroDoCampo(erros, 'pisCofinsSituacaoTributaria')}>
+          <input
+            className={campo} value={pisCofins} inputMode="numeric" maxLength={2}
+            placeholder="Definir com o contador"
+            onChange={(e) => setPisCofins(e.target.value.replace(/\D/g, ''))}
+          />
+          <span className="block text-[11px] text-slate-400 mt-1">
+            Saem sem valor calculado: {PIS_COFINS_SEM_VALOR_CALCULADO.join(', ')}.
+          </span>
+        </Rotulo>
+        <div className="hidden sm:block" />
         <Rotulo texto="CFOP dentro do estado" erro={erroDoCampo(erros, 'cfopInterno')}>
           <input
             className={campo} value={cfopInterno} inputMode="numeric" maxLength={4}
@@ -374,6 +392,14 @@ export default function PerfilFiscalPage() {
                 Salvar
               </button>
             </div>
+          </Section>
+
+          <Section title="Certificado digital A1" icon={KeyRound}>
+            <CertificadoA1
+              certificado={cfg?.certificado ?? null}
+              temPerfil={!!cfg}
+              onEnviado={carregar}
+            />
           </Section>
 
           <Section title="Operações" icon={FileText}>

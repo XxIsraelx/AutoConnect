@@ -82,7 +82,7 @@ describe('Emissão de NF-e (e2e)', () => {
     await put('/perfil', { regime: 'simples_nacional', serie: 1, ambiente: 'homologacao' });
     await put('/perfil/operacoes/venda', {
       natureza: 'Venda de veículo usado', cfopInterno: '5102', cfopInterestadual: '6102',
-      situacaoTributaria: '102', informacoesComplementares: null,
+      situacaoTributaria: '102', pisCofinsSituacaoTributaria: '07', informacoesComplementares: null,
     });
 
     const deal = await dono.deal.create({
@@ -127,7 +127,7 @@ describe('Emissão de NF-e (e2e)', () => {
 
   it('o emissor está ligado, simulado e em homologação', async () => {
     const res = await get('/emissor');
-    expect(res.body).toEqual({ disponivel: true, provedor: 'simulado', homologacao: true, simulado: true });
+    expect(res.body).toMatchObject({ disponivel: true, provedor: 'simulado', homologacao: true, simulado: true });
   });
 
   describe('antes de emitir', () => {

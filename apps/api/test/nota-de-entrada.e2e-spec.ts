@@ -84,7 +84,7 @@ describe('Nota de entrada (e2e)', () => {
     await post('/perfil/operacoes/padrao');
     await put('/perfil/operacoes/compra_de_particular', {
       natureza: 'Compra de veículo usado para revenda', cfopInterno: '1102', cfopInterestadual: '2102',
-      situacaoTributaria: '900', informacoesComplementares: null,
+      situacaoTributaria: '900', pisCofinsSituacaoTributaria: '07', informacoesComplementares: null,
     });
   }, 90_000);
 

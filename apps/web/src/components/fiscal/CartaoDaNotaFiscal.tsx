@@ -4,10 +4,11 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  CheckCircle2, Download, FileText, FlaskConical, Loader2, RefreshCw, Send, XCircle,
+  CheckCircle2, Download, FilePen, FileText, FlaskConical, Loader2, RefreshCw, Send, XCircle,
 } from 'lucide-react';
 import {
-  formatarBRL, formatarChaveNfe, JUSTIFICATIVA_MAXIMA, JUSTIFICATIVA_MINIMA, ROTULO_DO_STATUS_DA_NOTA,
+  CORRECAO_MAXIMA, CORRECAO_MINIMA, formatarBRL, formatarChaveNfe, JUSTIFICATIVA_MAXIMA, JUSTIFICATIVA_MINIMA,
+  O_QUE_A_CARTA_NAO_CORRIGE, ROTULO_DO_STATUS_DA_NOTA,
   type FaltaParaEmitir, type LugarDaFalta, type NotaMontada, type StatusDaNota,
 } from '@autoconnect/shared';
 import { api, baixarArquivo } from '@/lib/api';
@@ -42,6 +43,8 @@ interface Nota {
   justificativaDoCancelamento: string | null;
   emitidaEm: string;
   cancelamento: { pode: true } | { pode: false; motivo: string };
+  correcao: { pode: true } | { pode: false; motivo: string };
+  correcoes: { id: string; status: string; sequencia: number | null; correcao: string; motivo: string | null; em: string }[];
 }
 
 const COR_DO_STATUS: Record<StatusDaNota, string> = {
@@ -110,6 +113,8 @@ export default function CartaoDaNotaFiscal({
   const [presencial, setPresencial] = useState(true);
   const [cancelando, setCancelando] = useState(false);
   const [justificativa, setJustificativa] = useState('');
+  const [corrigindo, setCorrigindo] = useState(false);
+  const [textoDaCorrecao, setTextoDaCorrecao] = useState('');
   const [erroDeAcao, setErroDeAcao] = useState('');
 
   const emissor = useQuery({
@@ -139,7 +144,9 @@ export default function CartaoDaNotaFiscal({
   const acao = useMutation({
     mutationFn: (f: () => Promise<unknown>) => f(),
     onMutate: () => setErroDeAcao(''),
-    onSuccess: () => { setCancelando(false); setJustificativa(''); atualizar(); },
+    onSuccess: () => {
+      setCancelando(false); setJustificativa(''); setCorrigindo(false); setTextoDaCorrecao(''); atualizar();
+    },
     onError: (e) => { setErroDeAcao(textoDoErro(e)); atualizar(); },
   });
 
@@ -151,6 +158,9 @@ export default function CartaoDaNotaFiscal({
     acao.mutate(() => api(`/fiscal/notas/${id}/simular`, { token, method: 'POST', body: JSON.stringify({ acao: a }) }));
   const cancelar = (id: string) => acao.mutate(() => api(`/fiscal/notas/${id}/cancelar`, {
     token, method: 'POST', body: JSON.stringify({ justificativa }),
+  }));
+  const corrigir = (id: string) => acao.mutate(() => api(`/fiscal/notas/${id}/carta-de-correcao`, {
+    token, method: 'POST', body: JSON.stringify({ correcao: textoDaCorrecao }),
   }));
   const baixar = (n: Nota, tipo: 'xml' | 'danfe') =>
     acao.mutate(() => baixarArquivo(
@@ -224,6 +234,11 @@ export default function CartaoDaNotaFiscal({
                 <button type="button" disabled={ocupado} onClick={() => baixar(viva, 'xml')} className={botaoSecundario}>
                   <Download size={13} /> XML
                 </button>
+                {viva.correcao.pode && !corrigindo && !cancelando && (
+                  <button type="button" onClick={() => setCorrigindo(true)} className={botaoSecundario}>
+                    <FilePen size={13} /> Carta de correção
+                  </button>
+                )}
                 {viva.cancelamento.pode && !cancelando && (
                   <button type="button" onClick={() => setCancelando(true)} className={`${botaoSecundario} text-rose-700 dark:text-rose-300`}>
                     <XCircle size={13} /> Cancelar nota
@@ -236,6 +251,43 @@ export default function CartaoDaNotaFiscal({
             <p className="text-xs text-slate-500">{viva.cancelamento.motivo}</p>
           )}
           {viva.motivo && <p className="text-xs text-rose-600 dark:text-rose-400">{viva.motivo}</p>}
+
+          {corrigindo && (
+            <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-2">
+              <p className="text-xs text-amber-700 dark:text-amber-300">{O_QUE_A_CARTA_NAO_CORRIGE}</p>
+              <label className="block text-xs text-slate-600 dark:text-slate-300">
+                O que corrigir ({CORRECAO_MINIMA} a {CORRECAO_MAXIMA} caracteres)
+                <textarea
+                  rows={3} maxLength={CORRECAO_MAXIMA} value={textoDaCorrecao}
+                  onChange={(e) => setTextoDaCorrecao(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm"
+                />
+              </label>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setCorrigindo(false)} className={botaoSecundario}>Voltar</button>
+                <button
+                  type="button" disabled={ocupado || textoDaCorrecao.trim().length < CORRECAO_MINIMA}
+                  onClick={() => corrigir(viva.id)} className={botaoPrimario}
+                >
+                  {ocupado ? <Loader2 size={13} className="animate-spin" /> : <FilePen size={13} />} Enviar carta
+                </button>
+              </div>
+            </div>
+          )}
+
+          {viva.correcoes.length > 0 && (
+            <ul className="space-y-1">
+              {viva.correcoes.map((c) => (
+                <li key={c.id} className="text-xs text-slate-500">
+                  <span className={c.status === 'autorizada' ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}>
+                    Carta {c.sequencia ?? '—'} {c.status === 'autorizada' ? 'autorizada' : 'recusada'}
+                  </span>
+                  {' '}· {quando(c.em)} — {c.correcao}
+                  {c.motivo && <span className="text-rose-600"> ({c.motivo})</span>}
+                </li>
+              ))}
+            </ul>
+          )}
 
           {cancelando && (
             <div className="rounded-lg border border-rose-200 dark:border-rose-900 p-3 space-y-2">

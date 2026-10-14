@@ -12,7 +12,10 @@
  */
 import { lerChaveNfe } from './chave-nfe';
 import { deCentavos, emCentavos } from './dinheiro';
-import { DEFINICAO_DAS_OPERACOES, type NotaMontada, type OperacaoFiscal } from './nota-fiscal';
+import {
+  DEFINICAO_DAS_OPERACOES,
+  type AmbienteFiscal, type EnderecoFiscal, type NotaMontada, type OperacaoFiscal, type RegimeTributario,
+} from './nota-fiscal';
 
 export const STATUS_DA_NOTA = ['processando', 'autorizada', 'rejeitada', 'denegada', 'cancelada'] as const;
 export type StatusDaNota = (typeof STATUS_DA_NOTA)[number];
@@ -153,12 +156,91 @@ export function podeCancelar(
   return { pode: true };
 }
 
+/* ── Carta de correção (N3) ──────────────────────────────────── */
+
+/** Texto da CC-e (`xCorrecao`): de 15 a 1.000 caracteres. */
+export const CORRECAO_MINIMA = 15;
+export const CORRECAO_MAXIMA = 1000;
+/** A SEFAZ aceita até 20 cartas por nota; vale sempre a última. */
+export const CARTAS_DE_CORRECAO_POR_NOTA = 20;
+
+/**
+ * A carta de correção não corrige qualquer coisa: valor, imposto, data,
+ * CFOP e a identificação de quem emite ou recebe ficam fora (Ajuste SINIEF
+ * 01/07). Não dá para conferir isso no código — é texto livre —, então a tela
+ * diz, e a SEFAZ recusa o que passar.
+ */
+export const O_QUE_A_CARTA_NAO_CORRIGE =
+  'A carta de correção não muda valor, imposto, data, CFOP, nem quem emite ou recebe a nota.';
+
+export function podeCorrigir(
+  nota: { status: StatusDaNota },
+  cartasAutorizadas: number,
+): { pode: true } | { pode: false; motivo: string } {
+  if (nota.status !== 'autorizada') {
+    return { pode: false, motivo: 'Só nota autorizada (e não cancelada) recebe carta de correção.' };
+  }
+  if (cartasAutorizadas >= CARTAS_DE_CORRECAO_POR_NOTA) {
+    return { pode: false, motivo: `A nota já tem ${CARTAS_DE_CORRECAO_POR_NOTA} cartas de correção — o limite da SEFAZ.` };
+  }
+  return { pode: true };
+}
+
+export interface RetornoDaCartaDeCorrecao {
+  situacao: 'autorizada' | 'rejeitada';
+  /** O número da carta na nota, atribuído pelo emissor. */
+  sequencia: number | null;
+  protocolo?: string | null;
+  motivo?: string | null;
+  ocorridoEm: string;
+}
+
 /* ── O emissor ───────────────────────────────────────────────── */
+
+/**
+ * Exigência da SEFAZ em homologação (rejeição 598): o nome do destinatário é
+ * este texto, e não o da pessoa. Quem monta o pedido em homologação troca.
+ */
+export const NOME_DO_DESTINATARIO_EM_HOMOLOGACAO = 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL';
 
 export interface PedidoDeEmissao {
   /** Nossa referência da nota (o id do documento). O emissor a devolve em tudo. */
   referencia: string;
   nota: NotaMontada;
+}
+
+/**
+ * De qual loja, em qual ambiente. O emissor real usa uma conta (e um token)
+ * por empresa e um endereço por ambiente; o simulado ignora.
+ */
+export interface EmitenteNoEmissor {
+  /** O id da empresa no emissor — `null` enquanto a loja não enviou o certificado. */
+  contaExterna: string | null;
+  ambiente: AmbienteFiscal;
+}
+
+/** O que o emissor precisa saber da loja para habilitá-la a emitir. */
+export interface DadosDoEmitente {
+  contaExterna: string | null;
+  cnpj: string;
+  razaoSocial: string;
+  nomeFantasia: string;
+  inscricaoEstadual: string;
+  regime: RegimeTributario;
+  endereco: EnderecoFiscal;
+  email: string;
+}
+
+export interface CertificadoA1 {
+  /** O arquivo PFX/P12, em base64. Passa pela API e vai ao emissor; nunca é gravado. */
+  arquivoBase64: string;
+  senha: string;
+}
+
+export interface EmitenteRegistrado {
+  contaExterna: string;
+  certificadoValidoAte: string | null;
+  certificadoCnpj: string | null;
 }
 
 export type CabecalhosDoEmissor = Record<string, string | string[] | undefined>;
@@ -175,13 +257,20 @@ export interface ProvedorDeNotaFiscal {
   readonly nome: string;
   /** Falso sem emissor configurado: a tela esconde o botão de emitir. */
   readonly disponivel: boolean;
-  /** Ambiente de homologação: a nota não tem valor fiscal. A tela diz isso. */
+  /**
+   * Esta instalação só emite em homologação (sem valor fiscal). A tela diz
+   * isso, e perfil em produção é recusado na emissão.
+   */
   readonly homologacao: boolean;
-  emitir(pedido: PedidoDeEmissao): Promise<RetornoDoEmissor>;
-  consultar(referencia: string): Promise<RetornoDoEmissor>;
-  cancelar(referencia: string, justificativa: string): Promise<RetornoDoEmissor>;
-  baixarXml(referencia: string): Promise<Uint8Array>;
-  baixarDanfe(referencia: string): Promise<Uint8Array>;
+  /** A loja precisa ter enviado o certificado A1 antes de emitir. */
+  readonly exigeCertificado: boolean;
+  registrarEmitente(dados: DadosDoEmitente, certificado: CertificadoA1): Promise<EmitenteRegistrado>;
+  emitir(emitente: EmitenteNoEmissor, pedido: PedidoDeEmissao): Promise<RetornoDoEmissor>;
+  consultar(emitente: EmitenteNoEmissor, referencia: string): Promise<RetornoDoEmissor>;
+  cancelar(emitente: EmitenteNoEmissor, referencia: string, justificativa: string): Promise<RetornoDoEmissor>;
+  cartaDeCorrecao(emitente: EmitenteNoEmissor, referencia: string, correcao: string): Promise<RetornoDaCartaDeCorrecao>;
+  baixarXml(emitente: EmitenteNoEmissor, referencia: string): Promise<Uint8Array>;
+  baixarDanfe(emitente: EmitenteNoEmissor, referencia: string): Promise<Uint8Array>;
   /**
    * Autentica e traduz o webhook. Lança 401 quando a entrega não é do emissor,
    * **antes** de qualquer acesso ao banco. `idDaEntrega` é a chave de

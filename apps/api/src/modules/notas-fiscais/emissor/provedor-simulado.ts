@@ -2,8 +2,9 @@ import { NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import {
   digitoVerificadorDaChave,
-  type CabecalhosDoEmissor, type NotaMontada, type PedidoDeEmissao,
-  type ProvedorDeNotaFiscal, type RetornoDoEmissor, type StatusDaNota,
+  type CabecalhosDoEmissor, type CertificadoA1, type DadosDoEmitente, type EmitenteRegistrado,
+  type NotaMontada, type PedidoDeEmissao, type ProvedorDeNotaFiscal, type RetornoDaCartaDeCorrecao,
+  type RetornoDoEmissor, type StatusDaNota,
 } from '@autoconnect/shared';
 import { tokenConfere } from '../../cobranca/token-webhook';
 
@@ -42,6 +43,7 @@ interface NotaEmMemoria {
   protocolo: string | null;
   motivo: string | null;
   autorizadaEm: string | null;
+  cartas: number;
 }
 
 export type AcaoSimuladaDaNota = 'autorizar' | 'rejeitar' | 'denegar';
@@ -67,6 +69,8 @@ export class ProvedorDeNotaSimulado implements ProvedorDeNotaFiscal {
   readonly nome = 'simulado';
   readonly disponivel = true;
   readonly homologacao = true;
+  /** O simulado emite sem certificado — é o que deixa a trilha testável sem conta. */
+  readonly exigeCertificado = false;
 
   private readonly notas = new Map<string, NotaEmMemoria>();
   private readonly ultimoNumero = new Map<string, number>();
@@ -93,20 +97,36 @@ export class ProvedorDeNotaSimulado implements ProvedorDeNotaFiscal {
     };
   }
 
-  emitir({ referencia, nota }: PedidoDeEmissao): Promise<RetornoDoEmissor> {
+  /**
+   * Aceita qualquer arquivo em base64 com senha: o simulado não abre o PFX. O
+   * que ele prova é o caminho — a conta volta, a validade é gravada, o
+   * certificado não.
+   */
+  registrarEmitente(dados: DadosDoEmitente, certificado: CertificadoA1): Promise<EmitenteRegistrado> {
+    if (!certificado.senha) return Promise.reject(new UnauthorizedException('Senha do certificado não confere.'));
+    const umAno = new Date(Date.now() + 365 * 86_400_000).toISOString();
+    return Promise.resolve({
+      contaExterna: dados.contaExterna ?? `sim_emp_${dados.cnpj}`,
+      certificadoValidoAte: umAno,
+      certificadoCnpj: dados.cnpj,
+    });
+  }
+
+  emitir(_emitente: unknown, { referencia, nota }: PedidoDeEmissao): Promise<RetornoDoEmissor> {
     if (!this.notas.has(referencia)) {
       this.notas.set(referencia, {
-        nota, status: 'processando', chave: null, numero: null, protocolo: null, motivo: null, autorizadaEm: null,
+        nota, status: 'processando', chave: null, numero: null, protocolo: null, motivo: null,
+        autorizadaEm: null, cartas: 0,
       });
     }
     return Promise.resolve(this.retornoDe(referencia, this.achar(referencia)));
   }
 
-  consultar(referencia: string): Promise<RetornoDoEmissor> {
+  consultar(_emitente: unknown, referencia: string): Promise<RetornoDoEmissor> {
     return Promise.resolve(this.retornoDe(referencia, this.achar(referencia)));
   }
 
-  cancelar(referencia: string): Promise<RetornoDoEmissor> {
+  cancelar(_emitente: unknown, referencia: string): Promise<RetornoDoEmissor> {
     const n = this.achar(referencia);
     if (n.status !== 'autorizada') {
       return Promise.resolve({
@@ -119,7 +139,23 @@ export class ProvedorDeNotaSimulado implements ProvedorDeNotaFiscal {
     return Promise.resolve({ ...this.retornoDe(referencia, n), ocorridoEm: new Date().toISOString() });
   }
 
-  baixarXml(referencia: string): Promise<Uint8Array> {
+  /** Autoriza, como a SEFAZ faria com um texto bem formado. A sequência é por nota. */
+  cartaDeCorrecao(_emitente: unknown, referencia: string): Promise<RetornoDaCartaDeCorrecao> {
+    const n = this.achar(referencia);
+    if (n.status !== 'autorizada') {
+      return Promise.resolve({
+        situacao: 'rejeitada', sequencia: null, motivo: 'Nota não autorizada não recebe carta de correção',
+        ocorridoEm: new Date().toISOString(),
+      });
+    }
+    n.cartas += 1;
+    return Promise.resolve({
+      situacao: 'autorizada', sequencia: n.cartas, protocolo: `cce-${n.protocolo}-${n.cartas}`,
+      ocorridoEm: new Date().toISOString(),
+    });
+  }
+
+  baixarXml(_emitente: unknown, referencia: string): Promise<Uint8Array> {
     const n = this.achar(referencia);
     if (!n.chave) return Promise.reject(new NotFoundException('Nota sem XML: ainda não foi autorizada.'));
     const xml =
@@ -131,7 +167,7 @@ export class ProvedorDeNotaSimulado implements ProvedorDeNotaFiscal {
     return Promise.resolve(Buffer.from(xml, 'utf8'));
   }
 
-  baixarDanfe(referencia: string): Promise<Uint8Array> {
+  baixarDanfe(_emitente: unknown, referencia: string): Promise<Uint8Array> {
     const n = this.achar(referencia);
     if (!n.chave) return Promise.reject(new NotFoundException('Nota sem DANFE: ainda não foi autorizada.'));
     // Um PDF mínimo e válido. O DANFE de verdade vem do emissor (N3).

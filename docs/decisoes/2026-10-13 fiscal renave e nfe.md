@@ -52,6 +52,13 @@ que a nota não existe.
 - **Integração RENAVE antes do registro manual** — a integradora de cada loja é
   escolha dela, e o prazo de outubro chega antes de qualquer adaptador.
 
+## Depois: o emissor
+
+Em 14/10/2026 o Israel escolheu a **Focus NFe** (API REST, homologação, cadastro
+de empresa por API, webhook). O desenho que saiu dela — nenhum token de loja no
+banco, certificado que passa e não fica, produção só com liberação explícita —
+está na fase N3 do plano.
+
 ## Onde está no código
 
 - `packages/shared/src/domain/chave-nfe.ts` — contrato comum entre as duas

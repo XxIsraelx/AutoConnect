@@ -42,6 +42,7 @@ describe('Perfil fiscal (e2e)', () => {
     cfopInterno: '5102',
     cfopInterestadual: '6102',
     situacaoTributaria: '102',
+    pisCofinsSituacaoTributaria: '07',
     informacoesComplementares: null,
   };
 
@@ -145,7 +146,7 @@ describe('Perfil fiscal (e2e)', () => {
       const perfil = await get('/perfil');
       for (const op of perfil.body.operacoes as { operacao: string; sugestao: Record<string, string> }[]) {
         const res = await put(`/perfil/operacoes/${op.operacao}`, {
-          ...op.sugestao, situacaoTributaria: op.operacao === 'venda' ? '102' : '900',
+          ...op.sugestao, situacaoTributaria: op.operacao === 'venda' ? '102' : '900', pisCofinsSituacaoTributaria: '07',
           informacoesComplementares: null,
         });
         expect(res.status).toBe(200);
@@ -173,7 +174,7 @@ describe('Perfil fiscal (e2e)', () => {
     it('mudar uma operação apaga a confirmação — o contador não conferiu o que veio depois', async () => {
       await put('/perfil/operacoes/compra_de_particular', {
         natureza: 'Compra de veículo usado', cfopInterno: '1102', cfopInterestadual: '2102',
-        situacaoTributaria: '101', informacoesComplementares: null,
+        situacaoTributaria: '101', pisCofinsSituacaoTributaria: '07', informacoesComplementares: null,
       });
       const perfil = await get('/perfil');
       expect(perfil.body.configuracao.contadorConfirmouEm).toBeNull();

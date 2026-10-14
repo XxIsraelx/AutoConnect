@@ -30,7 +30,7 @@ describe('corpos do perfil fiscal', () => {
   it('campo a mais é recusado — o perfil muda imposto', () => {
     const r = perfilDeOperacaoSchema.safeParse({
       natureza: 'Venda', cfopInterno: '5102', cfopInterestadual: '6102',
-      situacaoTributaria: null, informacoesComplementares: null, aliquota: '18',
+      situacaoTributaria: null, pisCofinsSituacaoTributaria: null, informacoesComplementares: null, aliquota: '18',
     });
     expect(r.success).toBe(false);
   });

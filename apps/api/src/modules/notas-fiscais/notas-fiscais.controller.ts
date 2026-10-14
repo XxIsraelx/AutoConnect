@@ -11,7 +11,8 @@ import { escopoDa } from '../../common/escopo';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import {
-  cancelarNotaSchema, confirmacaoDoContadorSchema, periodoDeExportacaoSchema, dadosFiscaisDoVeiculoSchema,
+  cancelarNotaSchema, cartaDeCorrecaoSchema, certificadoA1Schema, confirmacaoDoContadorSchema,
+  periodoDeExportacaoSchema, dadosFiscaisDoVeiculoSchema,
   emitirNotaDoNegocioSchema, perfilDeOperacaoSchema, perfilFiscalSchema, quemEntregouSchema,
   simularRetornoDaNotaSchema,
 } from '@autoconnect/shared';
@@ -200,6 +201,26 @@ export class NotasFiscaisController {
   ): Promise<unknown> {
     const { presencial } = emitirNotaDoNegocioSchema.parse(body ?? {});
     return this.emissao.emitirEntrada(escopoDa(req.user), req.user, id, presencial);
+  }
+
+  /**
+   * POST /fiscal/certificado — o A1 da loja vai ao emissor e não fica aqui.
+   * A senha não é logada: o corpo não passa por nenhum log desta rota.
+   */
+  @Post('certificado')
+  enviarCertificado(@Req() req: AuthRequest, @Body() body: unknown): Promise<unknown> {
+    return this.emissao.enviarCertificado(escopoDa(req.user), req.user, certificadoA1Schema.parse(body));
+  }
+
+  /** POST /fiscal/notas/:id/carta-de-correcao — CC-e da nota autorizada. */
+  @Post('notas/:id/carta-de-correcao')
+  cartaDeCorrecao(
+    @Req() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const { correcao } = cartaDeCorrecaoSchema.parse(body);
+    return this.emissao.cartaDeCorrecao(escopoDa(req.user), req.user, id, correcao);
   }
 
   /** POST /fiscal/notas/:id/consultar — pergunta ao emissor em que pé a nota está. */

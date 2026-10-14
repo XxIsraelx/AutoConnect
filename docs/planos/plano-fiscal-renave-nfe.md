@@ -295,25 +295,64 @@ Decidido durante a fase, com o padrão adotado:
   (componente próprio), com DANFE e XML por URL assinada, e uma lista de notas do
   mês em `/financeiro` ou `/relatorios`.
 
-### N3 — certificado A1 e o adaptador do emissor
+### N3 — certificado A1, Focus NFe e carta de correção ◐ 14/10/2026 (falta a conta)
 
-- Emissor terceiro, nunca SEFAZ direto. Padrão: [Focus NFe](https://focusnfe.com.br/guides/nfe/)
-  (API REST, webhook, homologação, cadastro de empresa por API, e já cuida das
-  mudanças de layout da reforma tributária). NFe.io e Tecnospeed são a
-  alternativa se o preço por CNPJ não fechar.
-- **Certificado A1 da loja:** sobe pela tela e é **repassado ao emissor na hora**,
-  sem ser gravado por nós; fica só a validade, o CNPJ do titular e a impressão
-  digital, para avisar antes de vencer. A senha do certificado não é logada nem
-  persistida.
-- `NFE_FORNECEDOR`, `FOCUS_NFE_TOKEN`, `FOCUS_NFE_API_URL` — mesmas regras das
-  outras integrações: faltando uma, desligado com erro no log, boot não cai;
-  `setup-e2e.ts` força `simulado`. Selo "homologação — sem valor fiscal" na tela
-  enquanto o ambiente não for produção, pela mesma razão do selo de sandbox da
-  cobrança.
-- **Carta de correção (CC-e)**, com sequência e o texto de 15 a 1.000
-  caracteres — veio da N2b, porque o formato é do emissor real.
-- Uma nota de entrada e uma de saída autorizadas em homologação, e um
-  cancelamento.
+**Entregue em 14/10/2026, sem conta na Focus:** o adaptador `ProvedorFocusNfe`
+(`modules/notas-fiscais/emissor/provedor-focus.ts`), escrito a partir da
+documentação (https://doc.focusnfe.com.br, lida em 14/10/2026) e testado com
+`fetch` dublado — **ainda não falou com a Focus de verdade**. O envio do
+certificado A1 pela tela, a carta de correção (CC-e) de ponta a ponta com o
+simulado, e o CST de PIS/COFINS no perfil. Migration
+`emissor_e_carta_de_correcao`. 22 testes do adaptador e 10 e2e. Conferido no
+navegador: certificado enviado (validade e CNPJ na tela), carta 1 autorizada.
+
+Decidido durante a fase (a Focus foi escolhida pelo Israel em 14/10/2026):
+
+- **Nenhum segredo de loja no banco.** A Focus tem um *token master* da conta,
+  que cadastra empresas, e um par de tokens por empresa, que é o que emite. O
+  banco guarda só o **id da empresa** (`fiscal_settings.emissor_conta`); o token
+  dela é buscado pelo master (`GET /v2/empresas/{id}`) e fica 5 minutos em
+  memória. O único segredo é `FOCUS_NFE_TOKEN_MASTER`, no `.env`.
+- **O certificado A1 passa e não fica.** Arquivo e senha vão à Focus no cadastro
+  (ou atualização) da empresa; ficam a validade e o CNPJ que ela devolve. Nem a
+  auditoria guarda — o e2e confere.
+- **Produção só com `FOCUS_NFE_PRODUCAO_LIBERADA=true`.** Sem ela a instalação
+  emite só em homologação, e perfil em produção é 409. Em homologação, o nome do
+  destinatário vira o texto que a SEFAZ exige (rejeição 598).
+- **O gatilho (webhook) é criado por empresa** com o nosso token no cabeçalho
+  `x-nfe-token` — o mesmo do simulado. Sem `NFE_WEBHOOK_URL`, o retorno chega
+  só pela consulta (o botão "Consultar a SEFAZ" já existe).
+- **Webhook que autoriza sem protocolo** (a Focus só manda o protocolo na
+  consulta completa) dispara a consulta, e é ela que se aplica.
+- **A montagem só envia situações tributárias sem valor calculado**
+  (`ICMS_SEM_VALOR_CALCULADO`, `PIS_COFINS_SEM_VALOR_CALCULADO`): CSOSN 102, 103,
+  300, 400, 500, 900; CST 40, 41, 50; PIS/COFINS 04 a 09. O resto (CST 00, 20,
+  CSOSN 101, PIS/COFINS 01, 49, 99) pede base e alíquota, que o AutoConnect não
+  calcula — vira **falta antes da emissão**, não rejeição da SEFAZ depois.
+  Ampliar é trabalho com o contador.
+
+**A CONFERIR na primeira nota em homologação** (premissas que a documentação não
+fechou, marcadas no código):
+
+1. o corpo do disparo do gatilho é o JSON da consulta, com `ref`;
+2. o host dos caminhos `/arquivos/...` (XML e DANFE) é o do ambiente, com a
+   mesma autenticação;
+3. o nome do campo de informações complementares (`informacoes_adicionais_contribuinte`);
+4. `consumidor_final` e `presenca_comprador` na nota de entrada de particular;
+5. se a empresa recém-criada já devolve `token_homologacao` (o exemplo da doc
+   vem vazio).
+
+**O que o Israel faz para ligar** (nenhuma sessão faz sozinha):
+
+1. Conta na Focus NFe; anotar o **token master** (painel da conta).
+2. No Railway (API): `NFE_FORNECEDOR=focusnfe`, `FOCUS_NFE_TOKEN_MASTER`,
+   `NFE_WEBHOOK_TOKEN` (um valor novo, longo, só nosso) e
+   `NFE_WEBHOOK_URL=https://api.autoconnectapp.com.br/api/v1/webhooks/nota-fiscal`.
+   **Não** definir `FOCUS_NFE_PRODUCAO_LIBERADA` ainda.
+3. Numa loja com CNPJ real, enviar o certificado A1 em *Configurações › Perfil
+   fiscal* (a Focus exige CNPJ real e A1 válido até em homologação).
+4. Emitir uma nota de saída e uma de entrada, cancelar uma, mandar uma carta de
+   correção — e me passar o que vier diferente do esperado nos 5 itens acima.
 
 ### N4 — a ponte com o contador ✅ 14/10/2026
 
@@ -458,6 +497,6 @@ NF-e — e esse ponto já foi resolvido na Fase 0.
 | N1 — perfil fiscal e montagem | 1 | ✅ 14/10/2026 |
 | N2 — camada neutra NF-e (saída) | 1 | ✅ 14/10/2026 |
 | N2b — nota de entrada | 1 | ✅ 14/10/2026 |
-| N3 — certificado, adaptador do emissor e carta de correção | 1 | ⬜ (depende da conta no emissor) |
+| N3 — certificado, Focus NFe e carta de correção | 1 | ◐ 14/10/2026 — adaptador escrito e testado; falta a conta na Focus |
 | N4 — ponte com o contador | 1 | ✅ 14/10/2026 |
 | C — a mesma história | 1 | ⬜ (depois de R2 e N2) |
