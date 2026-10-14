@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { PerfilFiscalService, PAPEIS_DO_FISCAL } from './perfil-fiscal.service';
 import { EmissaoDeNotaService } from './emissao.service';
 import { periodoEmBrasilia, RelatorioFiscalService } from './relatorio-fiscal.service';
+import { ConferenciaFiscalService } from './conferencia-fiscal.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { escopoDa } from '../../common/escopo';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -41,7 +42,18 @@ export class NotasFiscaisController {
     private readonly perfil: PerfilFiscalService,
     private readonly emissao: EmissaoDeNotaService,
     private readonly relatorios: RelatorioFiscalService,
+    private readonly conferencia: ConferenciaFiscalService,
   ) {}
+
+  /**
+   * GET /fiscal/conferencia?from=&to= — estoque, nota e RENAVE contando a mesma
+   * história (Fase C). Só lê; a lista diz o que discorda, e cada tela corrige o seu.
+   */
+  @Get('conferencia')
+  conferir(@Req() req: AuthRequest, @Query() query: unknown): Promise<unknown> {
+    const { from, to } = periodoDeExportacaoSchema.parse(query);
+    return this.conferencia.conferir(escopoDa(req.user), periodoEmBrasilia(from, to));
+  }
 
   /* ── Ponte com o contador (N4) ────────────────────────── */
 

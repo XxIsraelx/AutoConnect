@@ -10,6 +10,7 @@ import {
 import { api, baixarArquivo } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { ErroAoCarregar, textoDoErro } from '@/components/ErroAoCarregar';
+import ConferenciaFiscal from './ConferenciaFiscal';
 
 interface NotaDoPeriodo {
   id: string;
@@ -219,6 +220,9 @@ export default function NotasDoPeriodo() {
           )}
         </>
       )}
+
+      {/* Fase C: o mesmo mês, cruzado com o RENAVE. */}
+      <ConferenciaFiscal from={from} to={to} />
     </div>
   );
 }

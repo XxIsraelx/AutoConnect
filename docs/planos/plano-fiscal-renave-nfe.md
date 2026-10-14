@@ -515,19 +515,38 @@ Decidido durante a fase, com o padrão adotado:
 
 ---
 
-## Fase C — a mesma história (sessão 1, depois do merge das duas trilhas)
+## Fase C — a mesma história ✅ 14/10/2026 (sessão 1, depois do merge das duas trilhas)
 
-- **Conferência estoque × NF-e × RENAVE:** para cada veículo vendido no mês, nota
-  de saída autorizada, saída RENAVE confirmada, e os dois com o mesmo valor e a
-  mesma data do negócio. Divergência vira lista, não bloqueio.
-- O registro RENAVE de saída passa a vir **pré-preenchido** com a chave da nota
-  autorizada (leitura de `fiscal_documents`; a escrita continua na trilha R).
-  ✅ **14/10/2026, trilha R:** o cartão traz as notas autorizadas da compra e de
-  cada venda (`sugestao.notasAutorizadas`, leitura dentro do `withTenant`); o
-  campo da chave — no registro novo e no "informar NF-e" — vem preenchido quando
-  está vazio, com "da nota autorizada nº X", e nunca sobrescreve o que a loja
-  digitou. Chave diferente da autorizada é aviso: quem marca a divergência é a
-  conferência.
+**Entregue em 14/10/2026:** `conferirOperacao` no shared
+(`domain/conferencia-fiscal.ts`) e `GET /fiscal/conferencia?from=&to=`: para cada
+**venda faturada** e cada **compra** do período, cruza o valor e a data da operação
+com a nota fiscal e com o registro do RENAVE. A seção **Conferência com o RENAVE**
+fica na aba *Notas fiscais* do financeiro, no mesmo mês, mostrando por padrão só o
+que discorda — com a chave da nota autorizada pronta para copiar quando falta no
+RENAVE. 9 testes de regra e 3 e2e. Conferido no navegador.
+
+Decidido durante a fase, com o padrão adotado:
+
+- **Divergência é lista, não bloqueio.** O negócio já está faturado e o carro já
+  saiu; travar algo agora não desfaz nada. Duas gravidades: `divergencia` (os
+  registros discordam: valor, chave errada) e `aviso` (falta um passo: nota não
+  autorizada, RENAVE pendente, chave não informada, data em outro dia).
+- **Data em outro dia é aviso**, não divergência: o negócio pode fechar no sistema
+  um dia depois da venda. Compara o dia de Brasília.
+- **Entrada de pessoa jurídica, leilão, transferência e 0 km** não tem nota nossa
+  (`entradaDaAquisicao`): não é divergência, e a chave não se cruza.
+- **Não repete as pendências do RENAVE** (`pendenciasRenave` já avisa "faturado sem
+  saída"); a conferência cruza os três registros entre si.
+- **Só lê** `deals`, `vehicle_acquisitions`, `fiscal_documents` e
+  `renave_registros`.
+
+**O pré-preenchimento da chave no registro do RENAVE** é do formulário do RENAVE
+(trilha R, sessão 2) — ✅ **entregue em 14/10/2026**: o cartão traz as notas
+autorizadas da compra e de cada venda (`sugestao.notasAutorizadas`, lidas de
+`fiscal_documents` dentro do `withTenant`), e o campo da chave — no registro novo e
+no "informar NF-e" — vem preenchido quando está vazio, com "da nota autorizada nº
+X". Nunca sobrescreve o que a loja digitou; chave diferente da autorizada é aviso,
+e quem marca a divergência é esta conferência.
 
 ---
 
@@ -641,4 +660,4 @@ NF-e — e esse ponto já foi resolvido na Fase 0.
 | N2b — nota de entrada | 1 | ✅ 14/10/2026 |
 | N3 — certificado, Focus NFe e carta de correção | 1 | ◐ 14/10/2026 — adaptador escrito e testado; falta a conta na Focus |
 | N4 — ponte com o contador | 1 | ✅ 14/10/2026 |
-| C — a mesma história | 1 | ⬜ (depois de R2 e N2) |
+| C — a mesma história | 1 | ✅ 14/10/2026 — conferência; o pré-preenchimento é da sessão 2 |
