@@ -141,6 +141,18 @@ process.env.VAPID_PUBLIC_KEY = '';
 process.env.VAPID_PRIVATE_KEY = '';
 process.env.VAPID_SUBJECT = '';
 
+// RENAVE (trilha R do plano fiscal): integradora simulada, sobrescrevendo o
+// `.env`. No dia em que o `.env` tiver uma integradora real, a suíte
+// registraria entrada e saída de carros fictícios no RENAVE de verdade — com
+// efeito legal. O simulado roda em memória e não sai do processo. As
+// credenciais do adaptador real (R3) entram zeradas aqui quando ele existir.
+process.env.RENAVE_FORNECEDOR = 'simulado';
+process.env.RENAVE_WEBHOOK_SECRET = 'segredo-do-webhook-renave-de-teste';
+// Cofre de credenciais por loja: chave-mestra fixa e falsa, sobrescrevendo o
+// `.env`. Com a de produção aqui, a suíte cifraria chaves de teste com ela — e
+// um teste que imprimisse a cifra estaria a um passo de quem tem a chave real.
+process.env.COFRE_CHAVES_MESTRAS = '1:BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=';
+
 // Emissor de NF-e (trilha fiscal N2): simulado, com token fixo. Quando o
 // adaptador do emissor terceiro entrar (N3), as credenciais dele são zeradas
 // aqui também — a suíte nunca fala com a SEFAZ.

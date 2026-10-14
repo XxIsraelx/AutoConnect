@@ -265,7 +265,7 @@ export function pendenciasRenave(e: EntradaDasPendencias): PendenciaRenave[] {
       pendencias.push({
         codigo: 'entrada_aguardando_protocolo',
         gravidade: 'aviso',
-        mensagem: 'Entrada enviada à integradora, sem protocolo anotado.',
+        mensagem: 'Entrada enviada à integradora, aguardando o protocolo.',
         registroId: r.id,
       });
     } else if (!r.chaveNfe) {
@@ -310,7 +310,7 @@ export function pendenciasRenave(e: EntradaDasPendencias): PendenciaRenave[] {
       pendencias.push({
         codigo: 'saida_aguardando_protocolo',
         gravidade: 'aviso',
-        mensagem: 'Saída enviada à integradora, sem protocolo anotado.',
+        mensagem: 'Saída enviada à integradora, aguardando o protocolo.',
         registroId: r.id,
         dealId: r.dealId ?? undefined,
       });
@@ -361,4 +361,138 @@ export function pendenciasRenave(e: EntradaDasPendencias): PendenciaRenave[] {
 
   return pendencias.sort((a, b) =>
     (a.gravidade === b.gravidade ? 0 : a.gravidade === 'obrigatoria' ? -1 : 1));
+}
+
+/* ── Camada neutra (R2) ─────────────────────────────────────── */
+
+/**
+ * O que um provedor de RENAVE (uma integradora) precisa implementar.
+ *
+ * O vocabulário é o do domínio, não o da integradora: o adaptador traduz. A
+ * resposta pode vir na hora (protocolo no retorno), por webhook ou por
+ * consulta — o desenho aceita as três, porque ainda não se sabe o que a
+ * integradora escolhida oferece. `interpretarWebhook` confere a autenticidade
+ * e **lança** quando ela não confere; o payload da integradora não sai dali.
+ */
+export interface ProvedorDeRenave {
+  readonly nome: string;
+  /** Falso quando nenhuma integradora está configurada: a tela esconde o envio. */
+  readonly disponivel: boolean;
+  /** Homologação: o registro não existe no RENAVE de verdade. */
+  readonly sandbox?: boolean;
+  /**
+   * A loja contrata e paga a integradora (decisão de 14/10/2026), então cada
+   * chamada leva a chave **dela**, aberta do cofre na hora — o `credencial` de
+   * cada método. Falso só para integradora com conta de parceiro da plataforma.
+   */
+  readonly exigeCredencialDaLoja: boolean;
+  /** Chamada de leitura, sem custo, que prova que a chave vale — antes de guardá-la. */
+  verificarCredencial(credencial: string): Promise<boolean>;
+  registrarEntrada(pedido: PedidoDeEntradaRenave, credencial: string | null): Promise<RespostaDoRenave>;
+  registrarSaida(pedido: PedidoDeSaidaRenave, credencial: string | null): Promise<RespostaDoRenave>;
+  /** O cancelamento de entrada ou de saída que o manual prevê. */
+  cancelar(idExterno: string, motivo: string, credencial: string | null): Promise<RespostaDoRenave>;
+  consultar(idExterno: string, credencial: string | null): Promise<RespostaDoRenave>;
+  /**
+   * A chave da NF-e da operação — no manual, `POST /api/notas-fiscais` com
+   * evento `COMPRA` (entrada) ou `VENDA` (saída), depois do registro. Trocar
+   * a chave é chamar de novo.
+   */
+  informarNotaFiscal(idExterno: string, chaveNfe: string, credencial: string | null): Promise<void>;
+  /** O ATPV-e da operação, quando a integradora o devolve. `null` = ainda não há. */
+  baixarAtpv(idExterno: string, credencial: string | null): Promise<Uint8Array | null>;
+  interpretarWebhook(cabecalhos: Record<string, string | string[] | undefined>, corpoCru: Uint8Array): EventoDoRenave;
+}
+
+export type TipoDeDocumento = 'CPF' | 'CNPJ';
+
+/**
+ * O documento do veículo, como o manual pede. O código de segurança do CRV
+ * vai para a integradora e **não é gravado** — decisão de 14/10/2026.
+ */
+export interface DocumentoDoVeiculo {
+  placa: string;
+  renavam: string;
+  chassi?: string | null;
+  tipoCrv: TipoDeCrv;
+  numeroCrv?: string | null;
+  codigoSegurancaCrv: string;
+}
+
+export const TIPOS_DE_CRV = ['AZUL', 'VERDE', 'BRANCO', 'DIGITAL'] as const;
+export type TipoDeCrv = (typeof TIPOS_DE_CRV)[number];
+
+interface PedidoBase {
+  /**
+   * Mesma chave, mesmo pedido: reenviar depois de uma falha de rede não pode
+   * virar segundo registro na integradora. Formada por veículo, operação e
+   * sequência — o mesmo carro entra e sai mais de uma vez na vida.
+   */
+  chaveDeIdempotencia: string;
+  cnpjDaLoja: string;
+  veiculo: DocumentoDoVeiculo;
+  dataOperacao: Date;
+  /** Em reais, string canônica (`"1234.56"`). Nulo onde o RENAVE não pede. */
+  valor: string | null;
+}
+
+export interface PedidoDeEntradaRenave extends PedidoBase {
+  tipo: (typeof OPERACOES_DE_ENTRADA)[number];
+  quilometragem: number;
+  medidoEm: Date;
+  /** Quem consta no CRV — o vendedor, na compra. */
+  proprietario: { tipoDocumento: TipoDeDocumento; documento: string } | null;
+}
+
+export interface PedidoDeSaidaRenave extends PedidoBase {
+  tipo: (typeof OPERACOES_DE_SAIDA)[number];
+  comprador: { tipoDocumento: TipoDeDocumento; documento: string; nome: string; email?: string | null } | null;
+}
+
+/** O retorno de uma chamada, já no vocabulário do domínio. */
+export interface RespostaDoRenave {
+  idExterno: string;
+  status: RenaveStatusValue;
+  protocolo?: string | null;
+  motivo?: string | null;
+  ocorridoEm?: Date;
+}
+
+export const TIPOS_DE_EVENTO_RENAVE = [
+  'confirmado', 'recusado', 'cancelado', 'atpv_disponivel', 'ignorado',
+] as const;
+export type TipoDeEventoRenave = (typeof TIPOS_DE_EVENTO_RENAVE)[number];
+
+export interface EventoDoRenave {
+  idExterno: string;
+  /** Id do evento na integradora; sem ele, a chave é o SHA-256 do corpo cru. */
+  idEvento?: string | null;
+  tipo: TipoDeEventoRenave;
+  protocolo?: string | null;
+  motivo?: string | null;
+  ocorridoEm: Date;
+}
+
+/**
+ * O status que um evento leva o registro, ou `null` quando não leva a lugar
+ * nenhum: evento fora de ordem, repetido, ou que a máquina de estados não
+ * aceita (confirmação chegando depois do cancelamento).
+ */
+export function statusDepoisDoEvento(
+  atual: RenaveStatusValue,
+  evento: TipoDeEventoRenave,
+): RenaveStatusValue | null {
+  if (evento !== 'confirmado' && evento !== 'recusado' && evento !== 'cancelado') return null;
+  return podeTransitarRenave(atual, evento) ? evento : null;
+}
+
+/**
+ * Documento de pessoa pelo tamanho: 11 é CPF, 14 é CNPJ (inclusive o
+ * alfanumérico). O resto é `null` — quem chama decide se é erro.
+ */
+export function tipoDoDocumento(doc: string | null | undefined): TipoDeDocumento | null {
+  const limpo = (doc ?? '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+  if (/^\d{11}$/.test(limpo)) return 'CPF';
+  if (/^[0-9A-Z]{12}\d{2}$/.test(limpo)) return 'CNPJ';
+  return null;
 }

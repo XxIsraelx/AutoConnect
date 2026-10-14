@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.581 testes (1.089 na API, 492 no `shared`):
+são 1.630 testes (1.133 na API, 497 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -935,6 +935,30 @@ seção "R1 entregue". Manual técnico do renave-ws (SERPRO) lido em 14/10/2026.
 - **Zero km fica de fora** (no RENAVE ele entra pela montadora) e vendidos entram
   na lista da loja por `JANELA_DE_VENDIDOS_DIAS` (90); o cartão do veículo mostra
   tudo, sempre.
+- **Envio pela integradora (R2):** `ProvedorDeRenave` atrás de
+  `RENAVE_FORNECEDOR` (vazio = desligado e o registro manual fica; `simulado` =
+  em memória, recusado em produção; real = R3) e `RENAVE_WEBHOOK_SECRET`
+  (sem ele nada liga). O `setup-e2e.ts` força `simulado`. Reservar → enviar →
+  aplicar: a linha nasce `pendente` com `sequencia` antes da chamada, e o reenvio
+  manda a mesma chave `veículo:tipo:sequência`. Registro da integradora tem o
+  estado ditado por ela — anotação manual nele é 409.
+- **O código de segurança do CRV nunca é gravado**
+  ([decisão](docs/decisoes/2026-10-14%20renave%20dados%20do%20crv%20e%20credencial.md)):
+  vai no envio e some, e reenviar pede de novo. Coluna, snapshot ou evento com
+  ele é defeito — `renave-integradora.e2e-spec.ts` confere.
+- **Webhook** `POST /webhooks/renave`: autenticidade sobre o corpo cru,
+  `renave_eventos` idempotente por `(registro_id, event_key)`, um lookup
+  privilegiado (`id` e `tenantId` por `provider + external_id`), operação
+  desconhecida é 200 sem efeito. ATPV-e no bucket `documentos`, servido por
+  `GET /renave/registros/:id/atpv`.
+- **A chave da integradora é da loja, e fica no cofre**
+  ([decisão](docs/decisoes/2026-10-14%20cofre%20de%20credenciais%20por%20loja.md)):
+  o AutoConnect não paga integradora, a loja contrata e paga. A chave é cifrada
+  na API (AES-256-GCM, `COFRE_CHAVES_MESTRAS`, `common/cofre/`), só o
+  `tenant_admin` cadastra, é conferida na integradora antes de gravar e **não
+  sai por rota nenhuma** — a tela vê `••••` e os 4 últimos. Trocar ou revogar
+  apaga a cifra e deixa a linha. Credencial nova por loja usa o mesmo cofre.
+  `COFRE_CHAVES_MESTRAS` vazia = cofre desligado; perdê-la = cada loja recadastra.
 
 ---
 

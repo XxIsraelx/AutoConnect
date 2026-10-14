@@ -173,6 +173,39 @@ código. `estornar` no `ProvedorDeRenave` passa a se chamar `cancelar`.
   segredo fica no `.env`, um só); se a integradora só aceitar token por loja,
   cifrar com chave da plataforma e registrar a decisão antes do código.
 
+#### R2 entregue (14/10/2026)
+
+- **Decisão registrada antes do código** ([dados do CRV e credencial](../decisoes/2026-10-14%20renave%20dados%20do%20crv%20e%20credencial.md)):
+  o código de segurança do CRV é pedido no envio, repassado e **nunca gravado**
+  (o e2e confere que ele não aparece em coluna nenhuma); a credencial fica no
+  `.env`, sem segredo por loja no banco.
+- `ProvedorDeRenave` no shared com `registrarEntrada`, `registrarSaida`,
+  `cancelar` (o `estornar` do plano, no vocabulário do manual), `consultar`,
+  `informarNotaFiscal` (o manual envia a NF-e em operação própria),
+  `baixarAtpv` e `interpretarWebhook`. Indisponível, simulado e fábrica em
+  `modules/renave/provedor*.ts`.
+- **Reservar → enviar → aplicar**, como a assinatura externa: a linha nasce
+  `pendente` com a sequência antes da chamada; se a integradora não responder,
+  o reenvio acha a linha e manda a mesma chave (`veículo:tipo:sequência`).
+  `(vehicle_id, tipo, sequencia)` é único no banco.
+- Estado de registro da integradora vem dela — resposta, webhook ou consulta.
+  Anotar protocolo à mão nele é 409; cancelar e NF-e passam pela integradora
+  antes de mudar aqui.
+- Webhook `POST /webhooks/renave`, HMAC sobre o corpo cru, `renave_eventos`
+  idempotente por `(registro, event_key)`, lookup privilegiado só de `id` e
+  `tenantId`. Operação desconhecida é 200 sem efeito.
+- ATPV-e: arquivado no bucket `documentos` quando o Storage está configurado;
+  sem ele, o download busca na integradora. Sai por `GET /renave/registros/:id/atpv`,
+  nunca por URL pública.
+- Tela: "Enviar pela integradora" no cartão (com selo de homologação), "anotar
+  registro feito fora" continua; botões de simulação só com o simulado.
+
+**Para R3:** o adaptador real precisa responder (1) se a integradora devolve o
+protocolo na hora ou só pelo webhook, (2) como ela autentica o webhook — o
+simulado usa HMAC, e a real pode usar token no cabeçalho, como a Asaas — e (3)
+se a conta é de parceiro com a loja pelo CNPJ ou se cada loja tem a sua. Se for a
+segunda, a decisão do cofre por loja vem antes do adaptador.
+
 ### R3 — adaptador da integradora
 
 - Escolher **uma** integradora com API REST pública e ambiente de homologação.
@@ -183,6 +216,71 @@ código. `estornar` no `ProvedorDeRenave` passa a se chamar `cancelar`.
   mensalidade — quem paga é a loja).
 - Uma entrada e uma saída de ponta a ponta em homologação. A loja de outra
   integradora continua no R1, e isso é dito na tela, não escondido.
+
+#### Levantamento das integradoras (14/10/2026) — R3 parada na escolha
+
+Lido nos sites públicos em 14/10/2026. Só uma das candidatas publica a API.
+
+| Integradora | API para sistema de terceiros | Homologação | Preço | Observação |
+|---|---|---|---|---|
+| [IntegraRenave](https://integrarenave.com/api) | **Documentação pública**, REST v1, `X-API-Key`, `Idempotency-Key` obrigatório, erros RFC 7807 | Chaves `ir_test_…` em sandbox, sem cobrança | R$ 19,99 por requisição, sem mensalidade | Hoje só `GET /status`, `GET/POST /veiculos`, `POST /veiculos/lote`, `GET /lojas` e `POST /requisicoes`; **consulta de requisição e webhooks estão no roadmap**. O corpo de `POST /requisicoes` não está descrito, e o `openapi.json` respondeu 500. A chave identifica **um** CNPJ — não há programa de parceiro descrito. ATPV-e e CRLV-e "em breve" |
+| [Renave Fácil](https://renavefacil.net/) | Diz ter API REST para DMS; o artigo de ajuda respondeu 403 | Não informado | Não informado | Pedir a documentação ao comercial |
+| [WebRenave](https://www.webrenave.com.br/) | Fala em "integrações", sem detalhe técnico | Não informado | Não informado | Contato comercial |
+| [DataStock](https://datastock.com.br/) | Nenhuma menção a API para terceiros | — | — | Produto fechado (ControlStock) |
+| [Renave Paraná](https://renaveparana.com.br/) | Diz ter API REST, sem documentação pública | — | — | Contato por WhatsApp |
+
+**O que trava a R3, em ordem:**
+
+1. **Escolher a integradora** — decisão de produto e de custo, do Israel. A mais
+   adiantada para integrar é a IntegraRenave, mas ela ainda não tem o que a R2
+   precisa para fechar o ciclo sem gente olhando: sem consulta de requisição e
+   sem webhook, o AutoConnect envia e não fica sabendo o resultado.
+2. **Conta de sandbox** — criada por uma pessoa, no painel da integradora, com
+   CNPJ. Não é coisa que a sessão faça.
+3. **Credencial por loja.** Na IntegraRenave a chave é de um CNPJ. Sem programa
+   de parceiro, cada loja precisaria da sua chave guardada aqui — o cofre por
+   loja que a [decisão de 14/10/2026](../decisoes/2026-10-14%20renave%20dados%20do%20crv%20e%20credencial.md)
+   deixou para depois, e que precisa de decisão própria antes do adaptador.
+
+**Antes do adaptador, ler do que a trilha N já cadastra** (aviso da sessão 1,
+14/10/2026). Quem vendeu, trocou ou consignou o carro passou a ter cadastro
+próprio em `acquisition_suppliers` (N2b, PR #30): nome, CPF/CNPJ normalizado e
+endereço, por aquisição. A R2 ainda pede o documento de quem consta no CRV no
+próprio formulário de envio (`documentoDoProprietario`) e cai no
+`VehicleAcquisition.supplierDocument`, que a tela da aquisição nunca preencheu.
+Depois do merge do #30: ler o vendedor de `acquisition_suppliers`, tirar o campo
+do envio e, se faltar, responder 422 apontando para "Quem entregou o veículo" —
+dois cadastros do mesmo vendedor é a história que não bate. O RENAVAM pode vir
+pré-preenchido de `vehicle_fiscal_details` (N1), mesma lógica.
+
+**Cofre de credenciais entregue (14/10/2026)** — a primeira tarefa da R3,
+aprovada pelo Israel ([decisão](../decisoes/2026-10-14%20cofre%20de%20credenciais%20por%20loja.md)):
+- `common/cofre/`: AES-256-GCM com dado autenticado (loja + fornecedor + versão),
+  chave-mestra em `COFRE_CHAVES_MESTRAS` com versão, e o comando
+  `scripts/recifrar-cofre.ts` para trocá-la.
+- `credenciais_de_integracao` com RLS, uma ativa por loja e fornecedor, e CHECK
+  de que linha substituída ou revogada não guarda cifra.
+- `ProvedorDeRenave` ganhou `exigeCredencialDaLoja` e `verificarCredencial`, e
+  cada chamada leva a chave da loja. O simulado exige chave, para a suíte passar
+  pelo cofre em todo envio. Chave recusada pela integradora vira 422 que aponta
+  para Configurações.
+- `POST /renave/credencial` (só `tenant_admin`), `/revogar`, e a seção
+  "Integradora RENAVE" em `/configuracoes`, que some enquanto nenhuma
+  integradora exigir chave — o estado da produção hoje.
+
+**Perguntas para mandar às integradoras** (as mesmas para todas): documentação
+completa com o corpo de criação da requisição de entrada e de saída; quando
+saem a consulta de requisição e o webhook; se há conta de parceiro para
+software house (uma chave, várias lojas por CNPJ); como o ATPV-e é devolvido;
+e quais estados cobrem hoje.
+
+**Enviadas à IntegraRenave em 14/10/2026** (`contato@integrarenave.com`, do
+Gmail do Israel), mais uma: se dá para ter conta de testes antes de o
+AutoConnect ter CNPJ — ele ainda não tem, e é por isso que a conta de sandbox
+não foi aberta. **Enviadas também ao Renave Fácil** no mesmo dia
+(`contato@renavefacil.net`), adaptadas — a API deles não é pública, então a
+primeira pergunta pede a documentação, e uma sétima pergunta o preço para a
+loja. **A R3 espera as duas respostas.**
 
 ### R4 — consignação
 
@@ -495,9 +593,15 @@ NF-e — e esse ponto já foi resolvido na Fase 0.
    (conta de parceiro, várias empresas por API) e a NF-e entra em todos os
    planos; o custo por CNPJ é revisto na primeira fatura do emissor. Mudar preço
    ou faixa é em `CATALOGO_DE_PLANOS`, numa decisão própria — não neste plano.
-2. **Quem paga o RENAVE.** Padrão: a loja contrata a integradora (a obrigação e a
-   indicação no RENAVE são dela); o AutoConnect conecta. Não revendemos
-   requisição.
+2. **Quem paga o RENAVE.** ✅ **Confirmado pelo Israel em 14/10/2026:** a loja
+   contrata e paga a integradora (a obrigação e a indicação no RENAVE são dela);
+   o AutoConnect conecta e **não tem custo fixo nenhum** com integradora. Não
+   revendemos requisição. O porquê: o AutoConnect ainda busca os primeiros
+   clientes, e mensalidade de despachante sem ninguém usando é custo sem
+   receita. Consequência para a R3: integradora **sem mensalidade** (a
+   IntegraRenave cobra por requisição, da loja, e tem sandbox gratuito), e a
+   chave de API é **da loja** — o cofre por loja deixa de ser hipótese e precisa
+   de decisão antes do adaptador.
 3. **Emitir nota no modo somente leitura.** Padrão: bloqueado, como toda escrita
    — o `SomenteLeituraGuard` não ganha exceção nova sem motivo forte. Revisar se
    aparecer o caso "vendi ontem, fui bloqueado hoje, preciso faturar".
@@ -520,7 +624,7 @@ NF-e — e esse ponto já foi resolvido na Fase 0.
 |---|---|---|
 | 0 — decisão, verificação, `chave-nfe.ts` | 1 | ✅ 13/10/2026 |
 | R1 — registro manual e pendências | 2 | ✅ 14/10/2026 |
-| R2 — camada neutra RENAVE | 2 | ⬜ |
+| R2 — camada neutra RENAVE | 2 | ✅ 14/10/2026 |
 | R3 — adaptador da integradora | 2 | ⬜ (depende da escolha da integradora) |
 | R4 — consignação | 2 | ⬜ (depende da Clicksign em produção e do advogado) |
 | N1 — perfil fiscal e montagem | 1 | ✅ 14/10/2026 |

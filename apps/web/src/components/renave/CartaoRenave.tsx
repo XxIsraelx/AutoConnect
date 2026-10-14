@@ -1,18 +1,21 @@
 'use client';
 
 import { useState } from 'react';
-import { ClipboardCheck, AlertTriangle, Info, Loader2, Plus } from 'lucide-react';
+import Link from 'next/link';
+import { ClipboardCheck, AlertTriangle, Info, Loader2, Plus, Send } from 'lucide-react';
 import {
   OPERACOES_DE_ENTRADA, OPERACOES_DE_SAIDA, ROTULO_DA_OPERACAO_RENAVE, ROTULO_DO_STATUS_RENAVE,
   ehEntrada, formatarBRL, formatarChaveNfe, operacaoTemValor,
   type PendenciaRenave, type RenaveOperacaoValue, type RenaveStatusValue, type SituacaoNoRenave,
 } from '@autoconnect/shared';
 import { useAuthStore } from '@/store/auth';
+import { baixarArquivo } from '@/lib/api';
 import { ErroAoCarregar } from '@/components/ErroAoCarregar';
 import {
   PAPEIS_FISCAIS, erroDaAcao, useAcaoRenave, useRegistrarRenave, useRenaveDoVeiculo,
   type AcaoNoRegistro, type RegistroRenave, type RenaveDoVeiculo,
 } from './dados';
+import EnvioPelaIntegradora from './EnvioPelaIntegradora';
 
 const ROTULO_DA_SITUACAO: Record<SituacaoNoRenave, string> = {
   sem_registro: 'Sem registro',
@@ -84,8 +87,8 @@ export default function CartaoRenave({
       ) : (
         <div className="space-y-4">
           <Pendencias pendencias={data.pendencias} />
-          <Registros registros={data.registros} podeRegistrar={podeRegistrar} />
-          {podeRegistrar && <NovoRegistro dados={data} dealId={dealId} />}
+          <Registros registros={data.registros} podeRegistrar={podeRegistrar} simulado={data.integradora.simulado} />
+          {podeRegistrar && <Formularios dados={data} dealId={dealId} />}
           <p className="text-[11px] text-slate-400">
             O AutoConnect guarda os protocolos e avisa o que falta; o envio é pela sua integradora.
           </p>
@@ -123,22 +126,89 @@ function Pendencias({ pendencias }: { pendencias: PendenciaRenave[] }) {
   );
 }
 
-function Registros({ registros, podeRegistrar }: { registros: RegistroRenave[]; podeRegistrar: boolean }) {
+/**
+ * Com integradora configurada, enviar por ela é o caminho principal; anotar o
+ * que foi feito fora continua possível — a loja pode ter registrado antes, ou
+ * por outra integradora.
+ */
+function Formularios({ dados, dealId }: { dados: RenaveDoVeiculo; dealId?: string }) {
+  const [aberto, setAberto] = useState<'envio' | 'manual' | null>(null);
+  const { entrada, saidas } = dados.sugestao;
+  const tipoInicial: RenaveOperacaoValue =
+    dealId ? 'saida_venda'
+    : dados.situacao === 'em_estoque' ? (saidas.length ? 'saida_venda' : 'saida_transferencia')
+    : entrada.tipo;
+  const fechar = () => setAberto(null);
+
+  if (aberto === 'envio') {
+    return <EnvioPelaIntegradora dados={dados} dealId={dealId} tipoInicial={tipoInicial} onFechar={fechar} />;
+  }
+  if (aberto === 'manual') {
+    return <NovoRegistro dados={dados} dealId={dealId} tipoInicial={tipoInicial} onFechar={fechar} />;
+  }
+  return (
+    <div className="flex flex-wrap gap-2">
+      {dados.integradora.disponivel && (dados.integradora.credencialCadastrada || !dados.integradora.exigeCredencialDaLoja) && (
+        <button
+          type="button" onClick={() => setAberto('envio')}
+          className={`${botao} bg-brand-accent text-white hover:bg-blue-600`}
+        >
+          <Send size={14} /> Enviar pela integradora
+        </button>
+      )}
+      {dados.integradora.disponivel && dados.integradora.exigeCredencialDaLoja && !dados.integradora.credencialCadastrada && (
+        <p className="text-xs text-slate-500 basis-full">
+          Para enviar pela integradora, o administrador da loja cadastra a chave dela em{' '}
+          <Link href="/configuracoes" className="text-brand-accent hover:underline">Configurações</Link>.
+        </p>
+      )}
+      <button
+        type="button" onClick={() => setAberto('manual')}
+        className={`${botao} bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700`}
+      >
+        <Plus size={14} /> {dados.integradora.disponivel ? 'Anotar registro feito fora' : 'Anotar registro do RENAVE'}
+      </button>
+    </div>
+  );
+}
+
+function Registros({
+  registros, podeRegistrar, simulado,
+}: { registros: RegistroRenave[]; podeRegistrar: boolean; simulado: boolean }) {
   if (registros.length === 0) return null;
   return (
     <ul className="divide-y divide-slate-100 dark:divide-slate-800 border-y border-slate-100 dark:border-slate-800">
-      {registros.map((r) => <LinhaDoRegistro key={r.id} r={r} podeRegistrar={podeRegistrar} />)}
+      {registros.map((r) => (
+        <LinhaDoRegistro key={r.id} r={r} podeRegistrar={podeRegistrar} simulado={simulado} />
+      ))}
     </ul>
   );
 }
 
-function LinhaDoRegistro({ r, podeRegistrar }: { r: RegistroRenave; podeRegistrar: boolean }) {
+function LinhaDoRegistro({
+  r, podeRegistrar, simulado,
+}: { r: RegistroRenave; podeRegistrar: boolean; simulado: boolean }) {
   const acao = useAcaoRenave();
-  const [aberta, setAberta] = useState<AcaoNoRegistro['acao'] | null>(null);
+  const token = useAuthStore((s) => s.token) ?? undefined;
+  const [erroAtpv, setErroAtpv] = useState<unknown>(null);
+  const daIntegradora = r.provider !== null;
+  const [aberta, setAberta] = useState<'confirmar' | 'recusar' | 'cancelar' | 'nfe' | null>(null);
   const [texto, setTexto] = useState('');
   const [extra, setExtra] = useState('');
 
-  const abrir = (a: AcaoNoRegistro['acao']) => {
+  // Ações de um clique: sem campo para preencher.
+  const direto = (a: AcaoNoRegistro) => {
+    setAberta(null);
+    acao.mutate({ id: r.id, ...a });
+  };
+  const baixarAtpv = () => {
+    setErroAtpv(null);
+    baixarArquivo(`/renave/registros/${r.id}/atpv`, `atpv-e-${r.id.slice(0, 8)}.pdf`, token)
+      .catch(setErroAtpv);
+  };
+
+  type AcaoComCampo = 'confirmar' | 'recusar' | 'cancelar' | 'nfe';
+  const abrir = (a: AcaoComCampo) => {
     setAberta((atual) => (atual === a ? null : a));
     setTexto(a === 'nfe' ? (r.chaveNfe ?? '') : '');
     setExtra('');
@@ -170,7 +240,13 @@ function LinhaDoRegistro({ r, podeRegistrar }: { r: RegistroRenave; podeRegistra
         {dataCurta(r.dataOperacao)}
         {r.valor && ` · ${formatarBRL(r.valor)}`}
         {r.protocolo && ` · protocolo ${r.protocolo}`}
+        {daIntegradora && ` · pela integradora${r.provider === 'simulado' ? ' (simulada)' : ''}`}
       </p>
+      {daIntegradora && r.status === 'pendente' && !r.externalId && (
+        <p className="text-xs text-amber-700 dark:text-amber-400">
+          A integradora não respondeu a este envio. Envie de novo: o pedido é o mesmo, não duplica.
+        </p>
+      )}
       {r.chaveNfe && (
         <p className="text-[11px] text-slate-400 font-mono break-all">NF-e {formatarChaveNfe(r.chaveNfe)}</p>
       )}
@@ -184,11 +260,29 @@ function LinhaDoRegistro({ r, podeRegistrar }: { r: RegistroRenave; podeRegistra
 
       {podeRegistrar && vivo && (
         <div className="flex flex-wrap gap-3 mt-1.5">
-          {r.status === 'pendente' && (
+          {r.status === 'pendente' && !daIntegradora && (
             <>
               <button type="button" className={link} onClick={() => abrir('confirmar')}>anotar protocolo</button>
               <button type="button" className={link} onClick={() => abrir('recusar')}>foi recusado</button>
             </>
+          )}
+          {r.status === 'pendente' && daIntegradora && r.externalId && (
+            <>
+              <button type="button" className={link} onClick={() => direto({ acao: 'atualizar' })}>atualizar</button>
+              {simulado && (
+                <>
+                  <button type="button" className={link} onClick={() => direto({ acao: 'simular', resultado: 'confirmar' })}>
+                    simular confirmação
+                  </button>
+                  <button type="button" className={link} onClick={() => direto({ acao: 'simular', resultado: 'recusar' })}>
+                    simular recusa
+                  </button>
+                </>
+              )}
+            </>
+          )}
+          {(r.temAtpv || (daIntegradora && r.status === 'confirmado' && !ehEntrada(r.tipo))) && (
+            <button type="button" className={link} onClick={baixarAtpv}>ATPV-e</button>
           )}
           {r.status === 'confirmado' && (
             <button type="button" className={link} onClick={() => abrir('nfe')}>
@@ -234,6 +328,9 @@ function LinhaDoRegistro({ r, podeRegistrar }: { r: RegistroRenave; podeRegistra
           </button>
         </div>
       )}
+      {erroAtpv !== null && (
+        <p className="mt-1.5 text-sm text-rose-600 dark:text-rose-400">{erroDaAcao(erroAtpv)}</p>
+      )}
       {acao.error && (
         <p className="mt-1.5 text-sm text-rose-600 dark:text-rose-400">{erroDaAcao(acao.error)}</p>
       )}
@@ -245,16 +342,17 @@ function LinhaDoRegistro({ r, podeRegistrar }: { r: RegistroRenave; podeRegistra
  * Anotar um registro novo. O **valor não é campo**: o de compra vem do custo
  * do veículo e o de venda do negócio, e aparece aqui só para conferência.
  */
-function NovoRegistro({ dados, dealId }: { dados: RenaveDoVeiculo; dealId?: string }) {
+function NovoRegistro({
+  dados, dealId, tipoInicial, onFechar,
+}: {
+  dados: RenaveDoVeiculo;
+  dealId?: string;
+  tipoInicial: RenaveOperacaoValue;
+  onFechar: () => void;
+}) {
   const registrar = useRegistrarRenave();
   const { entrada, saidas } = dados.sugestao;
 
-  const tipoInicial: RenaveOperacaoValue =
-    dealId ? 'saida_venda'
-    : dados.situacao === 'em_estoque' ? (saidas.length ? 'saida_venda' : 'saida_transferencia')
-    : entrada.tipo;
-
-  const [aberto, setAberto] = useState(false);
   const [tipo, setTipo] = useState<RenaveOperacaoValue>(tipoInicial);
   const [negocio, setNegocio] = useState(dealId ?? saidas[0]?.dealId ?? '');
   const [protocolo, setProtocolo] = useState('');
@@ -279,26 +377,9 @@ function NovoRegistro({ dados, dealId }: { dados: RenaveDoVeiculo; dealId?: stri
         ...(dataOperacao ? { dataOperacao } : {}),
         ...(chaveNfe.trim() ? { chaveNfe } : {}),
       },
-      {
-        onSuccess: () => {
-          setAberto(false);
-          setProtocolo(''); setRegistradoEm(''); setDataOperacao(''); setChaveNfe('');
-        },
-      },
+      { onSuccess: onFechar },
     );
   };
-
-  if (!aberto) {
-    return (
-      <button
-        type="button"
-        onClick={() => { setTipo(tipoInicial); setAberto(true); }}
-        className={`${botao} bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700`}
-      >
-        <Plus size={14} /> Anotar registro do RENAVE
-      </button>
-    );
-  }
 
   return (
     <div className="space-y-2 rounded-lg border border-slate-200 dark:border-slate-800 p-3">
@@ -391,7 +472,7 @@ function NovoRegistro({ dados, dealId }: { dados: RenaveDoVeiculo; dealId?: stri
           {registrar.isPending && <Loader2 size={14} className="animate-spin" />}
           Salvar registro
         </button>
-        <button type="button" onClick={() => setAberto(false)} className={`${botao} text-slate-500`}>
+        <button type="button" onClick={onFechar} className={`${botao} text-slate-500`}>
           Fechar
         </button>
       </div>

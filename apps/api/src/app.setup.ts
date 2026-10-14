@@ -28,6 +28,12 @@ export const ROTA_WEBHOOK_SAQUE = '/api/v1/webhooks/asaas/saque';
 export const ROTA_WEBHOOK_WHATSAPP = '/api/v1/webhooks/whatsapp';
 
 /**
+ * Webhook da integradora RENAVE (trilha R do plano fiscal): a autenticidade é
+ * conferida sobre o corpo cru, e o cru é o que fica em `renave_eventos`.
+ */
+export const ROTA_WEBHOOK_RENAVE = '/api/v1/webhooks/renave';
+
+/**
  * Leads dos portais: o corpo cru é o que se guarda para reprocessar com um
  * leitor novo, e o SHA-256 dele é a chave de idempotência do webhook. O
  * prefixo cobre `/webhooks/portais/:token`.
@@ -55,6 +61,7 @@ export function configureApp(app: INestApplication): INestApplication {
   // 3 MB: uma entrega da Meta junta até mil eventos de várias contas.
   app.use(ROTA_WEBHOOK_WHATSAPP, corpoCru(3 * 1024 * 1024));
   app.use(ROTA_WEBHOOK_PORTAIS, corpoCru(1024 * 1024));
+  app.use(ROTA_WEBHOOK_RENAVE, corpoCru(1024 * 1024));
   // E-mail com HTML de portal (imagens embutidas não vêm; o provedor as separa).
   app.use(ROTA_EMAIL_DE_ENTRADA, corpoCru(5 * 1024 * 1024));
   app.use(ROTA_WEBHOOK_NOTA_FISCAL, corpoCru(1024 * 1024));

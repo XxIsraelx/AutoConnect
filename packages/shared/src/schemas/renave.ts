@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { RENAVE_OPERACOES } from '../domain/renave';
+import { RENAVE_OPERACOES, TIPOS_DE_CRV } from '../domain/renave';
 import { lerChaveNfe, normalizarChaveNfe } from '../domain/chave-nfe';
 import { dataPassada } from './deal';
 
@@ -68,3 +68,53 @@ export const cancelarRenaveSchema = z.object({
 export type CancelarRenaveInput = z.infer<typeof cancelarRenaveSchema>;
 
 export const chaveNfeRenaveSchema = z.object({ chaveNfe: chaveNfeDoRenave }).strict();
+
+/**
+ * Envio pela integradora (R2). O documento do veículo vem no corpo porque o
+ * AutoConnect não o tem — e o **código de segurança do CRV não é gravado**:
+ * vai para a integradora e some (decisão de 14/10/2026). Reenviar pede de novo.
+ *
+ * O RENAVAM só tem o formato conferido (até 11 dígitos, com zeros à esquerda):
+ * o dígito verificador não está no manual do RENAVE, e regra sem fonte não
+ * vira recusa — quem recusa RENAVAM errado é o RENAVE.
+ */
+export const enviarRenaveSchema = z.object({
+  vehicleId: z.string().uuid(),
+  tipo: z.enum(RENAVE_OPERACOES),
+  dealId: z.string().uuid().optional(),
+  dataOperacao: dataPassada('A data da operação').optional(),
+  observacao: z.string().trim().max(500).optional(),
+  crv: z.object({
+    renavam: z.string().trim()
+      .regex(/^\d{9,11}$/, 'RENAVAM tem até 11 dígitos')
+      .transform((v) => v.padStart(11, '0')),
+    tipoCrv: z.enum(TIPOS_DE_CRV),
+    numeroCrv: z.string().trim().regex(/^\d{1,15}$/, 'Número do CRV só com dígitos').optional(),
+    codigoSegurancaCrv: z.string().trim().regex(/^\d{8,12}$/, 'O código de segurança do CRV tem só dígitos'),
+  }).strict(),
+  /** Na entrada. Sem ele, vale a quilometragem do cadastro do veículo. */
+  quilometragem: z.number().int().min(0).max(2_000_000).optional(),
+  /** Quem consta no CRV, quando a aquisição não tem o documento do fornecedor. */
+  documentoDoProprietario: z.string().trim().max(20).optional(),
+}).strict().superRefine((v, ctx) => {
+  if (v.tipo === 'saida_venda' && !v.dealId) {
+    ctx.addIssue({ code: 'custom', path: ['dealId'], message: 'A saída por venda é enviada a partir do negócio.' });
+  }
+  if (v.tipo !== 'saida_venda' && v.dealId) {
+    ctx.addIssue({ code: 'custom', path: ['dealId'], message: 'Só a saída por venda aponta para um negócio.' });
+  }
+});
+export type EnviarRenaveInput = z.infer<typeof enviarRenaveSchema>;
+
+/** Só com a integradora simulada, fora de produção. */
+export const simularRenaveSchema = z.object({
+  acao: z.enum(['confirmar', 'recusar']),
+}).strict();
+
+/**
+ * A chave de API da loja na integradora. Vai para o cofre, cifrada, e não volta
+ * por rota nenhuma (decisão de 14/10/2026).
+ */
+export const credencialDaIntegradoraSchema = z.object({
+  chave: z.string().trim().min(8, 'A chave parece incompleta').max(500),
+}).strict();
