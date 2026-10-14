@@ -774,6 +774,52 @@ consulta, conta da Clicksign, revisão jurídica, feature flag e região da API 
     na sessão 2, começando pelo registro manual (R1). A Circular nº 2/2026 da Senatran deu às
     lojas até **20/10** para indicar a integradora, com operação assistida de 12/10 a 20/11 — o
     calendário está no plano.
+  - **Situação em 14/10/2026:** R1 entregue na branch `claude/fiscal-s2-r1-registro-manual` —
+    registro manual do protocolo (`renave_registros`), pendências por veículo e da loja, cartão
+    no veículo e no negócio e a tela `/renave`. A transmissão segue sendo da integradora (R2/R3).
+    A resposta honesta para o FAQ e o roteiro continua valendo, agora com mais: "o AutoConnect
+    guarda os protocolos e avisa o que falta; o envio é pela sua integradora" — a landing não é da
+    trilha R e o texto foi pedido no PR.
+- **Texto oficial da Circular nº 2/2026 da Senatran não localizado.**
+  - Onde: [plano fiscal](plano-fiscal-renave-nfe.md), "O calendário que manda"; `docs/decisoes/2026-10-13 fiscal renave e nfe.md`.
+  - O que é: o calendário da Circular (indicação da integradora até 20/10, operação assistida
+    até 20/11) só foi lido em reprodução da Fenauto. Busca em gov.br/transportes e no DOU em
+    14/10/2026 não devolveu o documento; a página de portarias da Senatran não lista circulares.
+  - Evidência: [Fenauto](https://www.fenauto.org.br/news/atencao-concessionarias-e-lojistas-de-veiculos)
+    reproduz o cronograma sem link para a fonte e sem data de publicação.
+  - Impacto: nenhum no código — o R1 não depende de data da Circular, e nada virou regra dura
+    por ela. Afeta o que se diz ao lojista sobre prazos.
+  - Sugestão: pedir o PDF à integradora escolhida pela primeira loja (elas recebem da Senatran)
+    e arquivar em `docs/`; conferir as datas do plano contra ele.
+  - Como testar: o plano cita a Circular com número, data de publicação e link para o texto.
+  - Encontrado por: Claude (sessão 2), 14/10/2026, R1 do plano fiscal.
+- **Prazo em dias para registrar a entrada no RENAVE: não confirmado.**
+  - Onde: `packages/shared/src/domain/renave.ts` (`pendenciasRenave`).
+  - O que é: o manual do renave-ws (SERPRO, lido em 14/10/2026) não fixa prazo; fontes de mercado
+    falam em registrar "assim que o veículo ingressa no estoque" e em multa gravíssima por atraso,
+    citando a Resolução Contran nº 1.026/2026, cujo texto não foi lido no DOU.
+  - Impacto: a pendência `entrada_sem_registro` mostra **desde quando** (data da aquisição), mas
+    não diz "vencida" — seria regra dura sem fonte.
+  - Sugestão: ler o texto da Resolução 1.026 no DOU; havendo prazo, acrescentar a gravidade
+    "vencida" em `pendenciasRenave` com o número no shared, e a tela passa a ordenar por ela.
+  - Como testar: veículo com aquisição há mais dias que o prazo aparece como vencido; um dia antes,
+    não.
+  - Encontrado por: Claude (sessão 2), 14/10/2026, R1 do plano fiscal.
+- **Excluir um veículo apaga os registros RENAVE dele.**
+  - Onde: `apps/api/src/modules/vehicles/vehicles.service.ts` (`remove`, `DELETE /vehicles/:id`) e a
+    FK `renave_registros_vehicle_id_fkey` (`ON DELETE CASCADE`), migration
+    `20261014200000_renave_registro_manual`.
+  - O que é: o registro RENAVE é espelho de um ato com efeito legal, e o plano diz que a linha
+    confirmada fica. A FK é `CASCADE` porque `RESTRICT` mudaria o comportamento do `DELETE
+    /vehicles/:id` (passaria a responder 500 para carro com registro), e o módulo `vehicles` não é
+    da trilha R.
+  - Evidência: veículo sem negócio pode ser excluído hoje; os registros vão junto.
+  - Impacto: baixo enquanto a loja arquiva em vez de excluir; perder o protocolo de uma entrada
+    confirmada é perder a prova de que ela foi feita.
+  - Sugestão: no módulo `vehicles`, recusar exclusão (409, "arquive em vez de excluir") de veículo
+    com registro RENAVE confirmado; depois trocar a FK para `RESTRICT` numa migration da trilha R.
+  - Como testar: `DELETE /vehicles/:id` de carro com entrada confirmada responde 409 e a linha fica.
+  - Encontrado por: Claude (sessão 2), 14/10/2026, R1 do plano fiscal.
 - **Relatório COAF de pagamento em espécie.**
   - Onde: Fase 5 do plano ("a de melhor relação custo-benefício... sem integração externa
     nenhuma"). `DealPayment` já tem o método `cash` em `schema.prisma`.

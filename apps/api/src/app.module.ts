@@ -34,6 +34,7 @@ import { SaquesModule } from './modules/saques/saques.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { PortaisModule } from './modules/portais/portais.module';
 import { PushModule } from './modules/users/push/push.module';
+import { RenaveModule } from './modules/renave/renave.module';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { PushModule } from './modules/users/push/push.module';
     WhatsappModule,
     PortaisModule,
     PushModule,
+    RenaveModule,
   ],
   providers: [
     {

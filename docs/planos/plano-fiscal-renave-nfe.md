@@ -125,6 +125,35 @@ merge, com qualquer integradora, sem conta nenhuma.
   "o AutoConnect guarda os protocolos e avisa o que falta; o envio é pela sua
   integradora". A landing não é desta trilha: o texto vai como pedido no PR.
 
+#### R1 entregue (14/10/2026) — o que a verificação confirmou e o que mudou
+
+Manual técnico do renave-ws (SERPRO) lido em **14/10/2026**, páginas de
+entrada, entrada de veículo próprio, saída, NF-e de entrada e de saída,
+cancelamentos e transferências, e o Swagger do grupo "Estabelecimento".
+
+| Pergunta | Resposta | Virou |
+|---|---|---|
+| Tipos de operação | Entrada em estoque, entrada de veículo próprio, saída, transferência entre estabelecimentos e entre filiais, cancelamento de entrada e de saída. **Consignação não está no manual** (módulo novo, operação assistida de 15 a 30/10) | Seis operações; as duas de consignado sem regra dura |
+| Campos obrigatórios | Entrada: `dataCompra`, `valorCompra`, veículo (CRV, hodômetro, documento do proprietário). Saída: `dataVenda`, `valorVenda`, comprador (`tipoDocumento`, `numeroDocumento`) | `dataOperacao` e `valor` no registro; hodômetro e CRV ficam para R2, que é quem transmite |
+| A saída exige a chave da NF-e? | **Não na saída** — a NF-e é passo seguinte (`POST /api/notas-fiscais`, evento `COMPRA`/`VENDA`). Mas a saída **só é aceita depois da NF-e de entrada** | `chaveNfe` opcional no registro; pendência obrigatória `entrada_sem_nfe` e `saida_sem_nfe` |
+| Prazo em dias para a entrada | **Nenhum no manual** | Pendência mostra "desde", sem "vencida" (registrado em estado-e-pendencias) |
+| Correção de erro | O manual fala em **cancelamento** de entrada (enquanto o Detran não agiu) e de saída (enquanto não transferiu); a chave da NF-e pode ser trocada | `estornado` do plano virou **`cancelado`**, no vocabulário do manual; o trigger deixa trocar só a chave num confirmado |
+
+A Circular nº 2/2026 **não foi encontrada em fonte oficial** (gov.br e DOU,
+14/10/2026) — só na reprodução da Fenauto; nada do R1 depende das datas dela.
+
+**O que o R1 entrega:** `renave_registros` (migration
+`20261014200000_renave_registro_manual`, RLS e trigger de imutabilidade),
+`domain/renave.ts` (`pendenciasRenave`, `situacaoNoRenave`,
+`operacaoRenaveDaAquisicao`), o módulo `modules/renave/` e as telas
+`components/renave/` — cartão no veículo e no negócio, lista em `/renave`.
+
+**Para R2:** a entrada no RENAVE pede hodômetro com data da medição, tipo e
+código de segurança do CRV e o documento do proprietário atual — nenhum deles
+existe no AutoConnect. O provedor vai precisar deles por veículo, e a decisão de
+onde guardá-los (o código de segurança do CRV é dado sensível) vem antes do
+código. `estornar` no `ProvedorDeRenave` passa a se chamar `cancelar`.
+
 ### R2 — camada neutra e simulado
 
 - `ProvedorDeRenave` com `registrarEntrada`, `registrarSaida`, `estornar`,
@@ -490,7 +519,7 @@ NF-e — e esse ponto já foi resolvido na Fase 0.
 | Fase | Sessão | Estado |
 |---|---|---|
 | 0 — decisão, verificação, `chave-nfe.ts` | 1 | ✅ 13/10/2026 |
-| R1 — registro manual e pendências | 2 | ⬜ |
+| R1 — registro manual e pendências | 2 | ✅ 14/10/2026 |
 | R2 — camada neutra RENAVE | 2 | ⬜ |
 | R3 — adaptador da integradora | 2 | ⬜ (depende da escolha da integradora) |
 | R4 — consignação | 2 | ⬜ (depende da Clicksign em produção e do advogado) |

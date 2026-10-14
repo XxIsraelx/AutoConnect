@@ -19,6 +19,7 @@ import Partes from './Partes';
 import Comprador from './Comprador';
 import Preco from './Preco';
 import Comissao from './Comissao';
+import CartaoRenave from '@/components/renave/CartaoRenave';
 import NotaFiscalDoNegocio from '@/components/fiscal/NotaFiscalDoNegocio';
 import { ROTULO_STATUS, COR_STATUS, ROTULO_PAGAMENTO } from '../rotulos';
 
@@ -338,6 +339,8 @@ export default function NegocioPage() {
         <Comprador negocio={negocio} editavel={editavel} />
 
         <Contrato dealId={id} statusDoNegocio={negocio.status} />
+
+        <CartaoRenave vehicleId={negocio.vehicle.id} dealId={id} />
 
         <NotaFiscalDoNegocio dealId={id} vehicleId={negocio.vehicle.id} comprador={negocio.buyer} />
 

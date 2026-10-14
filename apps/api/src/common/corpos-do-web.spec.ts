@@ -50,6 +50,11 @@ import {
   reabrirMesSchema,
   importarOfxSchema,
   conciliarSchema,
+  registrarRenaveSchema,
+  confirmarRenaveSchema,
+  recusarRenaveSchema,
+  cancelarRenaveSchema,
+  chaveNfeRenaveSchema,
   perfilFiscalSchema,
   perfilDeOperacaoSchema,
   confirmacaoDoContadorSchema,
@@ -256,6 +261,13 @@ const ROTAS: Record<string, Declaracao> = {
   'POST /fiscal/notas/:p/carta-de-correcao': { schema: cartaDeCorrecaoSchema },
   'POST /fiscal/veiculos/:p/entrada/notas': { schema: emitirNotaDoNegocioSchema },
   'POST /financeiro/periodos/reabrir': { schema: reabrirMesSchema },
+
+  /* RENAVE (trilha R do plano fiscal) */
+  'POST /renave/registros': { schema: registrarRenaveSchema },
+  'POST /renave/registros/:p/confirmar': { schema: confirmarRenaveSchema },
+  'POST /renave/registros/:p/recusar': { schema: recusarRenaveSchema },
+  'POST /renave/registros/:p/cancelar': { schema: cancelarRenaveSchema },
+  'POST /renave/registros/:p/nfe': { schema: chaveNfeRenaveSchema },
 
   'POST /public/conversations/:p/messages': { schema: mensagemDeVisitanteSchema },
   'PATCH /conversations/:p/close': { semCorpo: true },
