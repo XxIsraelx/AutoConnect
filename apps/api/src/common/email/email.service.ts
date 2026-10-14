@@ -23,6 +23,17 @@ function escaparTexto<T extends object>(o: T): T {
   ) as T;
 }
 
+/**
+ * O provedor recusou **este destinatário** — endereço malformado, domínio que
+ * não existe. Tentar de novo dá o mesmo resultado; quem tem fila de nova
+ * tentativa (o lembrete de agendamento) deve tratar como definitivo. Rede
+ * fora, cota e 5xx continuam como `Error` comum: esses passam.
+ */
+export class EmailRecusado extends Error {}
+
+/** Os erros da Resend que dizem respeito ao endereço, não ao momento. */
+const RECUSA_DEFINITIVA_DA_RESEND = new Set(['validation_error']);
+
 @Injectable()
 export class EmailService implements OnApplicationBootstrap {
   private readonly logger = new Logger(EmailService.name);
@@ -686,7 +697,10 @@ export class EmailService implements OnApplicationBootstrap {
       // registrava "enviado" para e-mail recusado — domínio não verificado,
       // chave inválida — e o convite sumia sem ninguém saber.
       const { data, error } = await this.resend.emails.send({ from: this.from, to, subject, html });
-      if (error) throw new Error(`Resend recusou o e-mail para ${to}: ${error.name} — ${error.message}`);
+      if (error) {
+        const msg = `Resend recusou o e-mail para ${to}: ${error.name} — ${error.message}`;
+        throw RECUSA_DEFINITIVA_DA_RESEND.has(error.name) ? new EmailRecusado(msg) : new Error(msg);
+      }
       this.logger.log(`E-mail enviado via Resend para ${to} | id: ${data.id}`);
       return;
     }

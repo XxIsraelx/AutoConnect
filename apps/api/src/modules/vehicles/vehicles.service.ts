@@ -1,5 +1,6 @@
 import {
   Injectable,
+  ConflictException,
   Logger,
   NotFoundException,
   UnprocessableEntityException,
@@ -553,9 +554,18 @@ export class VehiclesService {
 
   async remove(tenantId: string, id: string) {
     await this.findOne(tenantId, id);
-    await this.prisma.withTenant(tenantId, (tx) =>
-      tx.vehicle.delete({ where: { id } }),
-    );
+    await this.prisma.withTenant(tenantId, async (tx) => {
+      // O registro do RENAVE espelha um ato com efeito legal: o protocolo é a
+      // prova de que a entrada ou a saída foi feita. Excluir o carro levaria
+      // a prova junto — arquivar tira da vitrine e guarda a história.
+      const noRenave = await tx.renaveRegistro.count({ where: { vehicleId: id, tenantId } });
+      if (noRenave > 0) {
+        throw new ConflictException(
+          'Este carro tem registro no RENAVE e não pode ser excluído: arquive-o para tirá-lo do estoque.',
+        );
+      }
+      await tx.vehicle.delete({ where: { id } });
+    });
     return { deleted: true };
   }
 

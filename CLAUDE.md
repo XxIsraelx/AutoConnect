@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.645 testes (1.139 na API, 506 no `shared`):
+são 1.657 testes (1.147 na API, 510 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -683,6 +683,12 @@ em 6 fases: `docs/planos/plano-financeiro.md`.
   o banco), compra do veículo e cada item de preparação geram conta a pagar. A
   geração **nunca derruba a operação**: erro ali é aviso no log, porque dinheiro
   invisível é ruim e venda travada é pior.
+- **A troca não gera lançamento, em nenhuma das pontas**
+  ([decisão](docs/decisoes/2026-10-14%20troca%20no%20financeiro.md)): o
+  pagamento `trade_in` do negócio não é conta a receber e a aquisição de origem
+  `trade_in` não é conta a pagar — nenhum dinheiro mudou de mão. Antes as duas
+  eram geradas e se anulavam; corrigir uma só faria o fluxo prometer uma saída
+  que não existe.
 - **A categoria da geração é achada por `origin_key`, nunca pelo nome.** A loja
   renomeia "Compra de veículo" no primeiro dia, e buscar por nome pararia de achar
   em silêncio. Sem a categoria, ela é criada a partir de `CATEGORIAS_PADRAO`.

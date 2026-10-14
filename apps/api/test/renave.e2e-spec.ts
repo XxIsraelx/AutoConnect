@@ -172,6 +172,14 @@ describe('RENAVE — registro manual (e2e)', () => {
       ).resolves.toBeTruthy();
     });
 
+    it('carro com registro no RENAVE não é excluído: a prova não some com ele', async () => {
+      const res = await http().delete(`/api/v1/vehicles/${veiculo}`).set('Authorization', `Bearer ${comoGerente}`);
+      expect(res.status).toBe(409);
+      expect(res.body.message).toMatch(/arquive/);
+      expect(await dono.renaveRegistro.count({ where: { vehicleId: veiculo } })).toBeGreaterThan(0);
+      expect(await dono.vehicle.count({ where: { id: veiculo } })).toBe(1);
+    });
+
     it('confirmar o que já está confirmado é 409', async () => {
       const res = await post(`/registros/${entradaId}/confirmar`, { protocolo: 'X' });
       expect(res.status).toBe(409);

@@ -2638,7 +2638,10 @@ model RenaveRegistro {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  /// NO ACTION, não CASCADE: excluir o carro levaria a prova do registro junto
+  /// (o `DELETE /vehicles/:id` responde 409 antes). NO ACTION e não RESTRICT
+  /// para a exclusão da loja inteira, que leva os dois na mesma instrução.
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: NoAction)
   deal    Deal?   @relation(fields: [dealId], references: [id], onDelete: NoAction)
   eventos RenaveEvento[]
 
