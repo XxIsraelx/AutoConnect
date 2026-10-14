@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { ClipboardCheck, AlertTriangle, Info, Loader2, Plus, Send } from 'lucide-react';
 import {
   OPERACOES_DE_ENTRADA, OPERACOES_DE_SAIDA, ROTULO_DA_OPERACAO_RENAVE, ROTULO_DO_STATUS_RENAVE,
@@ -147,13 +148,19 @@ function Formularios({ dados, dealId }: { dados: RenaveDoVeiculo; dealId?: strin
   }
   return (
     <div className="flex flex-wrap gap-2">
-      {dados.integradora.disponivel && (
+      {dados.integradora.disponivel && (dados.integradora.credencialCadastrada || !dados.integradora.exigeCredencialDaLoja) && (
         <button
           type="button" onClick={() => setAberto('envio')}
           className={`${botao} bg-brand-accent text-white hover:bg-blue-600`}
         >
           <Send size={14} /> Enviar pela integradora
         </button>
+      )}
+      {dados.integradora.disponivel && dados.integradora.exigeCredencialDaLoja && !dados.integradora.credencialCadastrada && (
+        <p className="text-xs text-slate-500 basis-full">
+          Para enviar pela integradora, o administrador da loja cadastra a chave dela em{' '}
+          <Link href="/configuracoes" className="text-brand-accent hover:underline">Configurações</Link>.
+        </p>
       )}
       <button
         type="button" onClick={() => setAberto('manual')}

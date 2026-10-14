@@ -284,6 +284,8 @@ model Tenant {
   // RENAVE (trilha R do plano fiscal) — o modelo está no fim do arquivo.
   renaveRegistros           RenaveRegistro[]
   renaveEventos             RenaveEvento[]
+  // Cofre de credenciais por loja (R3 do plano fiscal) — modelo no fim do arquivo.
+  credenciaisDeIntegracao   CredencialDeIntegracao[]
   // Fiscal (trilha N) — os modelos estão no fim do arquivo.
   fiscalSettings            FiscalSettings?
   fiscalOperationProfiles   FiscalOperationProfile[]
@@ -2673,4 +2675,42 @@ model RenaveEvento {
   @@unique([registroId, eventKey])
   @@index([tenantId])
   @@map("renave_eventos")
+}
+
+// ─────────────────────────────────────────────────────────
+// Cofre de credenciais por loja
+//
+// Decisão: docs/decisoes/2026-10-14 cofre de credenciais por loja.md. A loja
+// contrata e paga a integradora, então a chave de API é dela — e quem tem a
+// chave gasta o dinheiro da loja e registra no RENAVE em nome dela.
+// ─────────────────────────────────────────────────────────
+
+/// Uma credencial de serviço externo, **cifrada** (AES-256-GCM, chave-mestra no
+/// `.env`). A cifra nunca sai da API; a tela vê só os últimos 4 caracteres.
+///
+/// Trocar e revogar não apagam a linha: apagam a cifra e marcam a data. Fica a
+/// trilha de quem tinha chave quando, sem guardar chave nenhuma.
+model CredencialDeIntegracao {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  /// O serviço: o nome da integradora RENAVE, por enquanto.
+  fornecedor     String
+  cifra          Bytes?
+  vetor          Bytes?
+  /// Etiqueta de autenticação do GCM: cifra adulterada não abre.
+  etiqueta       Bytes?
+  /// Versão da chave-mestra que cifrou — é o que permite trocá-la.
+  versaoDaChave  Int       @map("versao_da_chave")
+  ultimos4       String    @map("ultimos_4")
+  /// Sem FK, como o `createdBy` do RENAVE: é trilha.
+  cadastradaPor  String?   @map("cadastrada_por") @db.Uuid
+  cadastradaEm   DateTime  @default(now()) @map("cadastrada_em") @db.Timestamptz()
+  substituidaEm  DateTime? @map("substituida_em") @db.Timestamptz()
+  revogadaEm     DateTime? @map("revogada_em") @db.Timestamptz()
+  revogadaPor    String?   @map("revogada_por") @db.Uuid
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, fornecedor])
+  @@map("credenciais_de_integracao")
 }

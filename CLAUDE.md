@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.611 testes (1.114 na API, 497 no `shared`):
+são 1.630 testes (1.133 na API, 497 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -951,6 +951,14 @@ seção "R1 entregue". Manual técnico do renave-ws (SERPRO) lido em 14/10/2026.
   privilegiado (`id` e `tenantId` por `provider + external_id`), operação
   desconhecida é 200 sem efeito. ATPV-e no bucket `documentos`, servido por
   `GET /renave/registros/:id/atpv`.
+- **A chave da integradora é da loja, e fica no cofre**
+  ([decisão](docs/decisoes/2026-10-14%20cofre%20de%20credenciais%20por%20loja.md)):
+  o AutoConnect não paga integradora, a loja contrata e paga. A chave é cifrada
+  na API (AES-256-GCM, `COFRE_CHAVES_MESTRAS`, `common/cofre/`), só o
+  `tenant_admin` cadastra, é conferida na integradora antes de gravar e **não
+  sai por rota nenhuma** — a tela vê `••••` e os 4 últimos. Trocar ou revogar
+  apaga a cifra e deixa a linha. Credencial nova por loja usa o mesmo cofre.
+  `COFRE_CHAVES_MESTRAS` vazia = cofre desligado; perdê-la = cada loja recadastra.
 
 ---
 

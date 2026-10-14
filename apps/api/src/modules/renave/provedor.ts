@@ -19,11 +19,13 @@ const INDISPONIVEL =
 export class ProvedorRenaveIndisponivel implements ProvedorDeRenave {
   readonly nome = 'nenhum';
   readonly disponivel = false;
+  readonly exigeCredencialDaLoja = false;
 
   private recusar<T>(): Promise<T> {
     return Promise.reject(new ServiceUnavailableException(INDISPONIVEL));
   }
 
+  verificarCredencial(): Promise<boolean> { return this.recusar(); }
   registrarEntrada(): Promise<RespostaDoRenave> { return this.recusar(); }
   registrarSaida(): Promise<RespostaDoRenave> { return this.recusar(); }
   cancelar(): Promise<RespostaDoRenave> { return this.recusar(); }

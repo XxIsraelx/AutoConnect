@@ -44,7 +44,21 @@ export interface CapacidadeDaIntegradora {
   sandbox: boolean;
   /** Integradora simulada fora de produção — libera os botões de simulação. */
   simulado: boolean;
+  /** A loja contrata e paga a integradora: o envio leva a chave dela, do cofre. */
+  exigeCredencialDaLoja: boolean;
+  credencialCadastrada: boolean;
 }
+
+export interface EstadoDaCredencial {
+  exigida: boolean;
+  fornecedor?: string;
+  /** Falso quando a instalação não tem chave-mestra: cadastrar responde 503. */
+  cofre?: boolean;
+  credencial: { ultimos4: string; cadastradaEm: string; cadastradaPor: string | null } | null;
+}
+
+/** Só o dono da loja cadastra ou revoga: a chave gasta o dinheiro dela. */
+export const PAPEIS_DA_CHAVE = ['tenant_admin', 'super_admin'];
 
 export interface RenaveDoVeiculo {
   vehicleId: string;
@@ -211,6 +225,36 @@ export function useAcaoRenave() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...a }: AcaoNoRegistro & { id: string }) => executar(id, a, token),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['renave'] }),
+  });
+}
+
+export function useCredencialDaIntegradora() {
+  const token = useAuthStore((s) => s.token) ?? undefined;
+  return useQuery({
+    queryKey: ['renave', 'credencial'],
+    queryFn: () => api<EstadoDaCredencial>('/renave/credencial', { token }),
+    enabled: Boolean(token),
+    retry: false,
+  });
+}
+
+/** A chave vai no corpo e não volta: a resposta só tem os 4 últimos caracteres. */
+export function useGuardarCredencial() {
+  const token = useAuthStore((s) => s.token) ?? undefined;
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (chave: string) =>
+      api<EstadoDaCredencial>('/renave/credencial', { method: 'POST', token, body: { chave } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['renave'] }),
+  });
+}
+
+export function useRevogarCredencial() {
+  const token = useAuthStore((s) => s.token) ?? undefined;
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<EstadoDaCredencial>('/renave/credencial/revogar', { method: 'POST', token }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['renave'] }),
   });
 }

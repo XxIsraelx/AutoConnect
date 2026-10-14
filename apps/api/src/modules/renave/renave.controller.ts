@@ -7,7 +7,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import {
-  cancelarRenaveSchema, chaveNfeRenaveSchema, confirmarRenaveSchema, enviarRenaveSchema,
+  cancelarRenaveSchema, chaveNfeRenaveSchema, confirmarRenaveSchema, credencialDaIntegradoraSchema,
+  enviarRenaveSchema,
   recusarRenaveSchema, registrarRenaveSchema, simularRenaveSchema,
 } from '@autoconnect/shared';
 import { PAPEIS_DA_EQUIPE, PAPEIS_FISCAIS, RenaveService } from './renave.service';
@@ -52,10 +53,37 @@ export class RenaveController {
     @Req() req: AuthRequest,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<unknown> {
+    const escopo = escopoDa(req.user);
+    // Em paralelo: são duas transações, e a API está a ~0,6 s do banco.
+    const [cartao, chave] = await Promise.all([
+      this.renave.doVeiculo(escopo, id),
+      this.integracao.credencial(escopo),
+    ]);
     return {
-      ...(await this.renave.doVeiculo(escopoDa(req.user), id)),
-      integradora: this.integracao.capacidade(),
+      ...cartao,
+      integradora: { ...this.integracao.capacidade(), credencialCadastrada: chave.credencial !== null },
     };
+  }
+
+  /** GET /renave/credencial — os 4 últimos caracteres da chave da loja, nunca ela. */
+  @Get('credencial')
+  credencial(@Req() req: AuthRequest): Promise<unknown> {
+    return this.integracao.credencial(escopoDa(req.user));
+  }
+
+  /**
+   * POST /renave/credencial — só o dono da loja (o service recusa o gerente):
+   * a chave gasta o dinheiro dela. Conferida na integradora antes de gravar.
+   */
+  @Post('credencial')
+  guardarCredencial(@Req() req: AuthRequest, @Body() body: unknown): Promise<unknown> {
+    const { chave } = credencialDaIntegradoraSchema.parse(body);
+    return this.integracao.guardarCredencial(escopoDa(req.user), chave, req.user);
+  }
+
+  @Post('credencial/revogar')
+  revogarCredencial(@Req() req: AuthRequest): Promise<unknown> {
+    return this.integracao.revogarCredencial(escopoDa(req.user), req.user);
   }
 
   /** POST /renave/registros — anotação manual: com protocolo nasce confirmado; sem, aguardando. */

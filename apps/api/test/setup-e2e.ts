@@ -148,6 +148,10 @@ process.env.VAPID_SUBJECT = '';
 // credenciais do adaptador real (R3) entram zeradas aqui quando ele existir.
 process.env.RENAVE_FORNECEDOR = 'simulado';
 process.env.RENAVE_WEBHOOK_SECRET = 'segredo-do-webhook-renave-de-teste';
+// Cofre de credenciais por loja: chave-mestra fixa e falsa, sobrescrevendo o
+// `.env`. Com a de produção aqui, a suíte cifraria chaves de teste com ela — e
+// um teste que imprimisse a cifra estaria a um passo de quem tem a chave real.
+process.env.COFRE_CHAVES_MESTRAS = '1:BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=';
 
 // Emissor de NF-e (trilha fiscal N2): simulado, com token fixo. Quando o
 // adaptador do emissor terceiro entrar (N3), as credenciais dele são zeradas

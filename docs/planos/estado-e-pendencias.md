@@ -775,6 +775,29 @@ consulta, conta da Clicksign, revisão jurídica, feature flag e região da API 
     A resposta honesta para o FAQ e o roteiro continua valendo, agora com mais: "o AutoConnect
     guarda os protocolos e avisa o que falta; o envio é pela sua integradora" — a landing não é da
     trilha R e o texto foi pedido no PR.
+- **`proposta-chat.e2e-spec.ts` falhou uma vez sob RLS, inteiro, e passou em seguida.**
+  - Onde: `apps/api/test/proposta-chat.e2e-spec.ts`, na rodada da suíte de integração como
+    `autoconnect_app` (o passo de RLS do CI), rodando local junto dos outros 34 arquivos.
+  - O que é: os 13 casos falharam juntos, o que aponta para o `beforeAll` (fixture ou conexão), não
+    para uma regra. Isolado, passou 13/13; a suíte inteira, rodada de novo, passou 709/709.
+  - Evidência: só a contagem (`13 failed, 696 passed`); a saída da primeira rodada não foi guardada.
+  - Impacto: um PR pode ficar vermelho no CI sem defeito nenhum.
+  - Sugestão: se repetir, guardar o log e olhar o `beforeAll` e o tempo limite dele.
+  - Como testar: rodar a suíte sob RLS algumas vezes seguidas.
+  - Encontrado por: Claude (sessão 2), 14/10/2026, ao juntar a `main` (trilha N) nos PRs do RENAVE.
+- **Chave-mestra do cofre ainda não existe em produção.**
+  - Onde: variável `COFRE_CHAVES_MESTRAS` no Railway (serviço da API).
+  - O que é: o cofre de credenciais por loja (R3 do plano fiscal) cifra a chave
+    da integradora de cada loja com ela. Sem a variável, o cofre fica desligado e
+    a seção "Integradora RENAVE" de `/configuracoes` responde 503 — o que hoje não
+    aparece, porque nenhuma integradora real está ligada.
+  - Impacto: nenhum até a R3 ligar uma integradora. No dia em que ligar, sem a
+    variável nenhuma loja consegue cadastrar a chave.
+  - Sugestão: antes de ligar a integradora, gerar com `openssl rand -base64 32`,
+    cadastrar `1:<chave>` no Railway **e guardar uma cópia fora dele** (perdida, cada
+    loja recadastra a sua). Quem faz: o Israel.
+  - Como testar: o boot da API não mostra "cofre de credenciais desligado".
+  - Encontrado por: Claude (sessão 2), 14/10/2026, R3 do plano fiscal.
 - **Texto oficial da Circular nº 2/2026 da Senatran não localizado.**
   - Onde: [plano fiscal](plano-fiscal-renave-nfe.md), "O calendário que manda"; `docs/decisoes/2026-10-13 fiscal renave e nfe.md`.
   - O que é: o calendário da Circular (indicação da integradora até 20/10, operação assistida

@@ -380,19 +380,27 @@ export interface ProvedorDeRenave {
   readonly disponivel: boolean;
   /** Homologação: o registro não existe no RENAVE de verdade. */
   readonly sandbox?: boolean;
-  registrarEntrada(pedido: PedidoDeEntradaRenave): Promise<RespostaDoRenave>;
-  registrarSaida(pedido: PedidoDeSaidaRenave): Promise<RespostaDoRenave>;
+  /**
+   * A loja contrata e paga a integradora (decisão de 14/10/2026), então cada
+   * chamada leva a chave **dela**, aberta do cofre na hora — o `credencial` de
+   * cada método. Falso só para integradora com conta de parceiro da plataforma.
+   */
+  readonly exigeCredencialDaLoja: boolean;
+  /** Chamada de leitura, sem custo, que prova que a chave vale — antes de guardá-la. */
+  verificarCredencial(credencial: string): Promise<boolean>;
+  registrarEntrada(pedido: PedidoDeEntradaRenave, credencial: string | null): Promise<RespostaDoRenave>;
+  registrarSaida(pedido: PedidoDeSaidaRenave, credencial: string | null): Promise<RespostaDoRenave>;
   /** O cancelamento de entrada ou de saída que o manual prevê. */
-  cancelar(idExterno: string, motivo: string): Promise<RespostaDoRenave>;
-  consultar(idExterno: string): Promise<RespostaDoRenave>;
+  cancelar(idExterno: string, motivo: string, credencial: string | null): Promise<RespostaDoRenave>;
+  consultar(idExterno: string, credencial: string | null): Promise<RespostaDoRenave>;
   /**
    * A chave da NF-e da operação — no manual, `POST /api/notas-fiscais` com
    * evento `COMPRA` (entrada) ou `VENDA` (saída), depois do registro. Trocar
    * a chave é chamar de novo.
    */
-  informarNotaFiscal(idExterno: string, chaveNfe: string): Promise<void>;
+  informarNotaFiscal(idExterno: string, chaveNfe: string, credencial: string | null): Promise<void>;
   /** O ATPV-e da operação, quando a integradora o devolve. `null` = ainda não há. */
-  baixarAtpv(idExterno: string): Promise<Uint8Array | null>;
+  baixarAtpv(idExterno: string, credencial: string | null): Promise<Uint8Array | null>;
   interpretarWebhook(cabecalhos: Record<string, string | string[] | undefined>, corpoCru: Uint8Array): EventoDoRenave;
 }
 

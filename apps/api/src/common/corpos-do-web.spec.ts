@@ -57,6 +57,7 @@ import {
   chaveNfeRenaveSchema,
   enviarRenaveSchema,
   simularRenaveSchema,
+  credencialDaIntegradoraSchema,
   perfilFiscalSchema,
   perfilDeOperacaoSchema,
   confirmacaoDoContadorSchema,
@@ -273,6 +274,8 @@ const ROTAS: Record<string, Declaracao> = {
   'POST /renave/envios': { schema: enviarRenaveSchema },
   'POST /renave/registros/:p/atualizar': { semCorpo: true },
   'POST /renave/registros/:p/simular': { schema: simularRenaveSchema },
+  'POST /renave/credencial': { schema: credencialDaIntegradoraSchema },
+  'POST /renave/credencial/revogar': { semCorpo: true },
 
   'POST /public/conversations/:p/messages': { schema: mensagemDeVisitanteSchema },
   'PATCH /conversations/:p/close': { semCorpo: true },
