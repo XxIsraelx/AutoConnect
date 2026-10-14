@@ -153,5 +153,16 @@ process.env.RENAVE_WEBHOOK_SECRET = 'segredo-do-webhook-renave-de-teste';
 // um teste que imprimisse a cifra estaria a um passo de quem tem a chave real.
 process.env.COFRE_CHAVES_MESTRAS = '1:BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=';
 
+// Emissor de NF-e (trilha fiscal N2): simulado, com token fixo. Quando o
+// adaptador do emissor terceiro entrar (N3), as credenciais dele são zeradas
+// aqui também — a suíte nunca fala com a SEFAZ.
+process.env.NFE_FORNECEDOR = 'simulado';
+process.env.NFE_WEBHOOK_TOKEN = 'token-de-nota-fiscal-de-teste';
+// Focus NFe (N3): zerada. Com o token master no `.env`, a suíte cadastraria
+// empresa e emitiria nota de verdade.
+process.env.FOCUS_NFE_TOKEN_MASTER = '';
+process.env.FOCUS_NFE_PRODUCAO_LIBERADA = '';
+process.env.NFE_WEBHOOK_URL = '';
+
 /** Nome do banco de teste, para os testes afirmarem onde estão conectados. */
 export const BANCO_DE_TESTE = verificada.pathname.replace(/^\//, '');

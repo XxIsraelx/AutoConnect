@@ -294,7 +294,30 @@ loja. **A R3 espera as duas respostas.**
 
 ## Trilha N — NF-e (sessão 1)
 
-### N1 — perfil fiscal da loja e a montagem da nota
+### N1 — perfil fiscal da loja e a montagem da nota ✅ 14/10/2026
+
+**Entregue em 14/10/2026:** migration `perfil_fiscal` (três tabelas com RLS e
+CHECKs de formato), `montarNota` e `faltasParaEmitir` no shared, módulo
+`notas-fiscais` com perfil, operações, confirmação do contador, dados fiscais do
+veículo e a **prévia da nota no negócio**, e a tela `/configuracoes/fiscal`. 48
+testes no shared e 17 e2e — inclusive o que prova que mudar uma operação apaga
+a confirmação do contador. Conferido no navegador: da prévia com faltas até a
+nota completa, e o CFOP mudando de 5102 para 6102 quando o comprador de Minas
+não retira na loja.
+
+Decidido durante a fase, com o padrão adotado:
+
+- **A prévia vai para o negócio já na N1**, sem botão de emitir: diz o que falta e,
+  completa, mostra os dados para a loja usar no emissor que já tem. Rota sem
+  tela seria a armadilha nº 1 do CLAUDE.md.
+- **Venda presencial é interna** (CFOP 5) mesmo com comprador de outro estado; a
+  prévia tem o interruptor "comprador retira na loja", ligado por padrão.
+- **O dígito verificador do RENAVAM não é conferido** — o algoritmo circula em
+  versões diferentes, e recusar um RENAVAM verdadeiro trava a nota de um carro
+  que existe. Fica o tamanho (9 a 11 dígitos, completado com zeros).
+- **CNPJ e IE continuam no `Tenant`, endereço na filial matriz** — copiar para o
+  perfil fiscal criaria a segunda fonte de cada um.
+
 
 **Entrega:** a loja diz como fatura, e o sistema sabe dizer, para um negócio
 qualquer, se dá para emitir a nota — e o que falta, como a publicação de anúncio
@@ -316,10 +339,67 @@ já faz.
   uma nota no **vocabulário do domínio**, não no do emissor; e `faltasParaEmitir`,
   que lista o que impede a emissão (CPF do comprador, NCM, endereço, perfil não
   confirmado em produção…). Tabela de casos em teste, inclusive centavos.
+- **`vehicle_fiscal_details`** (uma por veículo): NCM e RENAVAM. A nota pede os
+  dois e o `Vehicle` não tem nenhum; ficam numa tabela fiscal em vez de coluna
+  nova em `vehicles`, para a trilha não mexer no módulo de estoque.
 - **Tela** `/configuracoes/fiscal` (gerência): regime, série, perfis por operação,
-  e o botão "o contador confirmou" com quem e quando.
+  e o botão "o contador confirmou" com quem e quando. No veículo, um cartão
+  "Dados fiscais" com NCM e RENAVAM.
 
-### N2 — camada neutra, simulado e o ciclo de vida da nota
+### N2 — camada neutra, simulado e o ciclo de vida da nota ✅ 14/10/2026 (saída)
+
+**Entregue em 14/10/2026, para a nota de saída do negócio:** migration
+`emissao_de_nota` (notas e eventos com RLS, **índice único parcial de uma nota
+viva por negócio**, CHECKs de coerência por estado e o trigger
+`nota_autorizada_e_imutavel`), `aplicarRetorno` e `podeCancelar` puros no
+shared, `ProvedorDeNotaFiscal` com o emissor **simulado** (gera chave de acesso
+válida e entrega o webhook pelo caminho real), webhook autenticado por token em
+tempo constante e idempotente por `(provider, eventKey)`, consulta,
+cancelamento com justificativa, XML e DANFE no bucket privado com o hash do XML
+conferido em todo download, e o cartão do negócio passando de prévia a
+emissão. 9 testes de regra e 18 e2e. Conferido no navegador: emitir →
+processando → autorizada (chave, número, protocolo) → cancelada → a prévia volta.
+
+Decidido durante a fase, com o padrão adotado:
+
+- **O banco grava antes de o emissor ouvir.** A nota nasce `processando` e só
+  então o emissor é chamado, com o id dela como referência; se a chamada cair, a
+  consulta resolve. O contrário seria nota autorizada que nenhuma tela mostra.
+- **Perfil em produção com emissor de homologação é 409**: a nota sairia sem
+  valor fiscal com o snapshot dizendo produção.
+- **Cancelamento feito fora do AutoConnect** (painel do emissor) entra com a
+  justificativa "Cancelada fora do AutoConnect", em vez de travar no CHECK.
+- **Saiu da N2, com fase própria (N2b):** a nota de **entrada** e a **carta de
+  correção** — ver abaixo.
+
+### N2b — nota de entrada ✅ 14/10/2026
+
+**Entregue em 14/10/2026:** migration `nota_de_entrada` — `acquisition_suppliers`
+(quem entregou o veículo, com RLS) e a nota com **exatamente uma origem**
+(negócio **ou** aquisição, `num_nonnulls = 1`) e uma nota de entrada viva por
+aquisição; `entradaDaAquisicao` no shared; rotas de quem entregou, prévia e
+emissão da entrada; e o cartão **Nota de entrada** no veículo, com o mesmo cartão
+de nota da saída (`CartaoDaNotaFiscal`). 10 testes de regra e 10 e2e. Conferido
+no navegador: o formulário abre com o nome que a aquisição tinha, salvar completa
+a prévia (CFOP 1102, valor da compra), emitir → autorizada.
+
+Decidido durante a fase, com o padrão adotado:
+
+- **A tela da aquisição nunca pediu nome nem documento do fornecedor** (só
+  origem, valor e data). Em vez de mexer nela, a trilha fiscal tem a sua
+  qualificação de quem entregou — mesma razão do `DealBuyer` no contrato: o
+  nome do papel pode diferir do cadastro rápido. Nasce com o que a aquisição
+  tiver.
+- **A loja só emite quando do outro lado não há quem emita:** pessoa física
+  vendendo, trocando ou consignando. Fornecedor **pessoa jurídica** (inclusive
+  CNPJ alfanumérico), **leilão**, **transferência** e **0 km** chegam com nota de
+  outro emissor — o cartão diz de quem, em vez de oferecer o botão.
+- **CNPJ alfanumérico na nota:** a montagem apagava as letras (`\D`) do CNPJ do
+  emitente e do documento da contraparte. Corrigido aqui, com teste, depois do
+  PR #24 (CNPJ alfanumérico no cadastro).
+- **A carta de correção foi para a N3**: a numeração de sequência e o retorno
+  são do emissor real, e simular sem ele seria inventar formato.
+
 
 - **`fiscal_documents`**: `tipo` (entrada, saída), `status`
   (`processando | autorizada | rejeitada | denegada | cancelada`), número, série,
@@ -342,29 +422,93 @@ já faz.
   (componente próprio), com DANFE e XML por URL assinada, e uma lista de notas do
   mês em `/financeiro` ou `/relatorios`.
 
-### N3 — certificado A1 e o adaptador do emissor
+### N3 — certificado A1, Focus NFe e carta de correção ◐ 14/10/2026 (falta a conta)
 
-- Emissor terceiro, nunca SEFAZ direto. Padrão: [Focus NFe](https://focusnfe.com.br/guides/nfe/)
-  (API REST, webhook, homologação, cadastro de empresa por API, e já cuida das
-  mudanças de layout da reforma tributária). NFe.io e Tecnospeed são a
-  alternativa se o preço por CNPJ não fechar.
-- **Certificado A1 da loja:** sobe pela tela e é **repassado ao emissor na hora**,
-  sem ser gravado por nós; fica só a validade, o CNPJ do titular e a impressão
-  digital, para avisar antes de vencer. A senha do certificado não é logada nem
-  persistida.
-- `NFE_FORNECEDOR`, `FOCUS_NFE_TOKEN`, `FOCUS_NFE_API_URL` — mesmas regras das
-  outras integrações: faltando uma, desligado com erro no log, boot não cai;
-  `setup-e2e.ts` força `simulado`. Selo "homologação — sem valor fiscal" na tela
-  enquanto o ambiente não for produção, pela mesma razão do selo de sandbox da
-  cobrança.
-- Uma nota de entrada e uma de saída autorizadas em homologação, e um
-  cancelamento.
+**Entregue em 14/10/2026, sem conta na Focus:** o adaptador `ProvedorFocusNfe`
+(`modules/notas-fiscais/emissor/provedor-focus.ts`), escrito a partir da
+documentação (https://doc.focusnfe.com.br, lida em 14/10/2026) e testado com
+`fetch` dublado — **ainda não falou com a Focus de verdade**. O envio do
+certificado A1 pela tela, a carta de correção (CC-e) de ponta a ponta com o
+simulado, e o CST de PIS/COFINS no perfil. Migration
+`emissor_e_carta_de_correcao`. 22 testes do adaptador e 10 e2e. Conferido no
+navegador: certificado enviado (validade e CNPJ na tela), carta 1 autorizada.
 
-### N4 — a ponte com o contador
+Decidido durante a fase (a Focus foi escolhida pelo Israel em 14/10/2026):
 
-- O pacote do mês para o contador ganha os **XML das notas** (zip), ao lado do
-  CSV que o financeiro já exporta.
-- Relatório de notas do período: autorizadas, canceladas, rejeitadas pendentes.
+- **Nenhum segredo de loja no banco.** A Focus tem um *token master* da conta,
+  que cadastra empresas, e um par de tokens por empresa, que é o que emite. O
+  banco guarda só o **id da empresa** (`fiscal_settings.emissor_conta`); o token
+  dela é buscado pelo master (`GET /v2/empresas/{id}`) e fica 5 minutos em
+  memória. O único segredo é `FOCUS_NFE_TOKEN_MASTER`, no `.env`.
+- **O certificado A1 passa e não fica.** Arquivo e senha vão à Focus no cadastro
+  (ou atualização) da empresa; ficam a validade e o CNPJ que ela devolve. Nem a
+  auditoria guarda — o e2e confere.
+- **Produção só com `FOCUS_NFE_PRODUCAO_LIBERADA=true`.** Sem ela a instalação
+  emite só em homologação, e perfil em produção é 409. Em homologação, o nome do
+  destinatário vira o texto que a SEFAZ exige (rejeição 598).
+- **O gatilho (webhook) é criado por empresa** com o nosso token no cabeçalho
+  `x-nfe-token` — o mesmo do simulado. Sem `NFE_WEBHOOK_URL`, o retorno chega
+  só pela consulta (o botão "Consultar a SEFAZ" já existe).
+- **Webhook que autoriza sem protocolo** (a Focus só manda o protocolo na
+  consulta completa) dispara a consulta, e é ela que se aplica.
+- **A montagem só envia situações tributárias sem valor calculado**
+  (`ICMS_SEM_VALOR_CALCULADO`, `PIS_COFINS_SEM_VALOR_CALCULADO`): CSOSN 102, 103,
+  300, 400, 500, 900; CST 40, 41, 50; PIS/COFINS 04 a 09. O resto (CST 00, 20,
+  CSOSN 101, PIS/COFINS 01, 49, 99) pede base e alíquota, que o AutoConnect não
+  calcula — vira **falta antes da emissão**, não rejeição da SEFAZ depois.
+  Ampliar é trabalho com o contador.
+
+**A CONFERIR na primeira nota em homologação** (premissas que a documentação não
+fechou, marcadas no código):
+
+1. o corpo do disparo do gatilho é o JSON da consulta, com `ref`;
+2. o host dos caminhos `/arquivos/...` (XML e DANFE) é o do ambiente, com a
+   mesma autenticação;
+3. o nome do campo de informações complementares (`informacoes_adicionais_contribuinte`);
+4. `consumidor_final` e `presenca_comprador` na nota de entrada de particular;
+5. se a empresa recém-criada já devolve `token_homologacao` (o exemplo da doc
+   vem vazio).
+
+**O que o Israel faz para ligar** (nenhuma sessão faz sozinha):
+
+1. Conta na Focus NFe; anotar o **token master** (painel da conta).
+2. No Railway (API): `NFE_FORNECEDOR=focusnfe`, `FOCUS_NFE_TOKEN_MASTER`,
+   `NFE_WEBHOOK_TOKEN` (um valor novo, longo, só nosso) e
+   `NFE_WEBHOOK_URL=https://api.autoconnectapp.com.br/api/v1/webhooks/nota-fiscal`.
+   **Não** definir `FOCUS_NFE_PRODUCAO_LIBERADA` ainda.
+3. Numa loja com CNPJ real, enviar o certificado A1 em *Configurações › Perfil
+   fiscal* (a Focus exige CNPJ real e A1 válido até em homologação).
+4. Emitir uma nota de saída e uma de entrada, cancelar uma, mandar uma carta de
+   correção — e me passar o que vier diferente do esperado nos 5 itens acima.
+
+### N4 — a ponte com o contador ✅ 14/10/2026
+
+**Entregue em 14/10/2026:** aba **Notas fiscais** em `/financeiro` — o mês, os
+totais (saídas e entradas autorizadas, canceladas, o que pede ação) e a lista,
+com link para o negócio ou o veículo de cada nota —, o **pacote do mês para o
+contador** (`GET /fiscal/notas/pacote.zip`: o XML de cada nota autorizada ou
+cancelada em `xml/saida/` e `xml/entrada/`, o índice `notas.csv` e um
+`LEIA-ME.txt`), o índice avulso em CSV e a linha "Notas fiscais (índice)" em
+*Levar seus dados*. 6 testes de regra, 8 de unidade (ZIP e período) e 5 e2e.
+Conferido no navegador e com o `unzip` do sistema sobre o pacote que a API
+gerou.
+
+Decidido durante a fase, com o padrão adotado:
+
+- **Nenhuma nota some do pacote em silêncio.** A que não tem XML (emissor fora,
+  bucket vazio) ou cujo XML não confere com o hash da autorização vai para o
+  LEIA-ME com o motivo e marcada no índice; o resto do pacote sai.
+- **O período é o da autorização, em horário de Brasília**, com o fim
+  exclusivo: nota autorizada às 22h de 31/10 é de outubro, e a autorizada em
+  outubro e cancelada em novembro também — com o cancelamento no índice.
+- **"Pede ação"**: nota processando, e rejeitada ou denegada **sem outra nota
+  emitida depois na mesma origem** — a substituta pode ter saído no mês
+  seguinte, então a regra olha todas as notas da origem, não só as do período.
+- **ZIP sem dependência nova:** um gravador mínimo com o `zlib` do Node
+  (`common/zip/zip.ts`), testado por leitura de volta. Nomes só em ASCII — há
+  leitor de ZIP que ainda mostra acento como lixo.
+- **Teto de 1.000 notas por período**, com 422 pedindo um período menor em vez
+  de cortar: nota que falta no pacote é nota que o contador não escritura.
 
 ---
 
@@ -400,6 +544,13 @@ NF-e — e esse ponto já foi resolvido na Fase 0.
 
 - `packages/shared/src/domain/chave-nfe.ts` — **ninguém edita**; precisou mudar,
   pede no PR.
+- **Quem entregou o veículo** — mora em `acquisition_suppliers`, da sessão 1
+  (N2b): nome, CPF/CNPJ e endereço de quem vendeu, trocou ou consignou. É o
+  vendedor que o RENAVE pede na entrada do estoque — a sessão 2 **lê** daqui.
+- **RENAVAM do veículo** — mora em `vehicle_fiscal_details`, da sessão 1 (N1). A
+  sessão 2 **lê**; se precisar antes de N1 chegar à `main`, pede no PR em vez de
+  criar coluna própria — dois RENAVAM para o mesmo carro é o começo da história
+  que não bate.
 - `negocios/[id]` e `veiculos/[id]` — cada sessão cria o **seu** componente e
   acrescenta **uma linha** na página para montá-lo. É o único arquivo de tela
   escrito pelas duas; o conflito, se houver, é de uma linha.
@@ -454,9 +605,10 @@ NF-e — e esse ponto já foi resolvido na Fase 0.
 3. **Emitir nota no modo somente leitura.** Padrão: bloqueado, como toda escrita
    — o `SomenteLeituraGuard` não ganha exceção nova sem motivo forte. Revisar se
    aparecer o caso "vendi ontem, fui bloqueado hoje, preciso faturar".
-4. **Nota de entrada de compra de pessoa física.** Padrão: entra junto da de
-   saída, em N2 — é ela que documenta o carro que a loja comprou de um
-   particular, e sem ela a conferência da Fase C fica pela metade.
+4. **Nota de entrada de compra de pessoa física.** Padrão: entra logo depois da
+   de saída, na N2b — é ela que documenta o carro que a loja comprou de um
+   particular, e sem ela a conferência da Fase C fica pela metade. Saiu da N2
+   porque a aquisição não guarda o endereço do fornecedor.
 
 ## O que teste não cobre
 
@@ -475,8 +627,9 @@ NF-e — e esse ponto já foi resolvido na Fase 0.
 | R2 — camada neutra RENAVE | 2 | ✅ 14/10/2026 |
 | R3 — adaptador da integradora | 2 | ⬜ (depende da escolha da integradora) |
 | R4 — consignação | 2 | ⬜ (depende da Clicksign em produção e do advogado) |
-| N1 — perfil fiscal e montagem | 1 | ⬜ |
-| N2 — camada neutra NF-e | 1 | ⬜ |
-| N3 — certificado e adaptador do emissor | 1 | ⬜ (depende da conta no emissor) |
-| N4 — ponte com o contador | 1 | ⬜ |
+| N1 — perfil fiscal e montagem | 1 | ✅ 14/10/2026 |
+| N2 — camada neutra NF-e (saída) | 1 | ✅ 14/10/2026 |
+| N2b — nota de entrada | 1 | ✅ 14/10/2026 |
+| N3 — certificado, Focus NFe e carta de correção | 1 | ◐ 14/10/2026 — adaptador escrito e testado; falta a conta na Focus |
+| N4 — ponte com o contador | 1 | ✅ 14/10/2026 |
 | C — a mesma história | 1 | ⬜ (depois de R2 e N2) |

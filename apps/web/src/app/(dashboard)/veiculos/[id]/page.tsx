@@ -16,6 +16,8 @@ import CustoDoVeiculo from './CustoDoVeiculo';
 import ConsultaVeicular from './ConsultaVeicular';
 import NegocioDoVeiculo from './NegocioDoVeiculo';
 import CartaoRenave from '@/components/renave/CartaoRenave';
+import DadosFiscaisDoVeiculo from '@/components/fiscal/DadosFiscaisDoVeiculo';
+import NotaDeEntradaDoVeiculo from '@/components/fiscal/NotaDeEntradaDoVeiculo';
 import AvisoDeEnvioDeFotos from '@/components/AvisoDeEnvioDeFotos';
 import {
   ENVIO_DE_FOTOS_CONFIGURADO,
@@ -724,6 +726,10 @@ export default function EditVehiclePage() {
         <CustoDoVeiculo vehicleId={params.id} />
 
         <CartaoRenave vehicleId={params.id} />
+
+        <DadosFiscaisDoVeiculo vehicleId={params.id} />
+
+        <NotaDeEntradaDoVeiculo vehicleId={params.id} />
 
         <ConsultaVeicular
           vehicleId={params.id}

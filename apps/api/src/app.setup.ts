@@ -40,6 +40,8 @@ export const ROTA_WEBHOOK_RENAVE = '/api/v1/webhooks/renave';
  */
 export const ROTA_WEBHOOK_PORTAIS = '/api/v1/webhooks/portais';
 export const ROTA_EMAIL_DE_ENTRADA = '/api/v1/webhooks/email-de-entrada';
+/** Retorno do emissor de NF-e (trilha fiscal N2): o evento é guardado como veio. */
+export const ROTA_WEBHOOK_NOTA_FISCAL = '/api/v1/webhooks/nota-fiscal';
 
 /**
  * Configuração da aplicação — prefixo, filtros, pipes e CORS.
@@ -62,6 +64,7 @@ export function configureApp(app: INestApplication): INestApplication {
   app.use(ROTA_WEBHOOK_RENAVE, corpoCru(1024 * 1024));
   // E-mail com HTML de portal (imagens embutidas não vêm; o provedor as separa).
   app.use(ROTA_EMAIL_DE_ENTRADA, corpoCru(5 * 1024 * 1024));
+  app.use(ROTA_WEBHOOK_NOTA_FISCAL, corpoCru(1024 * 1024));
 
   // Um salto de proxy (a borda do Railway). Sem isto, `req.ip` é o IP do
   // proxy para todo mundo, e o limite por IP do formulário público — cinco

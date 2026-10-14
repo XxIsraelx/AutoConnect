@@ -286,6 +286,14 @@ model Tenant {
   renaveEventos             RenaveEvento[]
   // Cofre de credenciais por loja (R3 do plano fiscal) — modelo no fim do arquivo.
   credenciaisDeIntegracao   CredencialDeIntegracao[]
+  // Fiscal (trilha N) — os modelos estão no fim do arquivo.
+  fiscalSettings            FiscalSettings?
+  fiscalOperationProfiles   FiscalOperationProfile[]
+  vehicleFiscalDetails      VehicleFiscalDetails[]
+  fiscalDocuments           FiscalDocument[]
+  fiscalDocumentEvents      FiscalDocumentEvent[]
+  acquisitionSuppliers      AcquisitionSupplier[]
+  fiscalCorrectionLetters   FiscalCorrectionLetter[]
 
   @@map("tenants")
 }
@@ -825,6 +833,8 @@ model Vehicle {
   financialEntries FinancialEntry[]
   /// Entradas e saídas deste veículo no RENAVE, como a loja as registrou.
   renaveRegistros  RenaveRegistro[]
+  /// NCM, RENAVAM e origem — trilha fiscal (fim do arquivo).
+  fiscalDetails    VehicleFiscalDetails?
 
   @@index([tenantId])
   @@index([branchId])
@@ -1385,6 +1395,8 @@ model Deal {
   financialEntries FinancialEntry[]
   /// A saída do veículo no RENAVE que esta venda gerou.
   renaveRegistros  RenaveRegistro[]
+  /// Notas fiscais deste negócio — trilha fiscal (fim do arquivo).
+  fiscalDocuments  FiscalDocument[]
 
   @@index([tenantId, status])
   @@index([tenantId, createdAt(sort: Desc)])
@@ -1488,10 +1500,13 @@ model VehicleAcquisition {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vehicle        Vehicle         @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle         Vehicle              @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   /// A conta a pagar que esta compra gerou — uma só, por construção.
-  financialEntry FinancialEntry?
+  financialEntry  FinancialEntry?
+  /// Trilha fiscal (fim do arquivo): quem entregou o veículo e a nota de entrada.
+  supplier        AcquisitionSupplier?
+  fiscalDocuments FiscalDocument[]
 
   @@index([tenantId])
   @@map("vehicle_acquisitions")
@@ -2251,6 +2266,271 @@ model FinancialPeriod {
 }
 
 // ─────────────────────────────────────────────────────────
+// Fiscal — trilha N (NF-e) do plano fiscal
+//
+// docs/planos/plano-fiscal-renave-nfe.md. O AutoConnect prepara, envia e
+// guarda; quem calcula tributo é o emissor e o contador. Por isso o perfil
+// abaixo é **da loja** e nasce sem situação tributária: a sugestão de CFOP é
+// ponto de partida para a conversa com o contador, e produção só emite depois
+// que alguém registra que ele confirmou.
+// ─────────────────────────────────────────────────────────
+
+enum RegimeTributario {
+  mei
+  simples_nacional
+  simples_excesso_sublimite
+  lucro_presumido
+  lucro_real
+}
+
+enum AmbienteFiscal {
+  homologacao
+  producao
+}
+
+enum OperacaoFiscal {
+  venda
+  compra_de_particular
+  entrada_de_troca
+  entrada_em_consignacao
+  devolucao_de_consignacao
+  venda_de_consignado
+}
+
+/// Como a loja fatura. Uma linha por loja.
+///
+/// CNPJ e IE continuam no `Tenant`, e o endereço do emitente é o da filial
+/// matriz: copiar os três para cá criaria a segunda fonte de cada um.
+model FiscalSettings {
+  tenantId String           @id @map("tenant_id") @db.Uuid
+  regime   RegimeTributario
+  serie    Int              @default(1) @db.SmallInt
+  ambiente AmbienteFiscal   @default(homologacao)
+
+  /// A loja registrou que o contador conferiu o perfil (regime e operações).
+  /// Mudar o regime ou qualquer operação **apaga** a confirmação: o contador
+  /// confirmou o que viu, não o que veio depois.
+  contadorConfirmouEm  DateTime? @map("contador_confirmou_em") @db.Timestamptz()
+  /// Quem da loja registrou. Sem chave estrangeira: é trilha, e sobrevive à
+  /// saída da pessoa da equipe.
+  contadorConfirmouPor String?   @map("contador_confirmou_por") @db.Uuid
+  contadorNome         String?   @map("contador_nome")
+  contadorCrc          String?   @map("contador_crc")
+
+  /// A empresa da loja no emissor (N3) — o id, nunca um token. O token da
+  /// empresa é buscado pela conta da plataforma quando precisa, e o único
+  /// segredo fica no `.env`.
+  emissorConta          String?   @map("emissor_conta")
+  /// O certificado A1 passa pela API e vai ao emissor; aqui fica só o que ele
+  /// devolve sobre o certificado, para avisar antes de vencer.
+  certificadoValidoAte  DateTime? @map("certificado_valido_ate") @db.Timestamptz()
+  certificadoCnpj       String?   @map("certificado_cnpj")
+  certificadoEnviadoEm  DateTime? @map("certificado_enviado_em") @db.Timestamptz()
+  certificadoEnviadoPor String?   @map("certificado_enviado_por") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("fiscal_settings")
+}
+
+/// Natureza, CFOP e situação tributária de cada operação, por loja.
+model FiscalOperationProfile {
+  id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String         @map("tenant_id") @db.Uuid
+  operation OperacaoFiscal
+
+  natureza                    String
+  cfopInterno                 String  @map("cfop_interno") @db.Char(4)
+  cfopInterestadual           String  @map("cfop_interestadual") @db.Char(4)
+  /// CST (2 dígitos) ou CSOSN (3). Nasce nulo: quem define é o contador.
+  situacaoTributaria          String? @map("situacao_tributaria") @db.VarChar(3)
+  /// CST de PIS e de COFINS (N3). Nasce nulo, como o de ICMS.
+  pisCofinsSituacaoTributaria String? @map("pis_cofins_situacao_tributaria") @db.Char(2)
+  informacoesComplementares   String? @map("informacoes_complementares")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, operation])
+  @@index([tenantId])
+  @@map("fiscal_operation_profiles")
+}
+
+/// NCM, RENAVAM e origem do veículo — o que a nota pede e o estoque não tem.
+///
+/// Tabela à parte, e não coluna em `vehicles`, para a trilha fiscal não mexer
+/// no módulo de estoque. O RENAVAM daqui é **o** RENAVAM do carro: a trilha do
+/// RENAVE lê, não guarda o seu.
+model VehicleFiscalDetails {
+  vehicleId String  @id @map("vehicle_id") @db.Uuid
+  tenantId  String  @map("tenant_id") @db.Uuid
+  ncm       String? @db.Char(8)
+  renavam   String? @db.Char(11)
+  /// 0 = nacional; 1 e 2 = importado.
+  origem    Int     @default(0) @db.SmallInt
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("vehicle_fiscal_details")
+}
+
+enum StatusDaNota {
+  processando
+  autorizada
+  rejeitada
+  denegada
+  cancelada
+}
+
+/// Uma NF-e — fase N2. O id é a **referência** que o emissor recebe e devolve
+/// em todo retorno, então não existe um segundo identificador para casar.
+///
+/// Autorizada é imutável (trigger `nota_autorizada_e_imutavel`): chave,
+/// número, protocolo e o snapshot do que foi enviado não mudam; o erro se
+/// corrige com o evento que a lei prevê. Só pode haver uma nota viva
+/// (processando ou autorizada) por negócio — índice único parcial na migration.
+model FiscalDocument {
+  id                   String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String         @map("tenant_id") @db.Uuid
+  dealId               String?        @map("deal_id") @db.Uuid
+  /// Nota de entrada (N2b). Exatamente uma origem: negócio **ou** aquisição.
+  vehicleAcquisitionId String?        @map("vehicle_acquisition_id") @db.Uuid
+  operation            OperacaoFiscal
+  status               StatusDaNota   @default(processando)
+  provider             String
+  ambiente             AmbienteFiscal
+
+  /// A nota como foi enviada (`NotaMontada`). Snapshot, não join.
+  snapshot  Json
+  serie     Int?    @db.SmallInt
+  numero    Int?
+  chave     String? @db.Char(44)
+  protocolo String?
+  /// Motivo da rejeição ou da denegação; ou o da última recusa de cancelamento.
+  motivo    String?
+
+  /// Chaves no bucket privado `documentos`. Nulas quando o armazenamento não
+  /// está configurado — o download busca no emissor, sob demanda.
+  xmlKey    String? @map("xml_key")
+  danfeKey  String? @map("danfe_key")
+  /// SHA-256 do XML autorizado, conferido em todo download.
+  xmlSha256 String? @map("xml_sha256") @db.Char(64)
+
+  emittedBy                   String?   @map("emitted_by") @db.Uuid
+  autorizadaEm                DateTime? @map("autorizada_em") @db.Timestamptz()
+  canceladaEm                 DateTime? @map("cancelada_em") @db.Timestamptz()
+  canceladaPor                String?   @map("cancelada_por") @db.Uuid
+  justificativaDoCancelamento String?   @map("justificativa_do_cancelamento")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant             Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deal               Deal?                    @relation(fields: [dealId], references: [id], onDelete: Restrict)
+  vehicleAcquisition VehicleAcquisition?      @relation(fields: [vehicleAcquisitionId], references: [id], onDelete: Restrict)
+  events             FiscalDocumentEvent[]
+  correcoes          FiscalCorrectionLetter[]
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([dealId])
+  @@index([vehicleAcquisitionId])
+  @@map("fiscal_documents")
+}
+
+/// Cada retorno do emissor, cru — idempotência e trilha.
+model FiscalDocumentEvent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  provider   String
+  /// Id do evento no emissor, ou `origem:sha256` do conteúdo quando não há.
+  eventKey   String   @map("event_key")
+  /// webhook | emissao | consulta | cancelamento
+  origem     String
+  situacao   String
+  corpo      String?
+  aviso      String?
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz()
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  document FiscalDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, eventKey])
+  @@index([documentId, receivedAt])
+  @@map("fiscal_document_events")
+}
+
+/// Quem entregou o veículo à loja, qualificado para documento — fase N2b.
+///
+/// É o remetente da nota de entrada e o vendedor que o RENAVE pede na entrada
+/// do estoque. Fica separado da `VehicleAcquisition` pela mesma razão do
+/// `DealBuyer`: o nome e o documento que vão no papel podem diferir do que foi
+/// digitado no cadastro rápido — e a tela da aquisição nunca pediu nenhum dos
+/// dois. Nasce preenchido com o que a aquisição tiver.
+model AcquisitionSupplier {
+  acquisitionId String @id @map("acquisition_id") @db.Uuid
+  tenantId      String @map("tenant_id") @db.Uuid
+
+  fullName  String  @map("full_name")
+  /// CPF (11) ou CNPJ (14, inclusive alfanumérico), sem pontuação.
+  documento String
+  rg        String?
+
+  addressLine   String? @map("address_line")
+  addressNumber String? @map("address_number")
+  complement    String?
+  neighborhood  String?
+  city          String?
+  state         String? @db.Char(2)
+  postalCode    String? @map("postal_code")
+  email         String?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  acquisition VehicleAcquisition @relation(fields: [acquisitionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("acquisition_suppliers")
+}
+
+/// Carta de correção (CC-e) de uma nota autorizada — fase N3.
+///
+/// Recusada também fica: é a trilha do que a loja tentou corrigir. A
+/// sequência é a do emissor; vale sempre a última autorizada.
+model FiscalCorrectionLetter {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  /// autorizada | rejeitada
+  status     String
+  sequencia  Int?     @db.SmallInt
+  correcao   String
+  protocolo  String?
+  motivo     String?
+  createdBy  String?  @map("created_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  document FiscalDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([documentId, createdAt])
+  @@map("fiscal_correction_letters")
+}
+
+// ─────────────────────────────────────────────────────────
 // RENAVE — registro manual (trilha R do plano fiscal, R1)
 //
 // O AutoConnect não fala com o RENAVE: quem fala é a integradora credenciada
@@ -2322,14 +2602,14 @@ model RenaveRegistro {
 
   /// Chave de 44 posições, canônica (`normalizarChaveNfe`). Na entrada é a
   /// NF-e de entrada, na saída a de venda — o manual as envia em passo próprio.
-  chaveNfe String?  @map("chave_nfe")
+  chaveNfe   String?  @map("chave_nfe")
   /// `valorCompra` / `valorVenda` do manual. Nulo onde o RENAVE não pede valor
   /// (transferência e devolução de consignado).
-  valor    Decimal? @db.Decimal(14, 2)
+  valor      Decimal? @db.Decimal(14, 2)
   /// Veículo, comprador ou vendedor como estavam ao registrar.
-  snapshot Json     @default("{}")
+  snapshot   Json     @default("{}")
   /// Resposta crua da integradora (R2). Vazio no registro manual.
-  payload  Json?
+  payload    Json?
   observacao String?
 
   /// Envio pela integradora (R2). `provider` + `externalId` é por onde o

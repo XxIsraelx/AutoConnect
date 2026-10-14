@@ -49,6 +49,10 @@ const MODELOS_DE_TENANT = [
   'renaveRegistro',
   // Webhooks crus da integradora e a chave cifrada de cada loja nela.
   'renaveEvento', 'credencialDeIntegracao',
+  // Fiscal (trilha N): o perfil tributário da loja, o RENAVAM dos carros e as
+  // notas emitidas, com CPF e endereço do comprador no snapshot.
+  'fiscalSettings', 'fiscalOperationProfile', 'vehicleFiscalDetails',
+  'fiscalDocument', 'fiscalDocumentEvent', 'acquisitionSupplier', 'fiscalCorrectionLetter',
 ];
 
 /**
