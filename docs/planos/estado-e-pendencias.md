@@ -533,7 +533,16 @@ de demonstração
     no momento da queda.
   - Encontrado em: 28/09/2026 · Claude Code · no portão da Fase 4 do financeiro.
 
-- **A suíte da API não encerra sozinha: "Jest did not exit one second after the test run".**
+  - **Revisto em 14/10/2026:** seis execuções completas seguidas (três como dono, três como
+    `autoconnect_app`) sem repetir. Na mesma bateria, o `admin.e2e-spec.ts` caiu uma vez com o
+    servidor de teste respondendo **"Can't reach database server at `localhost:5432`"** — o banco
+    local ficou inalcançável por um instante. É o candidato mais provável também para este item e
+    para o do `proposta-chat`, abaixo: nos três, o arquivo inteiro cai de uma vez e passa sozinho em
+    seguida. Não é defeito do código, e o CI (Postgres próprio por execução) nunca mostrou nenhum
+    dos três. No Mac do Israel, o log do Postgres (`/opt/homebrew/var/log/postgresql@18.log`, 47 MB)
+    registra um serviço do Homebrew tentando subir um segundo Postgres a cada 10 s ("lock file
+    postmaster.pid already exists") — vale `brew services list` para ver se há um serviço duplicado.
+- ~~**A suíte da API não encerra sozinha: "Jest did not exit one second after the test run".**~~ — **resolvido em 14/10/2026** (branch `claude/s2-testes-instaveis`): a causa era `test/chat-gateway.e2e-spec.ts` — os prazos de 10 s de `conectar` e `emitir` ficavam armados depois da resposta, e os do último teste seguravam o processo. O `--detectOpenHandles` não aponta timer; achado rodando os 40 arquivos um a um (só este pendurava). O `whatsapp.e2e-spec.ts` já fazia certo. Seis execuções completas seguidas depois da correção, nenhuma com o aviso.
   - Onde: `pnpm exec turbo run test` no `@autoconnect/api`, ao fim da execução completa.
   - O que é: algo fica aberto depois dos testes (conexão, timer ou servidor). Os 66 suites
     passam e o turbo sai com 0 — o jest é que fica pendurado por alguns segundos até morrer.
@@ -816,6 +825,9 @@ consulta, conta da Clicksign, revisão jurídica, feature flag e região da API 
   - Sugestão: se repetir, guardar o log e olhar o `beforeAll` e o tempo limite dele.
   - Como testar: rodar a suíte sob RLS algumas vezes seguidas.
   - Encontrado por: Claude (sessão 2), 14/10/2026, ao juntar a `main` (trilha N) nos PRs do RENAVE.
+  - **Revisto em 14/10/2026:** não repetiu em seis execuções completas; ver a nota do
+    `cobranca.e2e-spec.ts`, acima — a falha que repetiu na bateria foi o banco local inalcançável,
+    com o mesmo padrão (arquivo inteiro de uma vez).
 - **Chave-mestra do cofre ainda não existe em produção.**
   - Onde: variável `COFRE_CHAVES_MESTRAS` no Railway (serviço da API).
   - O que é: o cofre de credenciais por loja (R3 do plano fiscal) cifra a chave
