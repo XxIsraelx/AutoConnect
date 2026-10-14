@@ -425,7 +425,7 @@ Decidido durante a fase, com o padrão adotado:
   (componente próprio), com DANFE e XML por URL assinada, e uma lista de notas do
   mês em `/financeiro` ou `/relatorios`.
 
-### N3 — certificado A1, Focus NFe e carta de correção ◐ 14/10/2026 (falta a conta)
+### N3 — certificado A1, Focus NFe e carta de correção ◐ 14/10/2026 (falta a primeira loja)
 
 **Entregue em 14/10/2026, sem conta na Focus:** o adaptador `ProvedorFocusNfe`
 (`modules/notas-fiscais/emissor/provedor-focus.ts`), escrito a partir da
@@ -472,17 +472,38 @@ fechou, marcadas no código):
 5. se a empresa recém-criada já devolve `token_homologacao` (o exemplo da doc
    vem vazio).
 
-**O que o Israel faz para ligar** (nenhuma sessão faz sozinha):
+**Ligado em 14/10/2026, em homologação.** Conta na Focus aberta pelo Israel; no
+Railway (API) estão `NFE_FORNECEDOR=focusnfe`, `FOCUS_NFE_TOKEN_MASTER` (na Focus
+ele se chama **"Token Principal de Produção"** — o único dos três tokens da conta
+que cadastra empresas pela API, que só existe em produção), `NFE_WEBHOOK_TOKEN` e
+`NFE_WEBHOOK_URL`. `FOCUS_NFE_PRODUCAO_LIBERADA` **não** está definida. O boot do
+deploy de 14/10/2026 05:45 UTC logou "Focus NFe em HOMOLOGAÇÃO", sem erro de
+variável, e o webhook recusa chamada sem token (401). Nenhuma chamada à Focus
+aconteceu ainda: a primeira é o cadastro da empresa, quando uma loja envia o A1.
 
-1. Conta na Focus NFe; anotar o **token master** (painel da conta).
-2. No Railway (API): `NFE_FORNECEDOR=focusnfe`, `FOCUS_NFE_TOKEN_MASTER`,
-   `NFE_WEBHOOK_TOKEN` (um valor novo, longo, só nosso) e
-   `NFE_WEBHOOK_URL=https://api.autoconnectapp.com.br/api/v1/webhooks/nota-fiscal`.
-   **Não** definir `FOCUS_NFE_PRODUCAO_LIBERADA` ainda.
-3. Numa loja com CNPJ real, enviar o certificado A1 em *Configurações › Perfil
-   fiscal* (a Focus exige CNPJ real e A1 válido até em homologação).
-4. Emitir uma nota de saída e uma de entrada, cancelar uma, mandar uma carta de
-   correção — e me passar o que vier diferente do esperado nos 5 itens acima.
+**Falta a primeira loja — e ela vem de um cliente, não de um teste nosso.** A SEFAZ
+exige, até em homologação, um CNPJ com **inscrição estadual** (a NF-e modelo 55
+não sai sem IE), o **certificado A1 desse CNPJ** (a nota é assinada com ele) e a
+**situação tributária** que só o contador indica. Nada disso é do AutoConnect, e
+comprar um e-CNPJ só para testar é custo fixo antes de cliente. Decidido com o
+Israel em 14/10/2026: a validação da N3 é **parte da implantação do primeiro
+cliente que quiser emitir pelo AutoConnect**. Até lá, a emissão fica presa à
+homologação, nenhuma nota sai sem o certificado da loja, e a prévia, a nota de
+entrada e o pacote do contador seguem como estão.
+
+**Implantação da NF-e na primeira loja** (o roteiro da validação):
+
+1. O contador da loja preenche, em *Configurações › Perfil fiscal*, o regime, a
+   série e a situação tributária de cada operação — com o ambiente em
+   **homologação** (que não exige a confirmação do contador).
+2. A loja envia o certificado A1 (.pfx e senha) na mesma tela. É aí que o
+   AutoConnect cadastra a empresa na Focus e cria o gatilho do webhook.
+3. A loja emite uma nota de saída e uma de entrada, cancela uma e manda uma
+   carta de correção — todas sem valor fiscal.
+4. Uma sessão confere nos logs os 5 itens "A CONFERIR" acima e ajusta o
+   adaptador no que vier diferente.
+5. Só então o Israel define `FOCUS_NFE_PRODUCAO_LIBERADA=true`, o contador
+   confirma o perfil e a loja troca o ambiente para produção.
 
 ### N4 — a ponte com o contador ✅ 14/10/2026
 
@@ -658,6 +679,6 @@ NF-e — e esse ponto já foi resolvido na Fase 0.
 | N1 — perfil fiscal e montagem | 1 | ✅ 14/10/2026 |
 | N2 — camada neutra NF-e (saída) | 1 | ✅ 14/10/2026 |
 | N2b — nota de entrada | 1 | ✅ 14/10/2026 |
-| N3 — certificado, Focus NFe e carta de correção | 1 | ◐ 14/10/2026 — adaptador escrito e testado; falta a conta na Focus |
+| N3 — certificado, Focus NFe e carta de correção | 1 | ◐ 14/10/2026 — conta na Focus e homologação ligadas; falta a primeira loja com IE e A1 (roteiro na fase) |
 | N4 — ponte com o contador | 1 | ✅ 14/10/2026 |
 | C — a mesma história | 1 | ✅ 14/10/2026 — conferência; o pré-preenchimento é da sessão 2 |

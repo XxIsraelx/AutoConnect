@@ -59,6 +59,11 @@ de empresa por API, webhook). O desenho que saiu dela — nenhum token de loja n
 banco, certificado que passa e não fica, produção só com liberação explícita —
 está na fase N3 do plano.
 
+Ligada em homologação no mesmo dia. **A validação fica para o primeiro cliente**
+(14/10/2026): a SEFAZ exige CNPJ com inscrição estadual e o certificado A1 dele
+até em homologação, e comprar um só para testar é custo fixo antes de cliente. A
+implantação da NF-e nessa loja é o teste — o roteiro está na fase N3.
+
 ## Onde está no código
 
 - `packages/shared/src/domain/chave-nfe.ts` — contrato comum entre as duas

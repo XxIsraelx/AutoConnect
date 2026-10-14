@@ -1027,8 +1027,10 @@ dividido entre duas sessões (N = NF-e, sessão 1; R = RENAVE, sessão 2):
 - **Focus NFe (N3):** nenhum token de loja no banco — só o id da empresa
   (`fiscal_settings.emissor_conta`); o token dela é buscado pelo master e fica
   5 min em memória. O certificado A1 passa pela API e vai à Focus; **não é
-  gravado, nem na auditoria**. Adaptador escrito e testado com `fetch` dublado,
-  **ainda sem conta** — as premissas "A CONFERIR" estão no plano.
+  gravado, nem na auditoria**. Ligado em produção **em homologação** desde
+  14/10/2026 (o master é o "Token Principal de Produção" da conta); **nenhuma nota
+  emitida ainda** — a validação é a implantação do primeiro cliente com IE e A1,
+  com o roteiro e as premissas "A CONFERIR" no plano.
 - **A nota só leva situações tributárias sem valor calculado**
   (`ICMS_SEM_VALOR_CALCULADO`, `PIS_COFINS_SEM_VALOR_CALCULADO`); o resto é
   falta antes da emissão. O AutoConnect não calcula tributo.
