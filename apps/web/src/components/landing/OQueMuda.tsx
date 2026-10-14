@@ -5,8 +5,9 @@ import { SECOES } from './config';
 
 /**
  * Só o que o produto faz hoje (lista "pode" do plano). Ficam de fora de
- * propósito: integração com WhatsApp, consulta veicular (sem fornecedor) e
- * assinatura eletrônica (em sandbox).
+ * propósito: integração com WhatsApp, consulta veicular (sem fornecedor),
+ * assinatura eletrônica (em sandbox) e o envio automático ao RENAVE (sem
+ * integradora ligada — o que existe é o registro do protocolo e o aviso).
  *
  * Os dois destaques são a resposta direta ao Raio-X: o laudo mostra a demora,
  * e o prazo com alerta e o rodízio são o que acaba com ela.
@@ -52,8 +53,8 @@ const ITENS = [
   },
   {
     icon: FileText,
-    title: 'Negócio com margem e contrato',
-    desc: 'Valor de venda, custos e margem de cada negócio, e o contrato em PDF.',
+    title: 'Negócio, contrato e RENAVE',
+    desc: 'Margem de cada venda, contrato em PDF e o RENAVE em dia: o protocolo de entrada e saída fica guardado, e o painel avisa o que falta.',
   },
 ];
 
