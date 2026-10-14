@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Car, Users, MessageSquare,
   CalendarDays, Settings, LogOut, ChevronRight,
   Info, AlertTriangle, OctagonAlert, X,
-  TrendingUp, UserSquare2, Menu, Handshake, Radio, Wallet,
+  TrendingUp, UserSquare2, Menu, Handshake, Radio, Wallet, ClipboardCheck,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { api } from '@/lib/api';
@@ -181,6 +181,7 @@ const nav = [
   // Financeiro é de gerência: o item some do menu para o vendedor, **e** a API
   // recusa com 403. Esconder no menu sem fechar a API é esconder, não proteger.
   { href: '/financeiro',    label: 'Financeiro',     icon: Wallet, papeis: ['manager', 'tenant_admin', 'super_admin'] },
+  { href: '/renave',        label: 'RENAVE',         icon: ClipboardCheck, papeis: ['manager', 'tenant_admin', 'super_admin'] },
   { href: '/agendamentos',  label: 'Agendamentos',   icon: CalendarDays     },
   { href: '/chat',          label: 'Chat',           icon: MessageSquare    },
   { href: '/canais',        label: 'Canais',         icon: Radio            },

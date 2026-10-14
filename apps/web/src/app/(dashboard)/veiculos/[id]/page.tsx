@@ -15,6 +15,7 @@ import { EtiquetaDoAnuncio, BotaoDePublicacao } from '@/components/EstadoDoAnunc
 import CustoDoVeiculo from './CustoDoVeiculo';
 import ConsultaVeicular from './ConsultaVeicular';
 import NegocioDoVeiculo from './NegocioDoVeiculo';
+import CartaoRenave from '@/components/renave/CartaoRenave';
 import AvisoDeEnvioDeFotos from '@/components/AvisoDeEnvioDeFotos';
 import {
   ENVIO_DE_FOTOS_CONFIGURADO,
@@ -721,6 +722,8 @@ export default function EditVehiclePage() {
         <NegocioDoVeiculo vehicleId={params.id} preco={vehicle?.price ?? null} />
 
         <CustoDoVeiculo vehicleId={params.id} />
+
+        <CartaoRenave vehicleId={params.id} />
 
         <ConsultaVeicular
           vehicleId={params.id}

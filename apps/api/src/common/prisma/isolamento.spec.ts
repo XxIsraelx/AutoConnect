@@ -45,6 +45,8 @@ const MODELOS_DE_TENANT = [
   'portalConnection', 'portalDelivery',
   // Push do vendedor: as chaves com que o aparelho de cada vendedor recebe o aviso.
   'pushSubscription',
+  // RENAVE: protocolo, valor de compra e de venda, CPF do comprador no snapshot.
+  'renaveRegistro',
 ];
 
 /**

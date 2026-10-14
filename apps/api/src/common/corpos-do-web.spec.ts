@@ -50,6 +50,11 @@ import {
   reabrirMesSchema,
   importarOfxSchema,
   conciliarSchema,
+  registrarRenaveSchema,
+  confirmarRenaveSchema,
+  recusarRenaveSchema,
+  cancelarRenaveSchema,
+  chaveNfeRenaveSchema,
 } from '@autoconnect/shared';
 import { acceptInviteSchema } from '../modules/invitations/invitations.controller';
 import { anularSchema, assinarSchema } from '../modules/contracts/contracts.controller';
@@ -231,6 +236,13 @@ const ROTAS: Record<string, Declaracao> = {
   'POST /financeiro/conciliacoes/:p/ignorar': { semCorpo: true },
   'POST /financeiro/periodos/fechar': { schema: fecharMesSchema },
   'POST /financeiro/periodos/reabrir': { schema: reabrirMesSchema },
+
+  /* RENAVE (trilha R do plano fiscal) */
+  'POST /renave/registros': { schema: registrarRenaveSchema },
+  'POST /renave/registros/:p/confirmar': { schema: confirmarRenaveSchema },
+  'POST /renave/registros/:p/recusar': { schema: recusarRenaveSchema },
+  'POST /renave/registros/:p/cancelar': { schema: cancelarRenaveSchema },
+  'POST /renave/registros/:p/nfe': { schema: chaveNfeRenaveSchema },
 
   'POST /public/conversations/:p/messages': { schema: mensagemDeVisitanteSchema },
   'PATCH /conversations/:p/close': { semCorpo: true },

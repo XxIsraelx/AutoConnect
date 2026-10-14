@@ -32,3 +32,5 @@ export * from './domain/financeiro';
 export * from './schemas/financeiro';
 export * from './domain/ofx';
 export * from './domain/chave-nfe';
+export * from './domain/renave';
+export * from './schemas/renave';

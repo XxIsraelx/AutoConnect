@@ -894,3 +894,41 @@ cancelada pelo painel. A ordem de resolução do que sobrou está em
 **Dívidas que afetam código novo:** API e banco em regiões diferentes (~0,6s por
 consulta); nenhuma infraestrutura de feature flag; o teto por IP do formulário
 público vive na memória do processo (duas réplicas = teto dobrado).
+
+---
+
+## RENAVE (trilha R do plano fiscal)
+
+O porquê de cada regra: [plano fiscal](docs/planos/plano-fiscal-renave-nfe.md),
+seção "R1 entregue". Manual técnico do renave-ws (SERPRO) lido em 14/10/2026.
+
+- **O AutoConnect não transmite ao RENAVE.** Quem fala com ele é a integradora
+  credenciada que a loja escolheu; aqui fica o **espelho** — protocolo, data,
+  chave da NF-e — em `renave_registros` (migration
+  `20261014200000_renave_registro_manual`), e a lista do que falta. A camada
+  `ProvedorDeRenave` com simulado é R2; enquanto isso, a resposta ao lojista é
+  "guardamos os protocolos e avisamos o que falta; o envio é pela sua integradora".
+- **Pendência nunca bloqueia.** Nem a vitrine, nem o negócio, nem o faturamento
+  esperam pelo RENAVE. `pendenciasRenave` (shared) é a regra única do cartão e da
+  lista `/renave`; `obrigatoria` é o que o manual confirma, `aviso` é o que não foi
+  confirmado em fonte oficial (prazo em dias, módulo de consignação, contrato de
+  consignado). Regra nova sem fonte entra como aviso.
+- **Valor não entra pelo corpo.** O de compra vem da `VehicleAcquisition` (sem ela,
+  entrada por compra é 422), o de venda do `Deal`, copiados no registro com um
+  `snapshot` do veículo e do comprador/vendedor. Editar a origem depois não
+  reescreve o que foi declarado.
+- **A NF-e é passo seguinte, não campo da operação.** O manual envia a chave
+  depois da entrada e depois da saída — mas só aceita a saída **depois** da NF-e de
+  entrada. A chave é validada por `lerChaveNfe` (`domain/chave-nfe.ts`, contrato
+  comum com a trilha N: **ninguém edita**) e NFC-e é recusada.
+- **Confirmado é imutável por trigger** (`renave_confirmado_e_imutavel`): só sai
+  para `cancelado` — o cancelamento de entrada ou de saída do manual, com motivo —
+  e só a chave da NF-e muda, porque o RENAVE deixa trocá-la. Recusado e cancelado
+  são finais. Um negócio, uma saída viva (índice parcial
+  `renave_registros_saida_viva_por_negocio`).
+- **Ler é da equipe, registrar é da gerência.** O vendedor vê o cartão (precisa
+  saber que falta a saída antes de prometer a documentação); `manager` para cima
+  registra. Sem exceção no `SomenteLeituraGuard`.
+- **Zero km fica de fora** (no RENAVE ele entra pela montadora) e vendidos entram
+  na lista da loja por `JANELA_DE_VENDIDOS_DIAS` (90); o cartão do veículo mostra
+  tudo, sempre.

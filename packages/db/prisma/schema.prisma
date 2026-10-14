@@ -281,6 +281,8 @@ model Tenant {
   financialEntries          FinancialEntry[]
   financialPeriods          FinancialPeriod[]
   bankTransactions          BankTransaction[]
+  // RENAVE (trilha R do plano fiscal) — o modelo está no fim do arquivo.
+  renaveRegistros           RenaveRegistro[]
 
   @@map("tenants")
 }
@@ -818,6 +820,8 @@ model Vehicle {
 
   /// Lançamentos financeiros ligados a este veículo (compra, preparação).
   financialEntries FinancialEntry[]
+  /// Entradas e saídas deste veículo no RENAVE, como a loja as registrou.
+  renaveRegistros  RenaveRegistro[]
 
   @@index([tenantId])
   @@index([branchId])
@@ -1376,6 +1380,8 @@ model Deal {
   buyer            DealBuyer?
   /// Contas a receber geradas por este negócio (Fase 3 do financeiro).
   financialEntries FinancialEntry[]
+  /// A saída do veículo no RENAVE que esta venda gerou.
+  renaveRegistros  RenaveRegistro[]
 
   @@index([tenantId, status])
   @@index([tenantId, createdAt(sort: Desc)])
@@ -2239,4 +2245,108 @@ model FinancialPeriod {
   @@unique([tenantId, year, month])
   @@index([tenantId])
   @@map("financial_periods")
+}
+
+// ─────────────────────────────────────────────────────────
+// RENAVE — registro manual (trilha R do plano fiscal, R1)
+//
+// O AutoConnect não fala com o RENAVE: quem fala é a integradora credenciada
+// que a loja escolheu. Aqui fica o **espelho** do que ela registrou — o
+// protocolo, a data, a chave da NF-e — para o sistema saber o que falta.
+// Plano: docs/planos/plano-fiscal-renave-nfe.md. Vocabulário conferido no
+// manual do renave-ws (SERPRO) em 14/10/2026.
+// ─────────────────────────────────────────────────────────
+
+/// Operação de estoque no RENAVE, do ponto de vista da loja.
+///
+/// Os nomes seguem o manual do renave-ws: entrada (compra de quem consta no
+/// CRV), transferência entre estabelecimentos, saída por venda. Consignação
+/// ainda não está no manual — o módulo novo entra na operação assistida de
+/// 15 a 30/10/2026 — e por isso as duas operações de consignado existem aqui
+/// sem regra dura nenhuma.
+enum RenaveOperacao {
+  entrada_compra
+  entrada_transferencia
+  entrada_consignacao
+  saida_venda
+  saida_transferencia
+  devolucao_consignado
+}
+
+/// `pendente` = enviado à integradora, sem retorno; `confirmado` = tem
+/// protocolo; `recusado` = a integradora ou o RENAVE disse não; `cancelado` =
+/// o cancelamento de entrada ou de saída que o manual prevê. Nada apaga.
+enum RenaveStatus {
+  pendente
+  confirmado
+  recusado
+  cancelado
+}
+
+/// `manual` = a loja digitou o protocolo; `integradora` = chegou pela API (R2).
+enum RenaveOrigem {
+  manual
+  integradora
+}
+
+/// Um registro de entrada ou saída de estoque no RENAVE.
+///
+/// **Confirmado é imutável** por trigger (`renave_confirmado_e_imutavel`):
+/// erro se corrige com o cancelamento que o RENAVE prevê, e a linha original
+/// fica. A exceção é a chave da NF-e, que o próprio RENAVE deixa trocar
+/// depois ("é permitido alterar a chave de nota informada anteriormente").
+///
+/// `valor` e o `snapshot` são cópias, não joins: valor de compra vem da
+/// `VehicleAcquisition`, valor de venda do `Deal`, e editar a origem depois
+/// não reescreve o que foi declarado ao RENAVE.
+model RenaveRegistro {
+  id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String         @map("tenant_id") @db.Uuid
+  vehicleId String         @map("vehicle_id") @db.Uuid
+  /// Só na saída por venda: o negócio que a originou.
+  dealId    String?        @map("deal_id") @db.Uuid
+  tipo      RenaveOperacao
+  status    RenaveStatus   @default(pendente)
+  origem    RenaveOrigem   @default(manual)
+
+  /// O que a integradora devolveu: protocolo ou id do estoque no RENAVE.
+  protocolo    String?
+  /// Quando o RENAVE confirmou — diferente de quando o fato aconteceu.
+  registradoEm DateTime? @map("registrado_em") @db.Timestamptz()
+  /// A data do fato: `dataCompra`, `dataVenda` ou `dataTransferencia` do
+  /// manual, que o RENAVE trata como a transferência da responsabilidade.
+  dataOperacao DateTime  @map("data_operacao") @db.Timestamptz()
+
+  /// Chave de 44 posições, canônica (`normalizarChaveNfe`). Na entrada é a
+  /// NF-e de entrada, na saída a de venda — o manual as envia em passo próprio.
+  chaveNfe String?  @map("chave_nfe")
+  /// `valorCompra` / `valorVenda` do manual. Nulo onde o RENAVE não pede valor
+  /// (transferência e devolução de consignado).
+  valor    Decimal? @db.Decimal(14, 2)
+  /// Veículo, comprador ou vendedor como estavam ao registrar.
+  snapshot Json     @default("{}")
+  /// Resposta crua da integradora (R2). Vazio no registro manual.
+  payload  Json?
+  observacao String?
+
+  /// Motivo da recusa, quando `recusado`.
+  motivoRecusa          String?   @map("motivo_recusa")
+  canceladoEm           DateTime? @map("cancelado_em") @db.Timestamptz()
+  motivoCancelamento    String?   @map("motivo_cancelamento")
+  protocoloCancelamento String?   @map("protocolo_cancelamento")
+
+  /// Quem registrou. Sem FK de propósito: é trilha, e a linha confirmada não
+  /// pode mudar quando o usuário sai da equipe.
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  deal    Deal?   @relation(fields: [dealId], references: [id], onDelete: NoAction)
+
+  @@index([tenantId, status])
+  @@index([vehicleId])
+  @@index([dealId])
+  @@map("renave_registros")
 }

@@ -1,0 +1,403 @@
+'use client';
+
+import { useState } from 'react';
+import { ClipboardCheck, AlertTriangle, Info, Loader2, Plus } from 'lucide-react';
+import {
+  OPERACOES_DE_ENTRADA, OPERACOES_DE_SAIDA, ROTULO_DA_OPERACAO_RENAVE, ROTULO_DO_STATUS_RENAVE,
+  ehEntrada, formatarBRL, formatarChaveNfe, operacaoTemValor,
+  type PendenciaRenave, type RenaveOperacaoValue, type RenaveStatusValue, type SituacaoNoRenave,
+} from '@autoconnect/shared';
+import { useAuthStore } from '@/store/auth';
+import { ErroAoCarregar } from '@/components/ErroAoCarregar';
+import {
+  PAPEIS_FISCAIS, erroDaAcao, useAcaoRenave, useRegistrarRenave, useRenaveDoVeiculo,
+  type AcaoNoRegistro, type RegistroRenave, type RenaveDoVeiculo,
+} from './dados';
+
+const ROTULO_DA_SITUACAO: Record<SituacaoNoRenave, string> = {
+  sem_registro: 'Sem registro',
+  em_estoque: 'No estoque do RENAVE',
+  fora_do_estoque: 'Fora do estoque do RENAVE',
+};
+
+const COR_DO_STATUS: Record<RenaveStatusValue, string> = {
+  pendente: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300',
+  confirmado: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300',
+  recusado: 'bg-rose-100 text-rose-800 dark:bg-rose-500/15 dark:text-rose-300',
+  cancelado: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+};
+
+const campo =
+  'text-sm bg-transparent border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1.5 min-w-0';
+const botao =
+  'text-sm px-3 py-1.5 rounded-lg font-medium transition disabled:opacity-50 inline-flex items-center gap-1.5';
+
+const dataCurta = (d: string | null) =>
+  d ? new Date(d).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—';
+
+/** `AAAA-MM-DD` para o `<input type="date">`. */
+const paraInput = (d: string | null | undefined) => (d ? d.slice(0, 10) : '');
+
+/**
+ * Cartão RENAVE do veículo e do negócio (R1 do plano fiscal).
+ *
+ * O AutoConnect não transmite ao RENAVE: a loja registra pela integradora dela
+ * e anota aqui o protocolo. O cartão mostra o que falta, guarda o que foi
+ * feito, e **não bloqueia nada** — travar a vitrine ou o negócio por um dado
+ * que talvez esteja certo na integradora seria punir a loja pela nossa
+ * ignorância.
+ *
+ * Não usa `<form>`: no veículo ele mora dentro do formulário de edição, e um
+ * `<form>` aninhado ou um botão `submit` aqui salvaria o anúncio.
+ */
+export default function CartaoRenave({
+  vehicleId, dealId,
+}: {
+  vehicleId: string;
+  /** No negócio: a saída por venda já vem apontada para ele. */
+  dealId?: string;
+}) {
+  const papel = useAuthStore((s) => s.user?.role) ?? '';
+  const podeRegistrar = PAPEIS_FISCAIS.includes(papel);
+  const { data, isLoading, error, refetch, isFetching } = useRenaveDoVeiculo(vehicleId);
+
+  return (
+    <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 md:col-span-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+          <ClipboardCheck size={12} /> RENAVE
+        </p>
+        {data && (
+          <span className="text-xs text-slate-500">{ROTULO_DA_SITUACAO[data.situacao]}</span>
+        )}
+      </div>
+
+      {error ? (
+        <ErroAoCarregar
+          erro={error}
+          onTentarNovamente={() => void refetch()}
+          carregando={isFetching}
+          contexto="o RENAVE deste veículo"
+        />
+      ) : isLoading || !data ? (
+        <div className="h-16 rounded-lg bg-slate-100 dark:bg-slate-800 animate-pulse" />
+      ) : (
+        <div className="space-y-4">
+          <Pendencias pendencias={data.pendencias} />
+          <Registros registros={data.registros} podeRegistrar={podeRegistrar} />
+          {podeRegistrar && <NovoRegistro dados={data} dealId={dealId} />}
+          <p className="text-[11px] text-slate-400">
+            O AutoConnect guarda os protocolos e avisa o que falta; o envio é pela sua integradora.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function Pendencias({ pendencias }: { pendencias: PendenciaRenave[] }) {
+  if (pendencias.length === 0) {
+    return <p className="text-sm text-emerald-700 dark:text-emerald-400">Nada pendente no RENAVE.</p>;
+  }
+  return (
+    <ul className="space-y-1.5">
+      {pendencias.map((p, i) => (
+        <li
+          key={`${p.codigo}-${p.registroId ?? p.dealId ?? i}`}
+          className={`flex gap-2 text-sm ${
+            p.gravidade === 'obrigatoria'
+              ? 'text-amber-700 dark:text-amber-400'
+              : 'text-slate-500 dark:text-slate-400'
+          }`}
+        >
+          {p.gravidade === 'obrigatoria'
+            ? <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+            : <Info size={14} className="shrink-0 mt-0.5" />}
+          <span>
+            {p.mensagem}
+            {p.desde && <span className="text-xs text-slate-400"> · desde {dataCurta(p.desde)}</span>}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Registros({ registros, podeRegistrar }: { registros: RegistroRenave[]; podeRegistrar: boolean }) {
+  if (registros.length === 0) return null;
+  return (
+    <ul className="divide-y divide-slate-100 dark:divide-slate-800 border-y border-slate-100 dark:border-slate-800">
+      {registros.map((r) => <LinhaDoRegistro key={r.id} r={r} podeRegistrar={podeRegistrar} />)}
+    </ul>
+  );
+}
+
+function LinhaDoRegistro({ r, podeRegistrar }: { r: RegistroRenave; podeRegistrar: boolean }) {
+  const acao = useAcaoRenave();
+  const [aberta, setAberta] = useState<AcaoNoRegistro['acao'] | null>(null);
+  const [texto, setTexto] = useState('');
+  const [extra, setExtra] = useState('');
+
+  const abrir = (a: AcaoNoRegistro['acao']) => {
+    setAberta((atual) => (atual === a ? null : a));
+    setTexto(a === 'nfe' ? (r.chaveNfe ?? '') : '');
+    setExtra('');
+    acao.reset();
+  };
+
+  const enviar = () => {
+    if (!aberta) return;
+    const corpo: AcaoNoRegistro =
+      aberta === 'confirmar' ? { acao: 'confirmar', protocolo: texto, registradoEm: extra || undefined }
+      : aberta === 'recusar' ? { acao: 'recusar', motivo: texto }
+      : aberta === 'cancelar' ? { acao: 'cancelar', motivo: texto, protocoloCancelamento: extra || undefined }
+      : { acao: 'nfe', chaveNfe: texto };
+    acao.mutate({ id: r.id, ...corpo }, { onSuccess: () => setAberta(null) });
+  };
+
+  const vivo = r.status === 'pendente' || r.status === 'confirmado';
+  const link = 'text-xs text-brand-accent hover:underline';
+
+  return (
+    <li className="py-2.5 text-sm">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <span className="font-medium">{ROTULO_DA_OPERACAO_RENAVE[r.tipo]}</span>
+        <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${COR_DO_STATUS[r.status]}`}>
+          {ROTULO_DO_STATUS_RENAVE[r.status]}
+        </span>
+      </div>
+      <p className="text-xs text-slate-500 mt-0.5">
+        {dataCurta(r.dataOperacao)}
+        {r.valor && ` · ${formatarBRL(r.valor)}`}
+        {r.protocolo && ` · protocolo ${r.protocolo}`}
+      </p>
+      {r.chaveNfe && (
+        <p className="text-[11px] text-slate-400 font-mono break-all">NF-e {formatarChaveNfe(r.chaveNfe)}</p>
+      )}
+      {r.motivoRecusa && <p className="text-xs text-rose-600 dark:text-rose-400">{r.motivoRecusa}</p>}
+      {r.motivoCancelamento && (
+        <p className="text-xs text-slate-400">
+          Cancelado em {dataCurta(r.canceladoEm)}: {r.motivoCancelamento}
+          {r.protocoloCancelamento && ` · protocolo ${r.protocoloCancelamento}`}
+        </p>
+      )}
+
+      {podeRegistrar && vivo && (
+        <div className="flex flex-wrap gap-3 mt-1.5">
+          {r.status === 'pendente' && (
+            <>
+              <button type="button" className={link} onClick={() => abrir('confirmar')}>anotar protocolo</button>
+              <button type="button" className={link} onClick={() => abrir('recusar')}>foi recusado</button>
+            </>
+          )}
+          {r.status === 'confirmado' && (
+            <button type="button" className={link} onClick={() => abrir('nfe')}>
+              {r.chaveNfe ? 'trocar NF-e' : 'informar NF-e'}
+            </button>
+          )}
+          <button type="button" className={link} onClick={() => abrir('cancelar')}>cancelar</button>
+        </div>
+      )}
+
+      {aberta && (
+        <div className="mt-2 flex flex-col sm:flex-row gap-2">
+          <input
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            placeholder={
+              aberta === 'confirmar' ? 'Protocolo ou ID do estoque'
+              : aberta === 'nfe' ? 'Chave da NF-e (44 dígitos)'
+              : 'Motivo'
+            }
+            className={`${campo} flex-1`}
+          />
+          {aberta === 'confirmar' && (
+            <input
+              type="date" value={extra} onChange={(e) => setExtra(e.target.value)}
+              aria-label="Data do registro" className={campo}
+            />
+          )}
+          {aberta === 'cancelar' && r.status === 'confirmado' && (
+            <input
+              value={extra} onChange={(e) => setExtra(e.target.value)}
+              placeholder="Protocolo do cancelamento (opcional)" className={`${campo} flex-1`}
+            />
+          )}
+          <button
+            type="button" onClick={enviar} disabled={acao.isPending || !texto.trim()}
+            className={`${botao} ${aberta === 'cancelar' || aberta === 'recusar'
+              ? 'border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400'
+              : 'bg-brand-accent text-white hover:bg-blue-600'}`}
+          >
+            {acao.isPending && <Loader2 size={14} className="animate-spin" />}
+            Salvar
+          </button>
+        </div>
+      )}
+      {acao.error && (
+        <p className="mt-1.5 text-sm text-rose-600 dark:text-rose-400">{erroDaAcao(acao.error)}</p>
+      )}
+    </li>
+  );
+}
+
+/**
+ * Anotar um registro novo. O **valor não é campo**: o de compra vem do custo
+ * do veículo e o de venda do negócio, e aparece aqui só para conferência.
+ */
+function NovoRegistro({ dados, dealId }: { dados: RenaveDoVeiculo; dealId?: string }) {
+  const registrar = useRegistrarRenave();
+  const { entrada, saidas } = dados.sugestao;
+
+  const tipoInicial: RenaveOperacaoValue =
+    dealId ? 'saida_venda'
+    : dados.situacao === 'em_estoque' ? (saidas.length ? 'saida_venda' : 'saida_transferencia')
+    : entrada.tipo;
+
+  const [aberto, setAberto] = useState(false);
+  const [tipo, setTipo] = useState<RenaveOperacaoValue>(tipoInicial);
+  const [negocio, setNegocio] = useState(dealId ?? saidas[0]?.dealId ?? '');
+  const [protocolo, setProtocolo] = useState('');
+  const [registradoEm, setRegistradoEm] = useState('');
+  const [dataOperacao, setDataOperacao] = useState('');
+  const [chaveNfe, setChaveNfe] = useState('');
+
+  const saida = saidas.find((s) => s.dealId === negocio);
+  const valor = tipo === 'saida_venda' ? saida?.valor : ehEntrada(tipo) ? entrada.valor : null;
+  const dataSugerida = tipo === 'saida_venda' ? saida?.dataOperacao : ehEntrada(tipo) ? entrada.dataOperacao : null;
+  const faltaAquisicao = tipo === 'entrada_compra' && !entrada.temAquisicao;
+  const faltaNegocio = tipo === 'saida_venda' && !saida;
+
+  const enviar = () => {
+    registrar.mutate(
+      {
+        vehicleId: dados.vehicleId,
+        tipo,
+        ...(tipo === 'saida_venda' ? { dealId: negocio } : {}),
+        ...(protocolo.trim() ? { protocolo: protocolo.trim() } : {}),
+        ...(protocolo.trim() && registradoEm ? { registradoEm } : {}),
+        ...(dataOperacao ? { dataOperacao } : {}),
+        ...(chaveNfe.trim() ? { chaveNfe } : {}),
+      },
+      {
+        onSuccess: () => {
+          setAberto(false);
+          setProtocolo(''); setRegistradoEm(''); setDataOperacao(''); setChaveNfe('');
+        },
+      },
+    );
+  };
+
+  if (!aberto) {
+    return (
+      <button
+        type="button"
+        onClick={() => { setTipo(tipoInicial); setAberto(true); }}
+        className={`${botao} bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700`}
+      >
+        <Plus size={14} /> Anotar registro do RENAVE
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-slate-200 dark:border-slate-800 p-3">
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="text-xs text-slate-500 space-y-1">
+          <span className="block">Operação</span>
+          <select
+            value={tipo}
+            onChange={(e) => setTipo(e.target.value as RenaveOperacaoValue)}
+            className={`${campo} w-full`}
+          >
+            <optgroup label="Entrada">
+              {OPERACOES_DE_ENTRADA.map((t) => (
+                <option key={t} value={t}>{ROTULO_DA_OPERACAO_RENAVE[t]}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Saída">
+              {OPERACOES_DE_SAIDA.map((t) => (
+                <option key={t} value={t}>{ROTULO_DA_OPERACAO_RENAVE[t]}</option>
+              ))}
+            </optgroup>
+          </select>
+        </label>
+
+        {tipo === 'saida_venda' && !dealId && saidas.length > 1 && (
+          <label className="text-xs text-slate-500 space-y-1">
+            <span className="block">Negócio</span>
+            <select value={negocio} onChange={(e) => setNegocio(e.target.value)} className={`${campo} w-full`}>
+              {saidas.map((s) => (
+                <option key={s.dealId} value={s.dealId}>
+                  {formatarBRL(s.valor)} · {dataCurta(s.dataOperacao)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        <label className="text-xs text-slate-500 space-y-1">
+          <span className="block">Protocolo (vazio se ainda não chegou)</span>
+          <input value={protocolo} onChange={(e) => setProtocolo(e.target.value)}
+            placeholder="Protocolo ou ID do estoque" className={`${campo} w-full`} />
+        </label>
+
+        {protocolo.trim() && (
+          <label className="text-xs text-slate-500 space-y-1">
+            <span className="block">Registrado no RENAVE em</span>
+            <input type="date" value={registradoEm} onChange={(e) => setRegistradoEm(e.target.value)}
+              className={`${campo} w-full`} />
+          </label>
+        )}
+
+        <label className="text-xs text-slate-500 space-y-1">
+          <span className="block">
+            Data {ehEntrada(tipo) ? 'da compra' : tipo === 'saida_venda' ? 'da venda' : 'da operação'}
+          </span>
+          <input type="date" value={dataOperacao || paraInput(dataSugerida)}
+            onChange={(e) => setDataOperacao(e.target.value)} className={`${campo} w-full`} />
+        </label>
+
+        <label className="text-xs text-slate-500 space-y-1 sm:col-span-2">
+          <span className="block">Chave da NF-e {ehEntrada(tipo) ? 'de entrada' : 'de saída'} (opcional)</span>
+          <input value={chaveNfe} onChange={(e) => setChaveNfe(e.target.value)}
+            placeholder="44 dígitos, como no DANFE" className={`${campo} w-full font-mono`} />
+        </label>
+      </div>
+
+      {operacaoTemValor(tipo) && valor && (
+        <p className="text-xs text-slate-500">
+          Valor declarado: <strong>{formatarBRL(valor)}</strong> — vem{' '}
+          {tipo === 'saida_venda' ? 'do negócio' : 'do custo do veículo'}; para mudar, corrija lá.
+        </p>
+      )}
+      {faltaAquisicao && (
+        <p className="text-xs text-amber-700 dark:text-amber-400">
+          Registre a compra no custo do veículo primeiro: o valor de compra que vai ao RENAVE vem de lá.
+        </p>
+      )}
+      {faltaNegocio && (
+        <p className="text-xs text-amber-700 dark:text-amber-400">
+          A saída por venda é anotada a partir de um negócio assinado.
+        </p>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button" onClick={enviar}
+          disabled={registrar.isPending || faltaAquisicao || faltaNegocio}
+          className={`${botao} bg-brand-accent text-white hover:bg-blue-600`}
+        >
+          {registrar.isPending && <Loader2 size={14} className="animate-spin" />}
+          Salvar registro
+        </button>
+        <button type="button" onClick={() => setAberto(false)} className={`${botao} text-slate-500`}>
+          Fechar
+        </button>
+      </div>
+      {registrar.error && (
+        <p className="text-sm text-rose-600 dark:text-rose-400">{erroDaAcao(registrar.error)}</p>
+      )}
+    </div>
+  );
+}
