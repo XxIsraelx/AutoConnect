@@ -259,6 +259,13 @@ saem a consulta de requisição e o webhook; se há conta de parceiro para
 software house (uma chave, várias lojas por CNPJ); como o ATPV-e é devolvido;
 e quais estados cobrem hoje.
 
+**Enviadas à IntegraRenave em 14/10/2026** (`contato@integrarenave.com`, do
+Gmail do Israel), mais uma: se dá para ter conta de testes antes de o
+AutoConnect ter CNPJ — ele ainda não tem, e é por isso que a conta de sandbox
+não foi aberta. **A R3 espera a resposta.** Renave Fácil não foi consultada
+ainda; é a próxima se a IntegraRenave não tiver prazo para a consulta de
+requisição e o webhook.
+
 ### R4 — consignação
 
 - Entrada e devolução de consignado pelo RENAVE, e o **contrato de consignação
