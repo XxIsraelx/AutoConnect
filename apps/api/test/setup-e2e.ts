@@ -141,5 +141,11 @@ process.env.VAPID_PUBLIC_KEY = '';
 process.env.VAPID_PRIVATE_KEY = '';
 process.env.VAPID_SUBJECT = '';
 
+// Emissor de NF-e (trilha fiscal N2): simulado, com token fixo. Quando o
+// adaptador do emissor terceiro entrar (N3), as credenciais dele são zeradas
+// aqui também — a suíte nunca fala com a SEFAZ.
+process.env.NFE_FORNECEDOR = 'simulado';
+process.env.NFE_WEBHOOK_TOKEN = 'token-de-nota-fiscal-de-teste';
+
 /** Nome do banco de teste, para os testes afirmarem onde estão conectados. */
 export const BANCO_DE_TESTE = verificada.pathname.replace(/^\//, '');

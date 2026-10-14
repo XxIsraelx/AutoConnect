@@ -45,6 +45,10 @@ const MODELOS_DE_TENANT = [
   'portalConnection', 'portalDelivery',
   // Push do vendedor: as chaves com que o aparelho de cada vendedor recebe o aviso.
   'pushSubscription',
+  // Fiscal (trilha N): o perfil tributário da loja, o RENAVAM dos carros e as
+  // notas emitidas, com CPF e endereço do comprador no snapshot.
+  'fiscalSettings', 'fiscalOperationProfile', 'vehicleFiscalDetails',
+  'fiscalDocument', 'fiscalDocumentEvent',
 ];
 
 /**

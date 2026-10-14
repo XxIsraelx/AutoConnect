@@ -285,6 +285,8 @@ model Tenant {
   fiscalSettings            FiscalSettings?
   fiscalOperationProfiles   FiscalOperationProfile[]
   vehicleFiscalDetails      VehicleFiscalDetails[]
+  fiscalDocuments           FiscalDocument[]
+  fiscalDocumentEvents      FiscalDocumentEvent[]
 
   @@map("tenants")
 }
@@ -1382,6 +1384,8 @@ model Deal {
   buyer            DealBuyer?
   /// Contas a receber geradas por este negócio (Fase 3 do financeiro).
   financialEntries FinancialEntry[]
+  /// Notas fiscais deste negócio — trilha fiscal (fim do arquivo).
+  fiscalDocuments  FiscalDocument[]
 
   @@index([tenantId, status])
   @@index([tenantId, createdAt(sort: Desc)])
@@ -2351,4 +2355,85 @@ model VehicleFiscalDetails {
 
   @@index([tenantId])
   @@map("vehicle_fiscal_details")
+}
+
+enum StatusDaNota {
+  processando
+  autorizada
+  rejeitada
+  denegada
+  cancelada
+}
+
+/// Uma NF-e — fase N2. O id é a **referência** que o emissor recebe e devolve
+/// em todo retorno, então não existe um segundo identificador para casar.
+///
+/// Autorizada é imutável (trigger `nota_autorizada_e_imutavel`): chave,
+/// número, protocolo e o snapshot do que foi enviado não mudam; o erro se
+/// corrige com o evento que a lei prevê. Só pode haver uma nota viva
+/// (processando ou autorizada) por negócio — índice único parcial na migration.
+model FiscalDocument {
+  id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String         @map("tenant_id") @db.Uuid
+  dealId    String?        @map("deal_id") @db.Uuid
+  operation OperacaoFiscal
+  status    StatusDaNota   @default(processando)
+  provider  String
+  ambiente  AmbienteFiscal
+
+  /// A nota como foi enviada (`NotaMontada`). Snapshot, não join.
+  snapshot  Json
+  serie     Int?    @db.SmallInt
+  numero    Int?
+  chave     String? @db.Char(44)
+  protocolo String?
+  /// Motivo da rejeição ou da denegação; ou o da última recusa de cancelamento.
+  motivo    String?
+
+  /// Chaves no bucket privado `documentos`. Nulas quando o armazenamento não
+  /// está configurado — o download busca no emissor, sob demanda.
+  xmlKey    String? @map("xml_key")
+  danfeKey  String? @map("danfe_key")
+  /// SHA-256 do XML autorizado, conferido em todo download.
+  xmlSha256 String? @map("xml_sha256") @db.Char(64)
+
+  emittedBy                   String?   @map("emitted_by") @db.Uuid
+  autorizadaEm                DateTime? @map("autorizada_em") @db.Timestamptz()
+  canceladaEm                 DateTime? @map("cancelada_em") @db.Timestamptz()
+  canceladaPor                String?   @map("cancelada_por") @db.Uuid
+  justificativaDoCancelamento String?   @map("justificativa_do_cancelamento")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deal   Deal?                 @relation(fields: [dealId], references: [id], onDelete: Restrict)
+  events FiscalDocumentEvent[]
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([dealId])
+  @@map("fiscal_documents")
+}
+
+/// Cada retorno do emissor, cru — idempotência e trilha.
+model FiscalDocumentEvent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  provider   String
+  /// Id do evento no emissor, ou `origem:sha256` do conteúdo quando não há.
+  eventKey   String   @map("event_key")
+  /// webhook | emissao | consulta | cancelamento
+  origem     String
+  situacao   String
+  corpo      String?
+  aviso      String?
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz()
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  document FiscalDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, eventKey])
+  @@index([documentId, receivedAt])
+  @@map("fiscal_document_events")
 }

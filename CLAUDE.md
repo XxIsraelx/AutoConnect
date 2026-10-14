@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.431 testes (996 na API, 435 no `shared`):
+são 1.458 testes (1.014 na API, 444 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -794,7 +794,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
   foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
   migrations (ver *Testes e CI*).
-- Migrations atuais (32): `init`, `trade_in_and_dealer_setting`,
+- Migrations atuais (33): `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
   `add_announcements_invites_alerts_searches_goals`,
   `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`,
@@ -808,7 +808,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   `cortesia_de_cobranca`, `preco_travado_e_ciclo`,
   `plano_pendente_de_pagamento`, `whatsapp_oficial`, `leads_dos_portais`,
   `push_do_vendedor`, `financeiro_gerencial`, `financeiro_origem`,
-  `conciliacao_ofx`, `perfil_fiscal`.
+  `conciliacao_ofx`, `perfil_fiscal`, `emissao_de_nota`.
 
 ---
 
@@ -931,5 +931,17 @@ dividido entre duas sessões (N = NF-e, sessão 1; R = RENAVE, sessão 2):
   pede no PR.
 - **Fiscal é de gerência** (`manager`, `tenant_admin`, `super_admin`), como o
   financeiro.
+- **Emissão (N2):** emissor atrás de `ProvedorDeNotaFiscal`
+  (`modules/notas-fiscais/emissor/`), webhook `POST /webhooks/nota-fiscal`
+  autenticado por token em tempo constante, corpo cru, idempotente por
+  `(provider, eventKey)`. Todo retorno — emissão, consulta, cancelamento,
+  webhook — passa por `aplicarRetorno` (shared), que nunca lança. Único lookup
+  privilegiado: a loja da nota no webhook.
+- **Uma nota viva por negócio** (`fiscal_documents_nota_viva_idx`), e **nota
+  autorizada é imutável** por trigger: só o cancelamento e o arquivamento do
+  XML/DANFE mudam a linha. O banco grava `processando` antes de chamar o emissor.
+- **Variáveis:** `NFE_FORNECEDOR` (vazio = desligado, a prévia continua;
+  `simulado` recusado em produção) e `NFE_WEBHOOK_TOKEN` (sem ele nenhum emissor
+  liga). O `setup-e2e.ts` força `simulado`.
 - ⚠ **Nenhum perfil fiscal foi revisado por contador.** Mesma revisão pendente do
   financeiro e do template de contrato.

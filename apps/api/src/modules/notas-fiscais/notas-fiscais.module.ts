@@ -1,15 +1,27 @@
 import { Module } from '@nestjs/common';
-import { NotasFiscaisController } from './notas-fiscais.controller';
+import { ConfigService } from '@nestjs/config';
+import { PrivilegedPrismaModule } from '../../common/prisma/privileged-prisma.module';
+import { NotasFiscaisController, WebhookNotaFiscalController } from './notas-fiscais.controller';
 import { PerfilFiscalService } from './perfil-fiscal.service';
+import { EmissaoDeNotaService } from './emissao.service';
+import { PROVEDOR_DE_NOTA_FISCAL, emissorConfigurado } from './emissor/provedor';
 
 /**
  * Trilha N do plano fiscal (`docs/planos/plano-fiscal-renave-nfe.md`).
  *
- * Lê negócio, comprador e veículo; não escreve em nenhum deles. A emissão
- * (N2) e o provedor (N3) entram aqui, sem dependência no sentido contrário.
+ * Lê negócio, comprador e veículo; não escreve em nenhum deles. O emissor
+ * entra por `PROVEDOR_DE_NOTA_FISCAL` — simulado até a N3.
+ *
+ * `PrivilegedPrismaModule` existe aqui por um motivo só: achar a loja dona da
+ * nota no webhook, que chega sem usuário e sem loja.
  */
 @Module({
-  controllers: [NotasFiscaisController],
-  providers: [PerfilFiscalService],
+  imports: [PrivilegedPrismaModule],
+  controllers: [NotasFiscaisController, WebhookNotaFiscalController],
+  providers: [
+    PerfilFiscalService,
+    EmissaoDeNotaService,
+    { provide: PROVEDOR_DE_NOTA_FISCAL, inject: [ConfigService], useFactory: emissorConfigurado },
+  ],
 })
 export class NotasFiscaisModule {}
