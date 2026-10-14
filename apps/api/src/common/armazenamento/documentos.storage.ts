@@ -118,14 +118,17 @@ export class DocumentosStorage implements OnApplicationBootstrap {
   }
 
   /**
-   * Guarda o PDF. A chave inclui o tenant, o que mantém os documentos de cada
-   * concessionária em prefixos distintos — útil para política de bucket e para
-   * remoção em massa se uma loja sair.
+   * Guarda o documento. A chave inclui o tenant, o que mantém os documentos de
+   * cada concessionária em prefixos distintos — útil para política de bucket e
+   * para remoção em massa se uma loja sair.
+   *
+   * PDF por padrão (contrato, DANFE); a nota fiscal guarda também o XML.
    */
   async guardar(
     tenantId: string,
     nome: string,
     conteudo: Buffer,
+    contentType = 'application/pdf',
   ): Promise<DocumentoArmazenado | null> {
     if (!this.cliente) return null;
 
@@ -133,7 +136,7 @@ export class DocumentosStorage implements OnApplicationBootstrap {
     const { error } = await this.cliente
       .from(this.bucket)
       .upload(chave, conteudo, {
-        contentType: 'application/pdf',
+        contentType,
         // Contrato emitido não é sobrescrito: cada emissão é um arquivo novo.
         upsert: false,
       });

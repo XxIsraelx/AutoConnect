@@ -47,6 +47,10 @@ const MODELOS_DE_TENANT = [
   'pushSubscription',
   // RENAVE: protocolo, valor de compra e de venda, CPF do comprador no snapshot.
   'renaveRegistro',
+  // Fiscal (trilha N): o perfil tributário da loja, o RENAVAM dos carros e as
+  // notas emitidas, com CPF e endereço do comprador no snapshot.
+  'fiscalSettings', 'fiscalOperationProfile', 'vehicleFiscalDetails',
+  'fiscalDocument', 'fiscalDocumentEvent', 'acquisitionSupplier', 'fiscalCorrectionLetter',
 ];
 
 /**

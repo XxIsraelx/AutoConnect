@@ -55,6 +55,16 @@ import {
   recusarRenaveSchema,
   cancelarRenaveSchema,
   chaveNfeRenaveSchema,
+  perfilFiscalSchema,
+  perfilDeOperacaoSchema,
+  confirmacaoDoContadorSchema,
+  dadosFiscaisDoVeiculoSchema,
+  emitirNotaDoNegocioSchema,
+  cancelarNotaSchema,
+  simularRetornoDaNotaSchema,
+  quemEntregouSchema,
+  cartaDeCorrecaoSchema,
+  certificadoA1Schema,
 } from '@autoconnect/shared';
 import { acceptInviteSchema } from '../modules/invitations/invitations.controller';
 import { anularSchema, assinarSchema } from '../modules/contracts/contracts.controller';
@@ -235,6 +245,21 @@ const ROTAS: Record<string, Declaracao> = {
   'POST /financeiro/conciliacoes': { schema: conciliarSchema },
   'POST /financeiro/conciliacoes/:p/ignorar': { semCorpo: true },
   'POST /financeiro/periodos/fechar': { schema: fecharMesSchema },
+
+  /* Fiscal (trilha N do plano fiscal) */
+  'PUT /fiscal/perfil': { schema: perfilFiscalSchema },
+  'POST /fiscal/perfil/operacoes/padrao': { semCorpo: true },
+  'PUT /fiscal/perfil/operacoes/:p': { schema: perfilDeOperacaoSchema },
+  'POST /fiscal/perfil/confirmacao-do-contador': { schema: confirmacaoDoContadorSchema },
+  'PUT /fiscal/veiculos/:p': { schema: dadosFiscaisDoVeiculoSchema },
+  'POST /fiscal/negocios/:p/notas': { schema: emitirNotaDoNegocioSchema },
+  'POST /fiscal/notas/:p/consultar': { semCorpo: true },
+  'POST /fiscal/notas/:p/cancelar': { schema: cancelarNotaSchema },
+  'POST /fiscal/notas/:p/simular': { schema: simularRetornoDaNotaSchema },
+  'PUT /fiscal/veiculos/:p/quem-entregou': { schema: quemEntregouSchema },
+  'POST /fiscal/certificado': { schema: certificadoA1Schema },
+  'POST /fiscal/notas/:p/carta-de-correcao': { schema: cartaDeCorrecaoSchema },
+  'POST /fiscal/veiculos/:p/entrada/notas': { schema: emitirNotaDoNegocioSchema },
   'POST /financeiro/periodos/reabrir': { schema: reabrirMesSchema },
 
   /* RENAVE (trilha R do plano fiscal) */

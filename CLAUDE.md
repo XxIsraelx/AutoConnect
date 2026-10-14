@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.354 testes (976 na API, 378 no `shared`):
+são 1.581 testes (1.089 na API, 492 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -794,7 +794,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   não as teria. Sempre `prisma migrate dev`. Os scripts que expunham o comando
   foram removidos, e o CI agora falha sozinho se o `schema.prisma` divergir das
   migrations (ver *Testes e CI*).
-- Migrations atuais (32): `init`, `trade_in_and_dealer_setting`,
+- Migrations atuais (35): `init`, `trade_in_and_dealer_setting`,
   `add_missing_profile_and_branch_coords`,
   `add_announcements_invites_alerts_searches_goals`,
   `rls_tenant_isolation`, `rls_customer_access`, `rls_customer_users`,
@@ -808,7 +808,8 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   `cortesia_de_cobranca`, `preco_travado_e_ciclo`,
   `plano_pendente_de_pagamento`, `whatsapp_oficial`, `leads_dos_portais`,
   `push_do_vendedor`, `financeiro_gerencial`, `financeiro_origem`,
-  `conciliacao_ofx`.
+  `conciliacao_ofx`, `perfil_fiscal`, `emissao_de_nota`, `nota_de_entrada`,
+  `emissor_e_carta_de_correcao`.
 
 ---
 
@@ -934,3 +935,75 @@ seção "R1 entregue". Manual técnico do renave-ws (SERPRO) lido em 14/10/2026.
 - **Zero km fica de fora** (no RENAVE ele entra pela montadora) e vendidos entram
   na lista da loja por `JANELA_DE_VENDIDOS_DIAS` (90); o cartão do veículo mostra
   tudo, sempre.
+
+---
+
+## Fiscal — NF-e (trilha N do plano fiscal)
+
+O porquê de cada regra: `docs/decisoes/2026-10-13 fiscal renave e nfe.md`; o plano,
+dividido entre duas sessões (N = NF-e, sessão 1; R = RENAVE, sessão 2):
+`docs/planos/plano-fiscal-renave-nfe.md`.
+
+- **O AutoConnect prepara, envia e guarda; não calcula tributo.** A NF-e sai por
+  emissor terceiro (N3), nunca SEFAZ direto. CFOP, CST/CSOSN e informações
+  complementares vêm do **perfil fiscal da loja** (`fiscal_settings` +
+  `fiscal_operation_profiles`), não do código.
+- **A situação tributária nasce em branco.** As operações semeadas trazem
+  natureza e CFOP sugeridos (`DEFINICAO_DAS_OPERACOES`, no shared); CST/CSOSN é
+  do contador, e sugestão ali viraria padrão que ninguém confere.
+- **Produção só emite com o perfil confirmado pelo contador**, e **qualquer
+  mudança** no regime ou numa operação apaga a confirmação — o contador conferiu
+  o que viu. Homologação não exige a confirmação: é onde a loja testa.
+- **`montarNota` (shared) é a regra única da nota**: a prévia do negócio usa hoje,
+  a emissão vai usar amanhã. Devolve **todas** as faltas de uma vez, cada uma
+  com o lugar onde se corrige (`onde`), em vez de inventar o campo.
+- **Venda presencial é interna** mesmo com comprador de outro estado (CFOP 5);
+  só a entrega fora do estado usa o interestadual. A prévia aceita
+  `?presencial=false`.
+- **NCM, RENAVAM e origem do veículo moram em `vehicle_fiscal_details`**, não em
+  `vehicles`: a trilha não mexe no estoque. É **o** RENAVAM do carro — a trilha
+  do RENAVE lê daqui.
+- **A trilha fiscal só lê** `deals`, `deal_buyers`, `vehicles` e a filial matriz;
+  não muda a máquina de estados nem o faturamento.
+- **Chave da NF-e:** `lerChaveNfe`/`chaveNfeValida` (`domain/chave-nfe.ts`), já
+  com CNPJ alfanumérico. É o contrato entre as duas trilhas: **ninguém edita**,
+  pede no PR.
+- **Fiscal é de gerência** (`manager`, `tenant_admin`, `super_admin`), como o
+  financeiro.
+- **Emissão (N2):** emissor atrás de `ProvedorDeNotaFiscal`
+  (`modules/notas-fiscais/emissor/`), webhook `POST /webhooks/nota-fiscal`
+  autenticado por token em tempo constante, corpo cru, idempotente por
+  `(provider, eventKey)`. Todo retorno — emissão, consulta, cancelamento,
+  webhook — passa por `aplicarRetorno` (shared), que nunca lança. Único lookup
+  privilegiado: a loja da nota no webhook.
+- **Uma nota viva por negócio** (`fiscal_documents_nota_viva_idx`), e **nota
+  autorizada é imutável** por trigger: só o cancelamento e o arquivamento do
+  XML/DANFE mudam a linha. O banco grava `processando` antes de chamar o emissor.
+- **Nota de entrada (N2b):** da aquisição, com o remetente em
+  `acquisition_suppliers` (quem entregou o veículo — a tela da aquisição nunca
+  pediu nome nem documento). **A loja só emite quando do outro lado não há quem
+  emita** (`entradaDaAquisicao`): pessoa jurídica, leilão, transferência e 0 km
+  chegam com nota de outro. Cada nota tem **exatamente uma origem** (negócio ou
+  aquisição), por CHECK.
+- **Pacote do contador (N4):** `GET /fiscal/notas/pacote.zip` — XML de cada
+  autorizada e cancelada, `notas.csv` e `LEIA-ME.txt`. **Nenhuma nota some em
+  silêncio**: sem XML ou com hash divergente, vai nomeada no LEIA-ME. Período
+  pela autorização, em horário de Brasília, fim exclusivo
+  (`periodoEmBrasilia`). ZIP pelo `common/zip/zip.ts` (zlib, sem dependência).
+- **Documento na nota é `normalizarDocumento`**, nunca `replace(/\D/g, '')` — o
+  CNPJ alfanumérico perderia as letras.
+- **Focus NFe (N3):** nenhum token de loja no banco — só o id da empresa
+  (`fiscal_settings.emissor_conta`); o token dela é buscado pelo master e fica
+  5 min em memória. O certificado A1 passa pela API e vai à Focus; **não é
+  gravado, nem na auditoria**. Adaptador escrito e testado com `fetch` dublado,
+  **ainda sem conta** — as premissas "A CONFERIR" estão no plano.
+- **A nota só leva situações tributárias sem valor calculado**
+  (`ICMS_SEM_VALOR_CALCULADO`, `PIS_COFINS_SEM_VALOR_CALCULADO`); o resto é
+  falta antes da emissão. O AutoConnect não calcula tributo.
+- **Variáveis:** `NFE_FORNECEDOR` (vazio = desligado, a prévia continua;
+  `simulado` recusado em produção; `focusnfe`), `NFE_WEBHOOK_TOKEN` (sem ele
+  nenhum emissor liga), `NFE_WEBHOOK_URL` (cria o gatilho; sem ela, só consulta),
+  `FOCUS_NFE_TOKEN_MASTER` e `FOCUS_NFE_PRODUCAO_LIBERADA` (sem `true`, só
+  homologação). O `setup-e2e.ts` força `simulado` e zera as da Focus.
+- ⚠ **Nenhum perfil fiscal foi revisado por contador.** Mesma revisão pendente do
+  financeiro e do template de contrato.

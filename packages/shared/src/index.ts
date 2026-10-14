@@ -34,3 +34,6 @@ export * from './domain/ofx';
 export * from './domain/chave-nfe';
 export * from './domain/renave';
 export * from './schemas/renave';
+export * from './domain/nota-fiscal';
+export * from './domain/emissao-nfe';
+export * from './schemas/nota-fiscal';
