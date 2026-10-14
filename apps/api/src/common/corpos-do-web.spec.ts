@@ -50,6 +50,10 @@ import {
   reabrirMesSchema,
   importarOfxSchema,
   conciliarSchema,
+  perfilFiscalSchema,
+  perfilDeOperacaoSchema,
+  confirmacaoDoContadorSchema,
+  dadosFiscaisDoVeiculoSchema,
 } from '@autoconnect/shared';
 import { acceptInviteSchema } from '../modules/invitations/invitations.controller';
 import { anularSchema, assinarSchema } from '../modules/contracts/contracts.controller';
@@ -230,6 +234,13 @@ const ROTAS: Record<string, Declaracao> = {
   'POST /financeiro/conciliacoes': { schema: conciliarSchema },
   'POST /financeiro/conciliacoes/:p/ignorar': { semCorpo: true },
   'POST /financeiro/periodos/fechar': { schema: fecharMesSchema },
+
+  /* Fiscal (trilha N do plano fiscal) */
+  'PUT /fiscal/perfil': { schema: perfilFiscalSchema },
+  'POST /fiscal/perfil/operacoes/padrao': { semCorpo: true },
+  'PUT /fiscal/perfil/operacoes/:p': { schema: perfilDeOperacaoSchema },
+  'POST /fiscal/perfil/confirmacao-do-contador': { schema: confirmacaoDoContadorSchema },
+  'PUT /fiscal/veiculos/:p': { schema: dadosFiscaisDoVeiculoSchema },
   'POST /financeiro/periodos/reabrir': { schema: reabrirMesSchema },
 
   'POST /public/conversations/:p/messages': { schema: mensagemDeVisitanteSchema },

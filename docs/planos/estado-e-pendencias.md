@@ -29,6 +29,7 @@
 | **WhatsApp oficial** | ✅ estrutura | ✅ completo | desde 27/09/2026 (sessão 2, item C1): camada neutra com provedor simulado, webhook com HMAC do corpo cru e idempotente, cliente que escreve vira lead pelo caminho do formulário (dedupe, rodízio, prazo), resposta pelo chat com a janela de 24 h conferida na API, modelos aprovados, status de entrega, uso do mês em **Canais**. **Adaptador da Meta escrito e NÃO exercitado — falta a conta** ([decisão](../decisoes/2026-09-27%20whatsapp%20oficial.md)) |
 | **Leads dos portais** | ✅ estrutura | ✅ completo | desde 27/09/2026 (sessão 2, item C2): endereço de entrada por loja e portal (URL de webhook e e-mail de encaminhamento, token só em hash), entregas guardadas cruas e reprocessáveis, formato AutoConnect no webhook e leitor genérico de e-mail com rótulos, código de confirmação do Gmail na tela, lead pelo caminho do formulário com origem `portal`. **Falta a conta do e-mail de entrada (Postmark) e uma notificação real da OLX** ([decisão](../decisoes/2026-09-27%20leads%20dos%20portais.md)) |
 | **Push do vendedor** | ✅ completo | ✅ completo | desde 27/09/2026 (sessão 2, item C3): Web Push com VAPID pelo service worker (sem app de loja), lead novo para o vendedor da vez (ou a gerência, sem responsável), mensagem do cliente para quem cuida da conversa, aparelho que muda de dono, logout que desinscreve. Verificado de ponta a ponta com o serviço de push real. **Falta só cadastrar as chaves VAPID no Railway** ([decisão](../decisoes/2026-09-27%20push%20do%20vendedor.md)) |
+| **Fiscal — NF-e** | ◐ N1 | ◐ N1 | desde 14/10/2026 (plano fiscal, sessão 1): perfil fiscal da loja (regime, série, ambiente, CFOP e CST/CSOSN por operação), confirmação do contador apagada a cada mudança, NCM/RENAVAM do veículo e **prévia da nota no negócio** com tudo o que falta. **Ainda não emite** — a emissão é N2/N3 ([plano](plano-fiscal-renave-nfe.md)) |
 
 ## Pendências conhecidas
 
@@ -558,6 +559,25 @@ validador da chave da NF-e
     Receita passa da validação.
   - Encontrado em: 13/10/2026 · Claude Code · Fase 0 do plano fiscal (fora do escopo dela:
     `auth` não é módulo de nenhuma das duas sessões fiscais).
+
+**Encontrada em 14/10/2026** — Claude Code (sessão 1 do plano fiscal), na fase N1
+
+- **Os enums do financeiro não estão no teste de paridade com o Prisma.**
+  - Onde: `packages/shared/src/schemas/paridade-enums.spec.ts`; as constantes ficam em
+    `packages/shared/src/domain/financeiro.ts:25–35` (`FINANCIAL_ACCOUNT_KINDS`,
+    `FINANCIAL_DIRECTIONS`, `FINANCIAL_ENTRY_STATUSES`, `FINANCIAL_CATEGORY_GROUPS`).
+  - O que é: o CLAUDE.md manda atualizar a constante do shared ao mudar enum no
+    `schema.prisma`, e o teste de paridade é o que pega o esquecimento. Os quatro enums do
+    financeiro entraram em 27/09/2026 sem a linha no teste.
+  - Evidência: `git grep FINANCIAL_ACCOUNT_KINDS -- '*.spec.ts'` não acha nada.
+  - Impacto: um valor novo no Prisma sem o Zod faz a API recusar o que o banco aceita — foi
+    assim que `LeadSource.trade_in` derrubou a rota pública de troca.
+  - Sugestão: quatro `it(...)` no `paridade-enums.spec.ts`, como os outros. Os enums fiscais
+    já têm o seu, em `schemas/nota-fiscal.spec.ts`.
+  - Como testar: acrescentar um valor ao `FinancialAccountKind` no `schema.prisma` e ver o
+    teste quebrar.
+  - Encontrado em: 14/10/2026 · Claude Code · fase N1 do plano fiscal (o financeiro não é
+    módulo das sessões fiscais).
 
 **Lacunas frente ao mercado** — Claude Cowork, 27/09/2026, na pesquisa de preços
 ([plano de preços](https://claude.ai/code/artifact/daf7ac7d-5114-4621-9028-3759dbb07be8)).

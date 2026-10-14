@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.354 testes (976 na API, 378 no `shared`):
+são 1.419 testes (993 na API, 426 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -806,7 +806,7 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 validacao de saque na asaas.m
   `cortesia_de_cobranca`, `preco_travado_e_ciclo`,
   `plano_pendente_de_pagamento`, `whatsapp_oficial`, `leads_dos_portais`,
   `push_do_vendedor`, `financeiro_gerencial`, `financeiro_origem`,
-  `conciliacao_ofx`.
+  `conciliacao_ofx`, `perfil_fiscal`.
 
 ---
 
@@ -894,3 +894,40 @@ cancelada pelo painel. A ordem de resolução do que sobrou está em
 **Dívidas que afetam código novo:** API e banco em regiões diferentes (~0,6s por
 consulta); nenhuma infraestrutura de feature flag; o teto por IP do formulário
 público vive na memória do processo (duas réplicas = teto dobrado).
+
+---
+
+## Fiscal — NF-e (trilha N do plano fiscal)
+
+O porquê de cada regra: `docs/decisoes/2026-10-13 fiscal renave e nfe.md`; o plano,
+dividido entre duas sessões (N = NF-e, sessão 1; R = RENAVE, sessão 2):
+`docs/planos/plano-fiscal-renave-nfe.md`.
+
+- **O AutoConnect prepara, envia e guarda; não calcula tributo.** A NF-e sai por
+  emissor terceiro (N3), nunca SEFAZ direto. CFOP, CST/CSOSN e informações
+  complementares vêm do **perfil fiscal da loja** (`fiscal_settings` +
+  `fiscal_operation_profiles`), não do código.
+- **A situação tributária nasce em branco.** As operações semeadas trazem
+  natureza e CFOP sugeridos (`DEFINICAO_DAS_OPERACOES`, no shared); CST/CSOSN é
+  do contador, e sugestão ali viraria padrão que ninguém confere.
+- **Produção só emite com o perfil confirmado pelo contador**, e **qualquer
+  mudança** no regime ou numa operação apaga a confirmação — o contador conferiu
+  o que viu. Homologação não exige a confirmação: é onde a loja testa.
+- **`montarNota` (shared) é a regra única da nota**: a prévia do negócio usa hoje,
+  a emissão vai usar amanhã. Devolve **todas** as faltas de uma vez, cada uma
+  com o lugar onde se corrige (`onde`), em vez de inventar o campo.
+- **Venda presencial é interna** mesmo com comprador de outro estado (CFOP 5);
+  só a entrega fora do estado usa o interestadual. A prévia aceita
+  `?presencial=false`.
+- **NCM, RENAVAM e origem do veículo moram em `vehicle_fiscal_details`**, não em
+  `vehicles`: a trilha não mexe no estoque. É **o** RENAVAM do carro — a trilha
+  do RENAVE lê daqui.
+- **A trilha fiscal só lê** `deals`, `deal_buyers`, `vehicles` e a filial matriz;
+  não muda a máquina de estados nem o faturamento.
+- **Chave da NF-e:** `lerChaveNfe`/`chaveNfeValida` (`domain/chave-nfe.ts`), já
+  com CNPJ alfanumérico. É o contrato entre as duas trilhas: **ninguém edita**,
+  pede no PR.
+- **Fiscal é de gerência** (`manager`, `tenant_admin`, `super_admin`), como o
+  financeiro.
+- ⚠ **Nenhum perfil fiscal foi revisado por contador.** Mesma revisão pendente do
+  financeiro e do template de contrato.

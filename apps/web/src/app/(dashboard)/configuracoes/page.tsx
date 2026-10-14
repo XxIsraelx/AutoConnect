@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   Building2, Phone, Globe, Palette, MapPin, ChevronRight,
   Mail, Hash, Check, Loader2, AlertCircle, Save, Clock, Repeat, UsersRound,
-  Crosshair, ExternalLink, Download,
+  Crosshair, ExternalLink, Download, FileText,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
@@ -234,6 +234,7 @@ function PrecisaoDoPino({ precisao }: { precisao: string | null }) {
 
 export default function ConfiguracoesPage() {
   const token = useAuthStore(s => s.token);
+  const papel = useAuthStore(s => s.user?.role) ?? '';
 
   const [tenant, setTenant]   = useState<TenantFull | null>(null);
   const [loading, setLoading] = useState(true);
@@ -817,6 +818,26 @@ export default function ConfiguracoesPage() {
             </Link>
           </div>
         </Section>
+
+        {/* ── Perfil fiscal ─────────────────────────────────
+            Página própria, como o plano: são seis operações com CFOP e
+            situação tributária, e esta tela já é a mais longa do painel. */}
+        {['manager', 'tenant_admin', 'super_admin'].includes(papel) && (
+          <Section title="Perfil fiscal" icon={FileText}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-slate-500">
+                Regime tributário, série e CFOP de cada operação — o que a nota fiscal do veículo usa.
+              </p>
+              <Link
+                href="/configuracoes/fiscal"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg
+                           bg-blue-600 text-white hover:bg-blue-700 transition"
+              >
+                Abrir perfil fiscal <ChevronRight size={13} />
+              </Link>
+            </div>
+          </Section>
+        )}
 
         {/* ── Portabilidade ──────────────────────────────────────
             Fica em Configurações, e não em Relatórios, porque "levar meus

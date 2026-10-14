@@ -167,7 +167,30 @@ merge, com qualquer integradora, sem conta nenhuma.
 
 ## Trilha N — NF-e (sessão 1)
 
-### N1 — perfil fiscal da loja e a montagem da nota
+### N1 — perfil fiscal da loja e a montagem da nota ✅ 14/10/2026
+
+**Entregue em 14/10/2026:** migration `perfil_fiscal` (três tabelas com RLS e
+CHECKs de formato), `montarNota` e `faltasParaEmitir` no shared, módulo
+`notas-fiscais` com perfil, operações, confirmação do contador, dados fiscais do
+veículo e a **prévia da nota no negócio**, e a tela `/configuracoes/fiscal`. 48
+testes no shared e 17 e2e — inclusive o que prova que mudar uma operação apaga
+a confirmação do contador. Conferido no navegador: da prévia com faltas até a
+nota completa, e o CFOP mudando de 5102 para 6102 quando o comprador de Minas
+não retira na loja.
+
+Decidido durante a fase, com o padrão adotado:
+
+- **A prévia vai para o negócio já na N1**, sem botão de emitir: diz o que falta e,
+  completa, mostra os dados para a loja usar no emissor que já tem. Rota sem
+  tela seria a armadilha nº 1 do CLAUDE.md.
+- **Venda presencial é interna** (CFOP 5) mesmo com comprador de outro estado; a
+  prévia tem o interruptor "comprador retira na loja", ligado por padrão.
+- **O dígito verificador do RENAVAM não é conferido** — o algoritmo circula em
+  versões diferentes, e recusar um RENAVAM verdadeiro trava a nota de um carro
+  que existe. Fica o tamanho (9 a 11 dígitos, completado com zeros).
+- **CNPJ e IE continuam no `Tenant`, endereço na filial matriz** — copiar para o
+  perfil fiscal criaria a segunda fonte de cada um.
+
 
 **Entrega:** a loja diz como fatura, e o sistema sabe dizer, para um negócio
 qualquer, se dá para emitir a nota — e o que falta, como a publicação de anúncio
@@ -350,7 +373,7 @@ NF-e — e esse ponto já foi resolvido na Fase 0.
 | R2 — camada neutra RENAVE | 2 | ⬜ |
 | R3 — adaptador da integradora | 2 | ⬜ (depende da escolha da integradora) |
 | R4 — consignação | 2 | ⬜ (depende da Clicksign em produção e do advogado) |
-| N1 — perfil fiscal e montagem | 1 | ⬜ |
+| N1 — perfil fiscal e montagem | 1 | ✅ 14/10/2026 |
 | N2 — camada neutra NF-e | 1 | ⬜ |
 | N3 — certificado e adaptador do emissor | 1 | ⬜ (depende da conta no emissor) |
 | N4 — ponte com o contador | 1 | ⬜ |
