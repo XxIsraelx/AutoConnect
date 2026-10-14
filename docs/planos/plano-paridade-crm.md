@@ -406,7 +406,8 @@ Aqui o produto deixa de ser "mais um CRM" e passa a ter argumento próprio.
     concorrentes nomeiam isso.
 18. **Contrato e consignação no padrão RENAVE:** contrato eletrônico assinado
     para consignado, que a regra de 2026 passou a exigir e que quase ninguém tem.
-    Depende da conta de produção da Clicksign e da revisão jurídica.
+    Depende da conta de produção da Clicksign e da revisão jurídica. O registro
+    no RENAVE do consignado é a fase R4 do [plano fiscal](plano-fiscal-renave-nfe.md).
 19. **LGPD como produto:** trilha de auditoria em estoque, negócio e contrato
     (hoje só em duas telas), registro de consentimento, exportação e eliminação
     de dados do titular. Ninguém no mercado vende isso.
@@ -426,10 +427,9 @@ Aqui o produto deixa de ser "mais um CRM" e passa a ter argumento próprio.
 
 - **Não persegue paridade completa.** Oficina e pós-venda, repasse entre
   lojas, fidelização por pontos e múltiplos funis ficam fora: revenda de
-  seminovos não compra por isso. **NF-e** também fica fora deste plano, e desde
-  27/09/2026 isso é uma decisão explícita, não uma contradição com a Fase 5 do
-  plano de vendas — ver
-  [plano de resolução das pendências](plano-resolucao-de-pendencias.md#adiado-por-decisão).
+  seminovos não compra por isso. **NF-e** também fica fora deste plano — desde
+  13/10/2026 ela tem plano próprio, junto com o RENAVE: o
+  [plano fiscal](plano-fiscal-renave-nfe.md).
 - **Não entra em IA de conversa agora.** Quatro concorrentes já estão lá.
 - **Não vira DMS.** Contabilidade e folha são de ERP; o americano junta, o
   brasileiro pequeno não compra assim.

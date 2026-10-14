@@ -430,8 +430,8 @@ Toda integração externa entra por uma camada de anticorrupção: uma interface
 ### Fase 5 — Obrigações fiscais e regulatórias
 
 - **COAF** é a de melhor relação custo-benefício: um job que soma pagamentos em espécie por CPF em janela móvel de seis meses, um alerta ao cruzar o limite e um relatório exportável. Sem integração externa nenhuma.
-- **NF-e** via emissor terceiro (Focus NFe, NFe.io, Tecnospeed). Não implementar do zero — regra estadual muda e é um produto inteiro. ⏸ **Adiada por decisão em 27/09/2026** — ver [plano de resolução das pendências](plano-resolucao-de-pendencias.md#adiado-por-decisão).
-- **RENAVE** por integradora credenciada, com certificado ICP-Brasil. A mais cara e a única com prazo legal. A modelagem (`renave_events` com protocolo e payload) pode entrar antes da integração, para que a fase seja só plugar.
+- **NF-e** via emissor terceiro (Focus NFe, NFe.io, Tecnospeed). Não implementar do zero — regra estadual muda e é um produto inteiro. Adiada em 27/09/2026 e **retomada em 13/10/2026** — o plano agora é o [plano fiscal](plano-fiscal-renave-nfe.md), trilha N.
+- **RENAVE** por integradora credenciada, com certificado ICP-Brasil. A mais cara e a única com prazo legal. A modelagem (`renave_events` com protocolo e payload) pode entrar antes da integração, para que a fase seja só plugar. Desde 13/10/2026 é a trilha R do [plano fiscal](plano-fiscal-renave-nfe.md), começando pelo registro manual do protocolo.
 
 ---
 

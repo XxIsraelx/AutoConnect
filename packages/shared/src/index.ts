@@ -31,3 +31,4 @@ export * from './domain/push';
 export * from './domain/financeiro';
 export * from './schemas/financeiro';
 export * from './domain/ofx';
+export * from './domain/chave-nfe';
