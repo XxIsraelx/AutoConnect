@@ -28,23 +28,37 @@ describe('ChatGateway (e2e)', () => {
   let clienteId: string;
   const abertos: Socket[] = [];
 
+  /**
+   * Promessa com prazo, e o prazo **desarmado** quando ela resolve. Antes o
+   * `setTimeout` de 10 s ficava armado depois da resposta, e os do último teste
+   * seguravam o processo: era o "Jest did not exit one second after the test
+   * run" de toda execução completa desde 27/09/2026. O `--detectOpenHandles`
+   * não aponta timer, e foi preciso rodar arquivo por arquivo para achar.
+   */
+  const comPrazo = <T>(motivo: string, corpo: (ok: (v: T) => void, falha: (e: unknown) => void) => void) =>
+    new Promise<T>((resolve, reject) => {
+      const relogio = setTimeout(() => reject(new Error(motivo)), 10_000);
+      corpo(
+        (v) => { clearTimeout(relogio); resolve(v); },
+        (e) => { clearTimeout(relogio); reject(e); },
+      );
+    });
+
   const conectar = (userId: string, role: string, tenantId: string | null) =>
-    new Promise<Socket>((resolve, reject) => {
+    comPrazo<Socket>('não conectou', (ok, falha) => {
       const s = io(`http://localhost:${porta}/chat`, {
         auth: { token: jwt.sign({ sub: userId, role, tenantId }) },
         transports: ['websocket'],
         forceNew: true,
       });
       abertos.push(s);
-      s.on('connect', () => resolve(s));
-      s.on('connect_error', reject);
-      setTimeout(() => reject(new Error('não conectou')), 10_000);
+      s.on('connect', () => ok(s));
+      s.on('connect_error', falha);
     });
 
   const emitir = <T>(s: Socket, evento: string, dados: unknown) =>
-    new Promise<T>((resolve, reject) => {
-      s.emit(evento, dados, resolve);
-      setTimeout(() => reject(new Error(`sem ack de ${evento}`)), 10_000);
+    comPrazo<T>(`sem ack de ${evento}`, (ok) => {
+      s.emit(evento, dados, ok);
     });
 
   const criarConversa = async (vehicleId: string | null) => {
