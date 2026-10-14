@@ -1,9 +1,10 @@
 import {
   operacaoRenaveDaAquisicao, pendenciasRenave, podeTransitarRenave, situacaoNoRenave,
+  statusDepoisDoEvento, tipoDoDocumento,
   type EntradaDasPendencias, type RegistroParaRenave,
 } from './renave';
 import { digitoVerificadorDaChave } from './chave-nfe';
-import { registrarRenaveSchema, chaveNfeRenaveSchema } from '../schemas/renave';
+import { registrarRenaveSchema, chaveNfeRenaveSchema, enviarRenaveSchema } from '../schemas/renave';
 
 /** NF-e de SP, outubro de 2026, emitida por 11.222.333/0001-81. */
 const CHAVE_DA_LOJA = '35261011222333000181550010000012341123456787';
@@ -247,5 +248,47 @@ describe('registrarRenaveSchema', () => {
     const amanha = new Date(Date.now() + 3 * 86_400_000).toISOString();
     expect(registrarRenaveSchema.safeParse({ vehicleId, tipo: 'entrada_compra', dataOperacao: amanha }).success)
       .toBe(false);
+  });
+});
+
+describe('camada neutra (R2)', () => {
+  it('evento só move o registro pela máquina de estados', () => {
+    expect(statusDepoisDoEvento('pendente', 'confirmado')).toBe('confirmado');
+    expect(statusDepoisDoEvento('pendente', 'recusado')).toBe('recusado');
+    expect(statusDepoisDoEvento('confirmado', 'cancelado')).toBe('cancelado');
+    // Fora de ordem: a confirmação que chega depois do cancelamento não ressuscita nada.
+    expect(statusDepoisDoEvento('cancelado', 'confirmado')).toBeNull();
+    expect(statusDepoisDoEvento('confirmado', 'confirmado')).toBeNull();
+    expect(statusDepoisDoEvento('pendente', 'atpv_disponivel')).toBeNull();
+  });
+
+  it('documento pelo tamanho, inclusive o CNPJ alfanumérico', () => {
+    expect(tipoDoDocumento('529.982.247-25')).toBe('CPF');
+    expect(tipoDoDocumento('11.222.333/0001-81')).toBe('CNPJ');
+    expect(tipoDoDocumento('12.ABC.345/01DE-35')).toBe('CNPJ');
+    expect(tipoDoDocumento('123')).toBeNull();
+    expect(tipoDoDocumento(null)).toBeNull();
+  });
+
+  describe('enviarRenaveSchema', () => {
+    const vehicleId = '7b0f8c8e-5a0b-4c1e-9d55-1d2f3a4b5c6d';
+    const crv = { renavam: '123456789', tipoCrv: 'DIGITAL', codigoSegurancaCrv: '73915264801' };
+
+    it('RENAVAM antigo ganha os zeros à esquerda', () => {
+      const r = enviarRenaveSchema.parse({ vehicleId, tipo: 'entrada_compra', crv });
+      expect(r.crv.renavam).toBe('00123456789');
+    });
+
+    it('sem o documento do veículo, ou com letra no código de segurança, é recusado', () => {
+      expect(enviarRenaveSchema.safeParse({ vehicleId, tipo: 'entrada_compra' }).success).toBe(false);
+      expect(enviarRenaveSchema.safeParse({
+        vehicleId, tipo: 'entrada_compra', crv: { ...crv, codigoSegurancaCrv: 'ABC' },
+      }).success).toBe(false);
+    });
+
+    it('valor também não entra no envio', () => {
+      expect(enviarRenaveSchema.safeParse({ vehicleId, tipo: 'entrada_compra', crv, valor: '1.00' }).success)
+        .toBe(false);
+    });
   });
 });

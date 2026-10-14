@@ -222,7 +222,8 @@ describe('RENAVE — registro manual (e2e)', () => {
       await expect(dono.renaveRegistro.create({
         data: {
           tenantId: f.a.id, vehicleId: veiculo, dealId: negocioId, tipo: 'saida_venda',
-          dataOperacao: new Date(), valor: '49900.00',
+          // Sequência que ninguém usou: quem tem que recusar é o índice parcial.
+          dataOperacao: new Date(), valor: '49900.00', sequencia: 99,
         },
       })).rejects.toThrow();
     });

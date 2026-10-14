@@ -934,3 +934,19 @@ seção "R1 entregue". Manual técnico do renave-ws (SERPRO) lido em 14/10/2026.
 - **Zero km fica de fora** (no RENAVE ele entra pela montadora) e vendidos entram
   na lista da loja por `JANELA_DE_VENDIDOS_DIAS` (90); o cartão do veículo mostra
   tudo, sempre.
+- **Envio pela integradora (R2):** `ProvedorDeRenave` atrás de
+  `RENAVE_FORNECEDOR` (vazio = desligado e o registro manual fica; `simulado` =
+  em memória, recusado em produção; real = R3) e `RENAVE_WEBHOOK_SECRET`
+  (sem ele nada liga). O `setup-e2e.ts` força `simulado`. Reservar → enviar →
+  aplicar: a linha nasce `pendente` com `sequencia` antes da chamada, e o reenvio
+  manda a mesma chave `veículo:tipo:sequência`. Registro da integradora tem o
+  estado ditado por ela — anotação manual nele é 409.
+- **O código de segurança do CRV nunca é gravado**
+  ([decisão](docs/decisoes/2026-10-14%20renave%20dados%20do%20crv%20e%20credencial.md)):
+  vai no envio e some, e reenviar pede de novo. Coluna, snapshot ou evento com
+  ele é defeito — `renave-integradora.e2e-spec.ts` confere.
+- **Webhook** `POST /webhooks/renave`: autenticidade sobre o corpo cru,
+  `renave_eventos` idempotente por `(registro_id, event_key)`, um lookup
+  privilegiado (`id` e `tenantId` por `provider + external_id`), operação
+  desconhecida é 200 sem efeito. ATPV-e no bucket `documentos`, servido por
+  `GET /renave/registros/:id/atpv`.

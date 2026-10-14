@@ -46,6 +46,7 @@ com o código e lido pelo Claude quando o assunto aparece.
   · [plano de preços](decisoes/2026-09-27%20plano%20de%20precos.md)
   · [módulo financeiro](decisoes/2026-09-27%20modulo%20financeiro.md)
   · [fiscal: RENAVE e NF-e](decisoes/2026-10-13%20fiscal%20renave%20e%20nfe.md)
+  · [RENAVE: dados do CRV e credencial](decisoes/2026-10-14%20renave%20dados%20do%20crv%20e%20credencial.md)
 - [Estado, pendências e próximos passos](planos/estado-e-pendencias.md)
   · [plano de resolução das pendências](planos/plano-resolucao-de-pendencias.md)
   · [divisão entre sessões](planos/divisao-entre-sessoes.md)

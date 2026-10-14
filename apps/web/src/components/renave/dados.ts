@@ -29,6 +29,21 @@ export interface RegistroRenave {
   motivoCancelamento: string | null;
   protocoloCancelamento: string | null;
   createdAt: string;
+  /** Integradora que recebeu o envio (R2); nulo no registro manual. */
+  provider: string | null;
+  externalId: string | null;
+  enviadoEm: string | null;
+  sequencia: number;
+  temAtpv: boolean;
+}
+
+export interface CapacidadeDaIntegradora {
+  disponivel: boolean;
+  provedor: string | null;
+  /** Homologação: o registro não existe no RENAVE de verdade. */
+  sandbox: boolean;
+  /** Integradora simulada fora de produção — libera os botões de simulação. */
+  simulado: boolean;
 }
 
 export interface RenaveDoVeiculo {
@@ -45,6 +60,7 @@ export interface RenaveDoVeiculo {
     };
     saidas: { dealId: string; valor: string; dataOperacao: string | null }[];
   };
+  integradora: CapacidadeDaIntegradora;
 }
 
 export interface PendenciasDaLoja {
@@ -67,7 +83,24 @@ export interface NovoRegistro {
   observacao?: string;
 }
 
+/**
+ * Envio pela integradora. O código de segurança do CRV vai no corpo e não
+ * volta: a API não o guarda (decisão de 14/10/2026).
+ */
+export interface NovoEnvio {
+  vehicleId: string;
+  tipo: RenaveOperacaoValue;
+  dealId?: string;
+  dataOperacao?: string;
+  observacao?: string;
+  crv: { renavam: string; tipoCrv: string; numeroCrv?: string; codigoSegurancaCrv: string };
+  quilometragem?: number;
+  documentoDoProprietario?: string;
+}
+
 export type AcaoNoRegistro =
+  | { acao: 'atualizar' }
+  | { acao: 'simular'; resultado: 'confirmar' | 'recusar' }
   | { acao: 'confirmar'; protocolo: string; registradoEm?: string }
   | { acao: 'recusar'; motivo: string }
   | { acao: 'cancelar'; motivo: string; protocoloCancelamento?: string }
@@ -144,7 +177,33 @@ function executar(id: string, a: AcaoNoRegistro, token?: string): Promise<Regist
       return api(`/renave/registros/${id}/nfe`, {
         method: 'POST', token, body: { chaveNfe: a.chaveNfe },
       });
+    case 'atualizar':
+      return api(`/renave/registros/${id}/atualizar`, { method: 'POST', token });
+    case 'simular':
+      return api(`/renave/registros/${id}/simular`, {
+        method: 'POST', token, body: { acao: a.resultado },
+      });
   }
+}
+
+export function useEnviarRenave() {
+  const token = useAuthStore((s) => s.token) ?? undefined;
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (c: NovoEnvio) =>
+      api<RegistroRenave>('/renave/envios', {
+        method: 'POST',
+        token,
+        body: {
+          vehicleId: c.vehicleId, tipo: c.tipo, dealId: c.dealId, dataOperacao: c.dataOperacao,
+          observacao: c.observacao, crv: c.crv, quilometragem: c.quilometragem,
+          documentoDoProprietario: c.documentoDoProprietario,
+        },
+      }),
+    // Mesmo no erro: um envio sem resposta da integradora fica guardado como
+    // pendente, e o cartão precisa mostrá-lo.
+    onSettled: () => qc.invalidateQueries({ queryKey: ['renave'] }),
+  });
 }
 
 export function useAcaoRenave() {

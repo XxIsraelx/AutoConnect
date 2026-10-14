@@ -55,6 +55,8 @@ import {
   recusarRenaveSchema,
   cancelarRenaveSchema,
   chaveNfeRenaveSchema,
+  enviarRenaveSchema,
+  simularRenaveSchema,
 } from '@autoconnect/shared';
 import { acceptInviteSchema } from '../modules/invitations/invitations.controller';
 import { anularSchema, assinarSchema } from '../modules/contracts/contracts.controller';
@@ -243,6 +245,9 @@ const ROTAS: Record<string, Declaracao> = {
   'POST /renave/registros/:p/recusar': { schema: recusarRenaveSchema },
   'POST /renave/registros/:p/cancelar': { schema: cancelarRenaveSchema },
   'POST /renave/registros/:p/nfe': { schema: chaveNfeRenaveSchema },
+  'POST /renave/envios': { schema: enviarRenaveSchema },
+  'POST /renave/registros/:p/atualizar': { semCorpo: true },
+  'POST /renave/registros/:p/simular': { schema: simularRenaveSchema },
 
   'POST /public/conversations/:p/messages': { schema: mensagemDeVisitanteSchema },
   'PATCH /conversations/:p/close': { semCorpo: true },

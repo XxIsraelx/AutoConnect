@@ -141,5 +141,13 @@ process.env.VAPID_PUBLIC_KEY = '';
 process.env.VAPID_PRIVATE_KEY = '';
 process.env.VAPID_SUBJECT = '';
 
+// RENAVE (trilha R do plano fiscal): integradora simulada, sobrescrevendo o
+// `.env`. No dia em que o `.env` tiver uma integradora real, a suíte
+// registraria entrada e saída de carros fictícios no RENAVE de verdade — com
+// efeito legal. O simulado roda em memória e não sai do processo. As
+// credenciais do adaptador real (R3) entram zeradas aqui quando ele existir.
+process.env.RENAVE_FORNECEDOR = 'simulado';
+process.env.RENAVE_WEBHOOK_SECRET = 'segredo-do-webhook-renave-de-teste';
+
 /** Nome do banco de teste, para os testes afirmarem onde estão conectados. */
 export const BANCO_DE_TESTE = verificada.pathname.replace(/^\//, '');

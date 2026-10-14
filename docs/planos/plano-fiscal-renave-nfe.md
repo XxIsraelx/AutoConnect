@@ -173,6 +173,39 @@ código. `estornar` no `ProvedorDeRenave` passa a se chamar `cancelar`.
   segredo fica no `.env`, um só); se a integradora só aceitar token por loja,
   cifrar com chave da plataforma e registrar a decisão antes do código.
 
+#### R2 entregue (14/10/2026)
+
+- **Decisão registrada antes do código** ([dados do CRV e credencial](../decisoes/2026-10-14%20renave%20dados%20do%20crv%20e%20credencial.md)):
+  o código de segurança do CRV é pedido no envio, repassado e **nunca gravado**
+  (o e2e confere que ele não aparece em coluna nenhuma); a credencial fica no
+  `.env`, sem segredo por loja no banco.
+- `ProvedorDeRenave` no shared com `registrarEntrada`, `registrarSaida`,
+  `cancelar` (o `estornar` do plano, no vocabulário do manual), `consultar`,
+  `informarNotaFiscal` (o manual envia a NF-e em operação própria),
+  `baixarAtpv` e `interpretarWebhook`. Indisponível, simulado e fábrica em
+  `modules/renave/provedor*.ts`.
+- **Reservar → enviar → aplicar**, como a assinatura externa: a linha nasce
+  `pendente` com a sequência antes da chamada; se a integradora não responder,
+  o reenvio acha a linha e manda a mesma chave (`veículo:tipo:sequência`).
+  `(vehicle_id, tipo, sequencia)` é único no banco.
+- Estado de registro da integradora vem dela — resposta, webhook ou consulta.
+  Anotar protocolo à mão nele é 409; cancelar e NF-e passam pela integradora
+  antes de mudar aqui.
+- Webhook `POST /webhooks/renave`, HMAC sobre o corpo cru, `renave_eventos`
+  idempotente por `(registro, event_key)`, lookup privilegiado só de `id` e
+  `tenantId`. Operação desconhecida é 200 sem efeito.
+- ATPV-e: arquivado no bucket `documentos` quando o Storage está configurado;
+  sem ele, o download busca na integradora. Sai por `GET /renave/registros/:id/atpv`,
+  nunca por URL pública.
+- Tela: "Enviar pela integradora" no cartão (com selo de homologação), "anotar
+  registro feito fora" continua; botões de simulação só com o simulado.
+
+**Para R3:** o adaptador real precisa responder (1) se a integradora devolve o
+protocolo na hora ou só pelo webhook, (2) como ela autentica o webhook — o
+simulado usa HMAC, e a real pode usar token no cabeçalho, como a Asaas — e (3)
+se a conta é de parceiro com a loja pelo CNPJ ou se cada loja tem a sua. Se for a
+segunda, a decisão do cofre por loja vem antes do adaptador.
+
 ### R3 — adaptador da integradora
 
 - Escolher **uma** integradora com API REST pública e ambiente de homologação.
@@ -368,7 +401,7 @@ NF-e — e esse ponto já foi resolvido na Fase 0.
 |---|---|---|
 | 0 — decisão, verificação, `chave-nfe.ts` | 1 | ✅ 13/10/2026 |
 | R1 — registro manual e pendências | 2 | ✅ 14/10/2026 |
-| R2 — camada neutra RENAVE | 2 | ⬜ |
+| R2 — camada neutra RENAVE | 2 | ✅ 14/10/2026 |
 | R3 — adaptador da integradora | 2 | ⬜ (depende da escolha da integradora) |
 | R4 — consignação | 2 | ⬜ (depende da Clicksign em produção e do advogado) |
 | N1 — perfil fiscal e montagem | 1 | ⬜ |
