@@ -230,7 +230,11 @@ registrado para ninguém precisar redescobrir o porquê.
 
 ## Adiado por decisão
 
-- **NF-e — adiado em 27/09/2026** (decisão do Israel nesta auditoria). Os dois
+- ~~**NF-e — adiado em 27/09/2026**~~ — **retomado em 13/10/2026**, junto com o
+  RENAVE, no [plano fiscal](plano-fiscal-renave-nfe.md)
+  ([decisão](../decisoes/2026-10-13%20fiscal%20renave%20e%20nfe.md)). O registro do
+  adiamento fica abaixo, porque o porquê de ter voltado depende dele.
+  Em 27/09/2026 (decisão do Israel nesta auditoria), os dois
   planos se contradiziam: a Fase 5 do plano de vendas previa emissor terceiro e
   o plano de paridade dizia que NF-e ficava fora. **Vale o adiamento**, e a
   contradição some apontando os dois para cá. Quando voltar: emissor terceiro

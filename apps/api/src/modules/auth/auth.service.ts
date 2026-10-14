@@ -147,7 +147,7 @@ export class AuthService {
           // já exige o representante legal antes de ser emitido.
           legalName:         input.tenant.legalName ?? razaoSocialDaReceita ?? input.tenant.tradeName,
           tradeName:         input.tenant.tradeName,
-          taxId:             input.tenant.cnpj,           // CNPJ (14 dígitos)
+          taxId:             input.tenant.cnpj,           // CNPJ canônico (14 caracteres)
           stateRegistration: input.tenant.stateRegistration ?? null,
           primaryEmail,
           primaryPhone:      telefone,

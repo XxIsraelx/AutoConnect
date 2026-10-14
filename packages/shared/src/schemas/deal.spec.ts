@@ -1,4 +1,4 @@
-import { createAcquisitionSchema, createVehicleCostSchema } from './deal';
+import { createAcquisitionSchema, createVehicleCostSchema, formatarCnpj } from './deal';
 
 const DIA = 24 * 60 * 60 * 1000;
 
@@ -62,5 +62,17 @@ describe('datas de aquisição e custo', () => {
     } catch (e) {
       expect(String(e)).toMatch(/data de entrada no estoque/i);
     }
+  });
+});
+
+/** É o CNPJ que o contrato imprime na qualificação da loja. */
+describe('formatarCnpj', () => {
+  it('formata o numérico e o alfanumérico', () => {
+    expect(formatarCnpj('11222333000181')).toBe('11.222.333/0001-81');
+    expect(formatarCnpj('12ABC34501DE35')).toBe('12.ABC.345/01DE-35');
+  });
+
+  it('devolve como veio o que não tem 14 caracteres', () => {
+    expect(formatarCnpj('123')).toBe('123');
   });
 });

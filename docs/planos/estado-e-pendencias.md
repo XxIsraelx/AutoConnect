@@ -530,6 +530,63 @@ de demonstração
   - Como testar: a execução completa termina sem a mensagem.
   - Encontrado em: 28/09/2026 · Claude Code · na Fase 4 do financeiro.
 
+**Encontrada em 13/10/2026** — Claude Code (sessão 1 do plano fiscal), ao escrever o
+validador da chave da NF-e
+
+- ~~**O cadastro recusa CNPJ alfanumérico.**~~ — **resolvido em 14/10/2026** (`c297e0f`,
+  branch `claude/cnpj-alfanumerico`): `normalizarCnpj` (maiúsculas, tira só pontuação),
+  `cnpjValido` com ASCII − 48 (um teste compara com a implementação antiga em 4.000 CNPJs
+  numéricos) e `mascararCnpj` no shared; a máscara do `/signup` aceita letra; o
+  `formatarCnpj` do contrato e o `cpfCnpj` da Asaas deixaram de apagar as letras. A BrasilAPI
+  **já responde** o formato novo (exemplo da Receita → 404 "não encontrado"; dígito trocado →
+  400 "inválido"), então o enriquecimento segue ligado. E2e do `POST /auth/signup-tenant` com
+  `12.ABC.345/01DE-35`. Não havia `\D` sobre CNPJ em `/configuracoes` (o CNPJ não é editável
+  lá) nem no fornecedor da aquisição (`supplierDocument` é texto livre, sem validação — fica
+  para a trilha N, como o item já previa).
+  - Onde: `packages/shared/src/schemas/auth.ts:19` (`cnpjValido`) e `:107` (o schema do
+    `signup-tenant` faz `.replace(/\D/g, '')` antes de conferir); a máscara e a busca na
+    BrasilAPI de `apps/web/src/app/(auth)/signup/SignupContent.tsx:15` e `:258` também só
+    contam dígitos.
+  - O que é: desde julho de 2026 a Receita emite CNPJ com letras nas 12 primeiras posições
+    (IN RFB 2.229/2024; exemplo da Receita `12.ABC.345/01DE-35`). Os dois dígitos
+    verificadores continuam numéricos, calculados com o valor ASCII − 48 de cada caractere. O
+    `replace(/\D/g, '')` apaga as letras, sobra um número de menos de 14 dígitos, e o cadastro
+    responde "CNPJ deve ter 14 dígitos".
+  - Evidência: leitura do código; `cnpjValido('12ABC34501DE35')` devolve `false`. A chave da
+    NF-e (`domain/chave-nfe.ts`, Fase 0 do plano fiscal) já aceita o formato novo, e o teste
+    dela usa esse exemplo.
+  - Impacto: **toda loja aberta a partir de julho de 2026 não consegue se cadastrar** — e loja
+    nova é exatamente quem procura sistema. Também vai pegar o CNPJ do emitente da nota e o
+    CPF/CNPJ do fornecedor na aquisição, quando a trilha N validar esses campos.
+  - Sugestão: `cnpjValido` aceitar `[0-9A-Z]{12}\d{2}` com o cálculo ASCII − 48 (para
+    algarismo, o resultado é o de hoje), normalizar com `toUpperCase` e tirar só pontuação; a
+    máscara do signup aceitar letras; conferir se a BrasilAPI já responde CNPJ alfanumérico
+    antes de chamar. A coluna `tenants.tax_id` é texto e não muda.
+  - Como testar: `cnpjValido('12ABC34501DE35')` verdadeiro, `'12ABC34501DE36'` falso, todos
+    os casos numéricos de hoje com o mesmo resultado; um cadastro em `/signup` com o exemplo da
+    Receita passa da validação.
+  - Encontrado em: 13/10/2026 · Claude Code · Fase 0 do plano fiscal (fora do escopo dela:
+    `auth` não é módulo de nenhuma das duas sessões fiscais).
+
+**Encontrada em 14/10/2026** — Claude Code, ao aceitar o CNPJ alfanumérico no cadastro
+
+- **A Asaas recebendo CNPJ alfanumérico não foi conferida no sandbox.**
+  - Onde: `apps/api/src/modules/cobranca/provedor-asaas.ts`, `salvarCliente` (`cpfCnpj`).
+  - O que é: o adaptador passou a mandar o CNPJ com as letras (`12ABC34501DE35`) em vez de
+    apagá-las. A Asaas anunciou no blog que cadastros e cobrança aceitam o formato novo, mas a
+    documentação da API não diz nada sobre o campo `cpfCnpj`, e nenhuma chamada real foi feita.
+  - Evidência: [blog da Asaas sobre o CNPJ alfanumérico](https://blog.asaas.com/cnpj-alfanumerico/);
+    o teste unitário só fixa o corpo que sai, não a resposta do gateway.
+  - Impacto: se a Asaas recusar, a primeira loja com CNPJ alfanumérico não consegue contratar
+    plano — recebe "CPF/CNPJ inválido" (o `ErroAsaas` repassa a descrição). Antes desta tarefa
+    ela nem se cadastrava; o que mudou é que agora o erro apareceria só na contratação.
+  - Sugestão: no sandbox, `POST /v3/customers` com `cpfCnpj: "12ABC34501DE35"` (ou um CNPJ
+    alfanumérico real de teste); se recusar, abrir chamado na Asaas — não há contorno do nosso
+    lado, mandar outro documento seria pior.
+  - Como testar: o POST no sandbox devolve `cus_…` e o `GET` do cliente traz o CNPJ com as letras.
+  - Encontrado em: 14/10/2026 · Claude Code · tarefa do CNPJ alfanumérico (sem credencial de
+    sandbox nesta sessão).
+
 **Lacunas frente ao mercado** — Claude Cowork, 27/09/2026, na pesquisa de preços
 ([plano de preços](https://claude.ai/code/artifact/daf7ac7d-5114-4621-9028-3759dbb07be8)).
 O que os concorrentes com preço público entregam e o AutoConnect não. Várias já estão num
@@ -559,7 +616,7 @@ existe por causa delas, e a tabela só sobe quando as duas primeiras existirem.
     loja e portal, webhook e e-mail, testada com o provedor simulado; falta a conta do e-mail
     de entrada e uma notificação real da OLX. A **publicação** continua sem módulo. Ver a
     [decisão](../decisoes/2026-09-27%20leads%20dos%20portais.md).
-- ◐ **Emissão de nota fiscal (NF-e) — adiada por decisão em 27/09/2026** ([plano de resolução](plano-resolucao-de-pendencias.md#adiado-por-decisão)). A contradição entre os dois planos deixou de existir: os dois apontam para o adiamento.
+- ◐ **Emissão de nota fiscal (NF-e) — adiada em 27/09/2026, retomada em 13/10/2026** no [plano fiscal](plano-fiscal-renave-nfe.md), trilha N ([decisão](../decisoes/2026-10-13%20fiscal%20renave%20e%20nfe.md)). Sai da lista de lacunas quando N3 emitir em homologação.
   - Onde: não existe módulo. O [plano de vendas](plano-implementacao-vendas.md), Fase 5,
     prevê NF-e via emissor terceiro (Focus NFe, NFe.io, Tecnospeed); o
     [plano de paridade](plano-paridade-crm.md), em "O que este plano deliberadamente não faz",
@@ -643,6 +700,10 @@ consulta, conta da Clicksign, revisão jurídica, feature flag e região da API 
   - Como testar: veículo com entrada registrada guarda o protocolo; negócio faturado sem
     protocolo de saída mostra o aviso; uma entrada e uma saída de ponta a ponta no ambiente de
     homologação da integradora.
+  - **Situação em 13/10/2026:** virou a trilha R do [plano fiscal](plano-fiscal-renave-nfe.md),
+    na sessão 2, começando pelo registro manual (R1). A Circular nº 2/2026 da Senatran deu às
+    lojas até **20/10** para indicar a integradora, com operação assistida de 12/10 a 20/11 — o
+    calendário está no plano.
 - **Relatório COAF de pagamento em espécie.**
   - Onde: Fase 5 do plano ("a de melhor relação custo-benefício... sem integração externa
     nenhuma"). `DealPayment` já tem o método `cash` em `schema.prisma`.
