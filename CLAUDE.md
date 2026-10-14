@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.478 testes (1.024 na API, 454 no `shared`):
+são 1.496 testes (1.040 na API, 456 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -946,6 +946,11 @@ dividido entre duas sessões (N = NF-e, sessão 1; R = RENAVE, sessão 2):
   emita** (`entradaDaAquisicao`): pessoa jurídica, leilão, transferência e 0 km
   chegam com nota de outro. Cada nota tem **exatamente uma origem** (negócio ou
   aquisição), por CHECK.
+- **Pacote do contador (N4):** `GET /fiscal/notas/pacote.zip` — XML de cada
+  autorizada e cancelada, `notas.csv` e `LEIA-ME.txt`. **Nenhuma nota some em
+  silêncio**: sem XML ou com hash divergente, vai nomeada no LEIA-ME. Período
+  pela autorização, em horário de Brasília, fim exclusivo
+  (`periodoEmBrasilia`). ZIP pelo `common/zip/zip.ts` (zlib, sem dependência).
 - **Documento na nota é `normalizarDocumento`**, nunca `replace(/\D/g, '')` — o
   CNPJ alfanumérico perderia as letras.
 - **Variáveis:** `NFE_FORNECEDOR` (vazio = desligado, a prévia continua;

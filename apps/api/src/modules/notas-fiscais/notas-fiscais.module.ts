@@ -4,6 +4,7 @@ import { PrivilegedPrismaModule } from '../../common/prisma/privileged-prisma.mo
 import { NotasFiscaisController, WebhookNotaFiscalController } from './notas-fiscais.controller';
 import { PerfilFiscalService } from './perfil-fiscal.service';
 import { EmissaoDeNotaService } from './emissao.service';
+import { RelatorioFiscalService } from './relatorio-fiscal.service';
 import { PROVEDOR_DE_NOTA_FISCAL, emissorConfigurado } from './emissor/provedor';
 
 /**
@@ -21,6 +22,7 @@ import { PROVEDOR_DE_NOTA_FISCAL, emissorConfigurado } from './emissor/provedor'
   providers: [
     PerfilFiscalService,
     EmissaoDeNotaService,
+    RelatorioFiscalService,
     { provide: PROVEDOR_DE_NOTA_FISCAL, inject: [ConfigService], useFactory: emissorConfigurado },
   ],
 })

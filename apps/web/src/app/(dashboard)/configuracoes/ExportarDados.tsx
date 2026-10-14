@@ -82,6 +82,13 @@ const EXPORTACOES: { chave: string; rotulo: string; descricao: string; rota: str
     arquivo: 'financeiro.csv',
   },
   {
+    chave: 'notas-fiscais',
+    rotulo: 'Notas fiscais (índice)',
+    descricao: 'NF-e de entrada e saída dos últimos 12 meses, com chave, situação e cancelamento. Os XMLs saem em Financeiro › Notas fiscais. Só gerência.',
+    rota: `/fiscal/notas.csv?from=${umAnoAtras()}&to=${hoje()}`,
+    arquivo: 'notas-fiscais.csv',
+  },
+  {
     chave: 'desempenho',
     rotulo: 'Desempenho da equipe',
     descricao: 'Leads, agendamentos, negócios e comissão por vendedor.',
