@@ -579,7 +579,12 @@ validador da chave da NF-e
 
 **Encontrada em 14/10/2026** — Claude Code, ao aceitar o CNPJ alfanumérico no cadastro
 
-- **A Asaas recebendo CNPJ alfanumérico não foi conferida no sandbox.**
+- ~~**A Asaas recebendo CNPJ alfanumérico não foi conferida no sandbox.**~~ — **resolvido em
+  14/10/2026**, sem mudança de código: no sandbox, `POST /v3/customers` com
+  `cpfCnpj: "12ABC34501DE35"` devolveu 200 (`personType: JURIDICA`) e o `GET` trouxe o CNPJ
+  com as letras; com o dígito trocado (`…DE36`), 400 "O CPF/CNPJ informado é inválido." — a
+  Asaas confere o dígito do formato novo. O cliente de teste foi apagado em seguida. Rodado
+  pelo Israel com a chave de homologação do `.env` (script que recusava fora do sandbox).
   - Onde: `apps/api/src/modules/cobranca/provedor-asaas.ts`, `salvarCliente` (`cpfCnpj`).
   - O que é: o adaptador passou a mandar o CNPJ com as letras (`12ABC34501DE35`) em vez de
     apagá-las. A Asaas anunciou no blog que cadastros e cobrança aceitam o formato novo, mas a
