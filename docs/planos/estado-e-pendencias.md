@@ -69,13 +69,14 @@ e anotar "resolvido em DD/MM/AAAA" e o commit — como os itens abaixo já fazem
   link do PDF assinado e o `signer.key` do webhook. Para ter validade: conta de
   produção na Clicksign (URL, token e webhook novos) e revisão jurídica do contrato.
 
-- **NF-e pela Focus sem conta** (14/10/2026): o adaptador está escrito a partir da
-  documentação e testado com `fetch` dublado, mas nenhuma nota foi emitida na Focus.
-  Falta: conta, token master, as quatro variáveis no Railway, um CNPJ real com A1
-  válido (a Focus exige até em homologação) e cinco premissas a conferir na primeira
-  nota — a lista e o passo a passo estão na fase N3 do
-  [plano fiscal](plano-fiscal-renave-nfe.md). Enquanto isso, a prévia mostra os dados
-  para a loja usar no emissor dela.
+- **NF-e pela Focus sem nenhuma nota emitida** (14/10/2026): conta na Focus aberta
+  e as quatro variáveis no Railway — o boot confirma a Focus **em homologação**.
+  Falta uma loja com CNPJ, inscrição estadual, certificado A1 e contador (a SEFAZ
+  exige os três primeiros até em homologação), e cinco premissas do adaptador a
+  conferir na primeira nota. Decidido em 14/10/2026: isso é a **implantação do
+  primeiro cliente** que quiser emitir, não um teste com certificado comprado — o
+  roteiro está na fase N3 do [plano fiscal](plano-fiscal-renave-nfe.md). Enquanto
+  isso, a prévia mostra os dados para a loja usar no emissor dela.
 
 **Da definição de pronto do plano, um item nunca foi cumprido**
 - **Feature flag.** O plano pede "feature nova atrás de flag até o piloto
