@@ -9,23 +9,62 @@ export const INVITABLE_ROLES = ['tenant_admin', 'manager', 'salesperson'] as con
 // ─── Validadores ──────────────────────────────────────────────────────────────
 
 /**
- * Dígitos verificadores do CNPJ.
+ * CNPJ na forma canônica: 14 caracteres, maiúsculos, sem pontuação.
+ *
+ * Tira **só** o que não é letra nem algarismo. Desde julho de 2026 a Receita
+ * emite CNPJ com letras nas 12 primeiras posições (IN RFB 2.229/2024, exemplo
+ * oficial `12.ABC.345/01DE-35`); o `replace(/\D/g, '')` de antes apagava as
+ * letras e o cadastro respondia "CNPJ deve ter 14 dígitos" para toda empresa
+ * aberta dali em diante. Maiúscula porque o CNPJ alfanumérico é maiúsculo por
+ * definição — `12abc…` e `12ABC…` são a mesma empresa e o mesmo `tax_id`.
+ */
+export function normalizarCnpj(cnpj: string): string {
+  return cnpj.toUpperCase().replace(/[^0-9A-Z]/g, '');
+}
+
+/** 12 posições alfanuméricas (raiz e ordem) e 2 dígitos verificadores, que continuam numéricos. */
+const FORMATO_DO_CNPJ = /^[0-9A-Z]{12}\d{2}$/;
+
+/**
+ * Dígitos verificadores do CNPJ, numérico ou alfanumérico.
  *
  * Exportado desde que o cadastro deixou de exigir convite: com a porta pública,
  * **esta** é a regra dura do CNPJ, e a consulta à Receita (BrasilAPI) virou
  * enriquecimento. A tela precisa da mesma conta que a API para poder recusar
  * antes de enviar — e para não recusar quando quem falhou foi a BrasilAPI.
+ *
+ * O módulo 11 é o de sempre; o que mudou é o valor de cada caractere, que passou
+ * a ser o código ASCII menos 48. Para algarismo dá o próprio algarismo (o CNPJ
+ * numérico tem exatamente o resultado de antes); para letra, `A` vale 17. É a
+ * mesma conta da chave da NF-e (`domain/chave-nfe.ts`), que carrega o CNPJ.
  */
 export function cnpjValido(cnpj: string): boolean {
-  const c = cnpj.replace(/\D/g, '');
-  if (c.length !== 14) return false;
+  const c = normalizarCnpj(cnpj);
+  if (!FORMATO_DO_CNPJ.test(c)) return false;
   if (/^(\d)\1+$/.test(c)) return false; // todos dígitos iguais
-  const calc = (digits: string, n: number): number => {
+  const calc = (n: number): number => {
     let s = 0, p = n - 7;
-    for (let i = 0; i < n; i++) { s += +digits[i] * p--; if (p < 2) p = 9; }
+    for (let i = 0; i < n; i++) { s += (c.charCodeAt(i) - 48) * p--; if (p < 2) p = 9; }
     return s % 11 < 2 ? 0 : 11 - (s % 11);
   };
-  return calc(c, 12) === +c[12] && calc(c, 13) === +c[13];
+  return calc(12) === +c[12] && calc(13) === +c[13];
+}
+
+/**
+ * Máscara do campo de CNPJ enquanto a pessoa digita: `12.ABC.345/01DE-35`.
+ *
+ * Aceita letra nas 12 primeiras posições e só algarismo nas duas últimas — o
+ * dígito verificador nunca é letra, então digitar uma ali é engano certo.
+ */
+export function mascararCnpj(valor: string): string {
+  const c = normalizarCnpj(valor);
+  const raiz = c.slice(0, 12);
+  const dv = c.slice(12).replace(/\D/g, '').slice(0, 2);
+  return (raiz + dv)
+    .replace(/^(.{2})(.)/, '$1.$2')
+    .replace(/^(.{2}\.)(.{3})(.)/, '$1$2.$3')
+    .replace(/^(.{2}\..{3}\.)(.{3})(.)/, '$1$2/$3')
+    .replace(/^(.{2}\..{3}\..{3}\/)(.{4})(.)/, '$1$2-$3');
 }
 
 /** Dígitos verificadores do CPF. Exportado para o contrato reaproveitar. */
@@ -101,11 +140,14 @@ export const signupTenantSchema = z.object({
   inviteToken: z.string().min(1).optional(),
 
   tenant: z.object({
-    /** CNPJ: aceita formatado (XX.XXX.XXX/XXXX-XX) ou só dígitos */
+    /**
+     * CNPJ: aceita formatado (XX.XXX.XXX/XXXX-XX) ou não, numérico ou
+     * alfanumérico, e grava na forma canônica de `normalizarCnpj`.
+     */
     cnpj: z
       .string()
-      .transform((v) => v.replace(/\D/g, ''))
-      .pipe(z.string().length(14, 'CNPJ deve ter 14 dígitos').refine(cnpjValido, 'CNPJ inválido')),
+      .transform(normalizarCnpj)
+      .pipe(z.string().length(14, 'CNPJ deve ter 14 caracteres').refine(cnpjValido, 'CNPJ inválido')),
     stateRegistration: z.string().max(30).optional(), // Inscrição Estadual
     legalName:    z.string().min(2).max(200).optional(),
     tradeName:    z.string().min(2, 'Informe o nome da loja').max(200),
