@@ -206,6 +206,16 @@ describe('ProvedorAsaas — o que sai no corpo', () => {
     });
   });
 
+  it('CNPJ alfanumérico vai com as letras, maiúsculas e sem pontuação', async () => {
+    const { p, chamadas } = provedor(() => ({ corpo: CLIENTE_CRIADO }));
+    await p.salvarCliente({
+      referencia: 'tenant-uuid', nome: 'Loja LTDA', email: 'loja@exemplo.test',
+      cnpj: '12.abc.345/01de-35',
+    });
+
+    expect(corpoDe(chamadas[0]!)).toMatchObject({ cpfCnpj: '12ABC34501DE35' });
+  });
+
   it('atualizar cliente existente vai no id e devolve o MESMO id, não cria um segundo', async () => {
     // Validado no sandbox: o segundo POST em /customers/:id devolveu o mesmo
     // id com os campos novos, e a busca por externalReference seguiu com um só.

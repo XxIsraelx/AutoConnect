@@ -340,7 +340,7 @@ return this.prisma.lead.findMany({ where: { tenantId } });
 ## Testes e CI
 
 O portão do projeto é um comando só. **Nenhum PR fecha sem ele verde** — hoje
-são 1.419 testes (993 na API, 426 no `shared`):
+são 1.431 testes (996 na API, 435 no `shared`):
 
 ```bash
 pnpm exec turbo run typecheck lint test
@@ -451,7 +451,9 @@ O porquê de cada regra: `docs/decisoes/2026-09-25 cadastro em autosservico.md`.
   constante. **Trial vencido bloqueia na hora** desde a Onda 3 — a regra inteira
   está em *Cobrança e bloqueio por vencimento*, abaixo.
 - **O dígito verificador do CNPJ é a regra dura**, conferido pelo Zod e pela
-  tela com a mesma função (`cnpjValido`, no shared). A BrasilAPI é
+  tela com a mesma função (`cnpjValido`, no shared) — numérico **ou alfanumérico**
+  (letras nas 12 primeiras posições desde julho de 2026; normalize com `normalizarCnpj`,
+  nunca com `\D`, que apaga as letras). A BrasilAPI é
   **enriquecimento**: preenche razão social e endereço e só recusa situação
   conclusivamente negativa. Indisponível, 404, 429 ou 5xx **não podem impedir o
   cadastro** — serviço externo gratuito não é porteiro da porta de entrada.

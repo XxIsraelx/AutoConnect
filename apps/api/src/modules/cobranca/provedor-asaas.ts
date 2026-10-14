@@ -2,7 +2,7 @@ import {
   BadRequestException, HttpException, Logger, UnauthorizedException,
 } from '@nestjs/common';
 import {
-  deCentavos, emCentavos,
+  deCentavos, emCentavos, normalizarCnpj,
   type AssinaturaNoGateway, type CabecalhosDeCobranca, type ClienteDeCobranca,
   type EventoDeCobranca, type FaturaDoGateway, type MeioDePagamento, type NovaAssinatura,
   type ProvedorDeCobranca, type StatusDeFatura, type TipoEventoCobranca,
@@ -280,7 +280,9 @@ export class ProvedorAsaas implements ProvedorDeCobranca {
     const corpo = {
       name: dados.nome,
       email: dados.email,
-      cpfCnpj: dados.cnpj.replace(/\D/g, ''),
+      // Só sem pontuação: o CNPJ alfanumérico (julho de 2026) leva letras, e a
+      // Asaas anunciou aceitar o formato novo. `\D` mandaria outro documento.
+      cpfCnpj: normalizarCnpj(dados.cnpj),
       mobilePhone: dados.telefone?.replace(/\D/g, '') || undefined,
       postalCode: dados.cep?.replace(/\D/g, '') || undefined,
       // Referência externa: é por ela que se reencontra a loja no painel da

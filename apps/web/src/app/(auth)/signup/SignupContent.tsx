@@ -6,18 +6,19 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Check, AlertCircle, Loader2, Info } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
-import { mascararTelefoneBr, cnpjValido, DURACAO_DO_TRIAL_DIAS } from '@autoconnect/shared';
+import {
+  mascararTelefoneBr, mascararCnpj, normalizarCnpj, cnpjValido, DURACAO_DO_TRIAL_DIAS,
+} from '@autoconnect/shared';
 import { useAuthStore, type AuthUser } from '@/store/auth';
 
 // ─── Utilitários ──────────────────────────────────────────────────────────────
 
-function fmtCNPJ(v: string) {
-  return v.replace(/\D/g, '').slice(0, 14)
-    .replace(/(\d{2})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1/$2')
-    .replace(/(\d{4})(\d{1,2})$/, '$1-$2');
-}
+/**
+ * Máscara de CNPJ — do `@autoconnect/shared`, que aceita o formato alfanumérico
+ * (julho de 2026). A local só deixava passar algarismo: quem tinha CNPJ com
+ * letra não conseguia nem digitá-lo.
+ */
+const fmtCNPJ = mascararCnpj;
 /**
  * Máscara de telefone — do `@autoconnect/shared`.
  *
@@ -188,11 +189,16 @@ export default function SignupPage() {
 
   // ── CNPJ: dígito verificador manda, a Receita enriquece ──────────────────────
   const lookupCNPJ = useCallback(async (raw: string) => {
-    const digits = raw.replace(/\D/g, '');
-    if (digits.length !== 14) { setCnpjStatus('idle'); return; }
+    const cnpj = normalizarCnpj(raw);
+    // Dígito errado não vai à BrasilAPI: ela responderia 400, e a tela diria
+    // "não conseguimos consultar" quando o problema é o número digitado.
+    if (!cnpjValido(cnpj)) { setCnpjStatus('idle'); return; }
     setCnpjStatus('loading');
     try {
-      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`);
+      // A BrasilAPI já responde CNPJ alfanumérico (conferido em 14/10/2026: o
+      // exemplo da Receita dá 404 "não encontrado"; com o dígito trocado, 400
+      // "inválido"). Por isso o formato novo segue sendo enriquecido.
+      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
       // Qualquer resposta não-2xx é **indisponibilidade**, não reprovação:
       // empresa recém-aberta dá 404 e o limite de uso do serviço gratuito dá
       // 429. Nenhum dos dois diz nada sobre o CNPJ ser válido.
@@ -255,7 +261,7 @@ export default function SignupPage() {
   }, []);
 
   useEffect(() => {
-    if (form.cnpj.replace(/\D/g, '').length === 14) lookupCNPJ(form.cnpj);
+    if (normalizarCnpj(form.cnpj).length === 14) lookupCNPJ(form.cnpj);
     else setCnpjStatus('idle');
   }, [form.cnpj, lookupCNPJ]);
 
@@ -272,7 +278,7 @@ export default function SignupPage() {
     // O dígito verificador é a regra dura, e é a MESMA conta que a API faz.
     // `cnpjStatus` não entra aqui de propósito: a Receita não decide se o
     // cadastro segue.
-    if (digits(form.cnpj).length !== 14) e.cnpj = 'Informe os 14 dígitos do CNPJ';
+    if (normalizarCnpj(form.cnpj).length !== 14) e.cnpj = 'Informe os 14 caracteres do CNPJ';
     else if (!cnpjValido(form.cnpj)) e.cnpj = 'CNPJ inválido — confira os dígitos';
     else if (cnpjStatus === 'inactive') e.cnpj = 'CNPJ sem situação ativa na Receita Federal';
 
@@ -407,7 +413,9 @@ export default function SignupPage() {
               value={form.cnpj}
               onChange={(e) => set('cnpj', fmtCNPJ(e.target.value))}
               placeholder="00.000.000/0000-00"
-              inputMode="numeric"
+              autoCapitalize="characters"
+              autoComplete="off"
+              spellCheck={false}
               className={fieldErrors.cnpj ? inputErrCls : inputCls}
             />
             <div className="absolute right-3 top-[19px] -translate-y-1/2">
