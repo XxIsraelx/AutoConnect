@@ -281,6 +281,10 @@ model Tenant {
   financialEntries          FinancialEntry[]
   financialPeriods          FinancialPeriod[]
   bankTransactions          BankTransaction[]
+  // Fiscal (trilha N) — os modelos estão no fim do arquivo.
+  fiscalSettings            FiscalSettings?
+  fiscalOperationProfiles   FiscalOperationProfile[]
+  vehicleFiscalDetails      VehicleFiscalDetails[]
 
   @@map("tenants")
 }
@@ -818,6 +822,8 @@ model Vehicle {
 
   /// Lançamentos financeiros ligados a este veículo (compra, preparação).
   financialEntries FinancialEntry[]
+  /// NCM, RENAVAM e origem — trilha fiscal (fim do arquivo).
+  fiscalDetails    VehicleFiscalDetails?
 
   @@index([tenantId])
   @@index([branchId])
@@ -2239,4 +2245,110 @@ model FinancialPeriod {
   @@unique([tenantId, year, month])
   @@index([tenantId])
   @@map("financial_periods")
+}
+
+// ─────────────────────────────────────────────────────────
+// Fiscal — trilha N (NF-e) do plano fiscal
+//
+// docs/planos/plano-fiscal-renave-nfe.md. O AutoConnect prepara, envia e
+// guarda; quem calcula tributo é o emissor e o contador. Por isso o perfil
+// abaixo é **da loja** e nasce sem situação tributária: a sugestão de CFOP é
+// ponto de partida para a conversa com o contador, e produção só emite depois
+// que alguém registra que ele confirmou.
+// ─────────────────────────────────────────────────────────
+
+enum RegimeTributario {
+  mei
+  simples_nacional
+  simples_excesso_sublimite
+  lucro_presumido
+  lucro_real
+}
+
+enum AmbienteFiscal {
+  homologacao
+  producao
+}
+
+enum OperacaoFiscal {
+  venda
+  compra_de_particular
+  entrada_de_troca
+  entrada_em_consignacao
+  devolucao_de_consignacao
+  venda_de_consignado
+}
+
+/// Como a loja fatura. Uma linha por loja.
+///
+/// CNPJ e IE continuam no `Tenant`, e o endereço do emitente é o da filial
+/// matriz: copiar os três para cá criaria a segunda fonte de cada um.
+model FiscalSettings {
+  tenantId String           @id @map("tenant_id") @db.Uuid
+  regime   RegimeTributario
+  serie    Int              @default(1) @db.SmallInt
+  ambiente AmbienteFiscal   @default(homologacao)
+
+  /// A loja registrou que o contador conferiu o perfil (regime e operações).
+  /// Mudar o regime ou qualquer operação **apaga** a confirmação: o contador
+  /// confirmou o que viu, não o que veio depois.
+  contadorConfirmouEm  DateTime? @map("contador_confirmou_em") @db.Timestamptz()
+  /// Quem da loja registrou. Sem chave estrangeira: é trilha, e sobrevive à
+  /// saída da pessoa da equipe.
+  contadorConfirmouPor String?   @map("contador_confirmou_por") @db.Uuid
+  contadorNome         String?   @map("contador_nome")
+  contadorCrc          String?   @map("contador_crc")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("fiscal_settings")
+}
+
+/// Natureza, CFOP e situação tributária de cada operação, por loja.
+model FiscalOperationProfile {
+  id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String         @map("tenant_id") @db.Uuid
+  operation OperacaoFiscal
+
+  natureza                  String
+  cfopInterno               String  @map("cfop_interno") @db.Char(4)
+  cfopInterestadual         String  @map("cfop_interestadual") @db.Char(4)
+  /// CST (2 dígitos) ou CSOSN (3). Nasce nulo: quem define é o contador.
+  situacaoTributaria        String? @map("situacao_tributaria") @db.VarChar(3)
+  informacoesComplementares String? @map("informacoes_complementares")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, operation])
+  @@index([tenantId])
+  @@map("fiscal_operation_profiles")
+}
+
+/// NCM, RENAVAM e origem do veículo — o que a nota pede e o estoque não tem.
+///
+/// Tabela à parte, e não coluna em `vehicles`, para a trilha fiscal não mexer
+/// no módulo de estoque. O RENAVAM daqui é **o** RENAVAM do carro: a trilha do
+/// RENAVE lê, não guarda o seu.
+model VehicleFiscalDetails {
+  vehicleId String  @id @map("vehicle_id") @db.Uuid
+  tenantId  String  @map("tenant_id") @db.Uuid
+  ncm       String? @db.Char(8)
+  renavam   String? @db.Char(11)
+  /// 0 = nacional; 1 e 2 = importado.
+  origem    Int     @default(0) @db.SmallInt
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("vehicle_fiscal_details")
 }

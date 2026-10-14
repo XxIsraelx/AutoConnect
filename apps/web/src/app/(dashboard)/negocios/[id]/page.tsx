@@ -19,6 +19,7 @@ import Partes from './Partes';
 import Comprador from './Comprador';
 import Preco from './Preco';
 import Comissao from './Comissao';
+import PreviaDaNotaFiscal from '@/components/fiscal/PreviaDaNotaFiscal';
 import { ROTULO_STATUS, COR_STATUS, ROTULO_PAGAMENTO } from '../rotulos';
 
 const VE_CUSTO = ['manager', 'tenant_admin', 'super_admin'];
@@ -337,6 +338,8 @@ export default function NegocioPage() {
         <Comprador negocio={negocio} editavel={editavel} />
 
         <Contrato dealId={id} statusDoNegocio={negocio.status} />
+
+        <PreviaDaNotaFiscal dealId={id} vehicleId={negocio.vehicle.id} comprador={negocio.buyer} />
 
         {/* Timeline */}
         <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4">
